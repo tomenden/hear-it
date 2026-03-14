@@ -27,9 +27,7 @@ The MVP focuses on:
 
 It explicitly does not yet include:
 
-- iOS app UI
 - iOS share extension
-- background audio playback
 - offline caching
 - billing or accounts
 
@@ -37,6 +35,7 @@ It explicitly does not yet include:
 
 - `docs/`: product and technical design notes
 - `apps/api/`: TypeScript extraction service
+- `apps/ios/`: SwiftUI iPhone app wired to the existing API
 
 ## Getting Started
 
@@ -136,15 +135,73 @@ This is the fastest way to get a phone-sized feel for the product on this machin
 3. Toggle device emulation.
 4. Pick an iPhone profile.
 
-### If you want the real iOS Simulator later
+## Native iOS App
 
-This machine currently has Command Line Tools but not full Xcode/Simulator tooling. To run a true iPhone simulator you will need:
+The repo now includes a SwiftUI iPhone app under [`apps/ios`](./apps/ios).
 
-1. Full Xcode installed from Apple.
-2. `xcode-select` pointed at the Xcode app.
-3. Simulator runtimes installed inside Xcode.
+Generate the Xcode project:
 
-At that point we can scaffold the native SwiftUI app and run it in Simulator against the same backend.
+```bash
+cd apps/ios
+xcodegen generate
+```
+
+Open the project:
+
+```bash
+open HearIt.xcodeproj
+```
+
+The app is built around the current prototype flow:
+
+1. Paste an article URL on Home.
+2. Choose a narration voice.
+3. Create a narration job against the existing Hear It API.
+4. Watch the processing state in the player.
+5. Return to the library to reopen completed narrations.
+
+### Mac testing workflow
+
+Use the native app in three different ways depending on what you are validating:
+
+1. `SwiftUI Preview`
+   Best for fast visual iteration on individual screens. The previews use stable sample data, so they stay fast and do not hit the live backend.
+2. `iOS Simulator`
+   Best for end-to-end testing on your Mac. By default the app uses `http://127.0.0.1:3000` in Simulator, so it can talk to the local Hear It API directly.
+3. `Physical iPhone`
+   Best for final QA of real-device behavior such as signing, audio session behavior, network access over Wi-Fi, and anything that depends on actual hardware or device settings.
+
+The app now includes preview fixtures for the main flows:
+
+- Home
+- Library
+- Voice selection
+- Player in ready and processing states
+- Settings
+
+In Xcode, open the canvas on those SwiftUI files to iterate on layout and styling without redeploying the app.
+
+### Device testing
+
+When you run the app on a physical iPhone, the app needs the API base URL of the Mac running `npm run dev`.
+
+Use the in-app Settings screen and enter something like:
+
+```text
+http://192.168.1.12:3000
+```
+
+`http://localhost:3000` works for Simulator, but not for a physical phone.
+
+### What still needs real-device QA
+
+The simulator is great for layout and end-to-end flow checks, but keep a short QA pass on an actual iPhone for:
+
+- developer signing and install flow
+- playback behavior through the real iPhone audio session
+- any future share extension work
+- network behavior over local Wi-Fi instead of the Mac loopback interface
+- final spacing and typography feel on the actual device
 
 ## Shared tmux Workflow
 

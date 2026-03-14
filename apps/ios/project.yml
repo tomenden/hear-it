@@ -1,0 +1,64 @@
+name: HearIt
+options:
+  createIntermediateGroups: true
+configs:
+  Debug: debug
+  Release: release
+settings:
+  base:
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    SWIFT_VERSION: 6.0
+    IPHONEOS_DEPLOYMENT_TARGET: 26.0
+targets:
+  HearIt:
+    type: application
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: HearIt
+        excludes:
+          - Resources
+          - Support/Info.plist
+      - path: HearIt/Resources
+        buildPhase: resources
+        excludes:
+          - VoicePreviews
+      - path: HearIt/Resources/VoicePreviews
+        buildPhase: resources
+        type: folder
+    info:
+      path: HearIt/Support/Info.plist
+      properties:
+        UILaunchScreen: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tome.hearit
+        PRODUCT_NAME: HearIt
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: 1
+        SUPPORTS_MACCATALYST: NO
+        ENABLE_PREVIEWS: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/Frameworks"
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    scheme:
+      testTargets:
+        - HearItTests
+  HearItTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: HearItTests
+    dependencies:
+      - target: HearIt
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.tome.hearit.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/HearIt.app/HearIt"
+        BUNDLE_LOADER: "$(TEST_HOST)"

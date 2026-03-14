@@ -4,3 +4,12 @@ dist/
 .env
 data/audio/
 apps/api/data/audio/
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+DerivedData/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Temporary files
+.tmp/

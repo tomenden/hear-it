@@ -1,0 +1,609 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0B4B4C45E125AC828C6FFE31 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D587510DB7863E42F0D1761 /* SettingsView.swift */; };
+		17797B4C9DD94CEB12C90801 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C8FA41CD6AAEDAB113823F /* PlayerView.swift */; };
+		26330DCFCBC0E8BB6F2B547D /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4E53A003161DCBF0B225C3 /* LibraryView.swift */; };
+		29A67C704CB9FFF963B147E0 /* Article.swift in Sources */ = {isa = PBXBuildFile; fileRef = A068252339B48496D9BBF3FC /* Article.swift */; };
+		2C17CB99675410640072EA09 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B57E46118380FA6252EEADD /* AppTheme.swift */; };
+		40AFE1923EB3FECB6CCB3AC6 /* HearItApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3BFBB00D4C28D4380A903C3 /* HearItApp.swift */; };
+		48BD34433BE16F76DE5EF3BD /* AudioJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE5F10C9DACB6182F536801 /* AudioJob.swift */; };
+		71A8FA213B32D6C96B0C846D /* HearItURLResolutionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30013ECC1CB1F68E636157F /* HearItURLResolutionTests.swift */; };
+		948AAB0B070DDE32D4391FB2 /* MiniPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5623BFE57B3A1953B8ED6AD /* MiniPlayerView.swift */; };
+		957C62B7A10BB9666F7B8488 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B5767CE1B8ABDB59615131A4 /* Assets.xcassets */; };
+		9EF8DDA3273C4B3E4221FDB1 /* Color+Hex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08D89A043D4EE39A7D81998B /* Color+Hex.swift */; };
+		A2368FCADAE6B6DA39ED28B6 /* PreviewSamples.swift in Sources */ = {isa = PBXBuildFile; fileRef = F87839A6EED42DEF792140EE /* PreviewSamples.swift */; };
+		A4C78E2338624F2A49A7D632 /* PlayerPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DDA092AA8B8216A274E6BFD /* PlayerPresentation.swift */; };
+		A75893BE92390D07225C1BFC /* LibraryFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17259412496749BEA5AA0621 /* LibraryFilter.swift */; };
+		BA5C2E6B0474B8E0175E1E64 /* ServerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E85C4716C27EF1438132ADF /* ServerConfig.swift */; };
+		C0DB74CA5317D0B74B2BCD33 /* VoiceChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF01D70196232D3C8E081A41 /* VoiceChoice.swift */; };
+		D2B8B002573F34338511AD1B /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA9A9C72C19F9A029933648C /* RootView.swift */; };
+		D5A0E21D0A479A633708B8AA /* VoicePreviews in Resources */ = {isa = PBXBuildFile; fileRef = F2994D976ADA2485FA28A023 /* VoicePreviews */; };
+		DA8C3E3FA78FA2185595D523 /* AppModel+Preview.swift in Sources */ = {isa = PBXBuildFile; fileRef = F37D16491E5873EE8439D41E /* AppModel+Preview.swift */; };
+		E5A3862FD204DF644A11F20A /* VoiceSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E93C64E7948C26DC7D501A2 /* VoiceSelectionView.swift */; };
+		EAD69B303E3676D9B23762CC /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09DBDC9261CA52AB7D17821D /* HomeView.swift */; };
+		EECEA73D8BF348F63683801B /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CABAF07D2D4B8ABE6EE3FCA /* AppSettings.swift */; };
+		EF3CB36F3EA16FD654BC36B5 /* AudioPlayerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A71946812B0A81DA6E70A8E /* AudioPlayerController.swift */; };
+		F29C597C21FC77864155B462 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45E6F3A4CFD4DE0C1CD922ED /* AppModel.swift */; };
+		F7570A5EDF47A4AA1C2BD522 /* HearItAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3938DD84F481914666EBD96C /* HearItAPIClient.swift */; };
+		F8F56B98749E9FBBEE6561B8 /* RootTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E493E67BC1B8EECE18403E0 /* RootTab.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		53C695F3A112B4B84406BF5D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9CE30797020252CE02F7A8A6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8BEB4DC71717BA0BC6AB9E6B;
+			remoteInfo = HearIt;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		08D89A043D4EE39A7D81998B /* Color+Hex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Hex.swift"; sourceTree = "<group>"; };
+		09DBDC9261CA52AB7D17821D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		0B57E46118380FA6252EEADD /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
+		17259412496749BEA5AA0621 /* LibraryFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFilter.swift; sourceTree = "<group>"; };
+		3938DD84F481914666EBD96C /* HearItAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HearItAPIClient.swift; sourceTree = "<group>"; };
+		3D587510DB7863E42F0D1761 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		45E6F3A4CFD4DE0C1CD922ED /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		4CABAF07D2D4B8ABE6EE3FCA /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		4DDA092AA8B8216A274E6BFD /* PlayerPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerPresentation.swift; sourceTree = "<group>"; };
+		4E85C4716C27EF1438132ADF /* ServerConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfig.swift; sourceTree = "<group>"; };
+		4E93C64E7948C26DC7D501A2 /* VoiceSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSelectionView.swift; sourceTree = "<group>"; };
+		5A71946812B0A81DA6E70A8E /* AudioPlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerController.swift; sourceTree = "<group>"; };
+		87C8FA41CD6AAEDAB113823F /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
+		8E493E67BC1B8EECE18403E0 /* RootTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTab.swift; sourceTree = "<group>"; };
+		92F42827EE00E24900D2F408 /* HearIt.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HearIt.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9FE5F10C9DACB6182F536801 /* AudioJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioJob.swift; sourceTree = "<group>"; };
+		A068252339B48496D9BBF3FC /* Article.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Article.swift; sourceTree = "<group>"; };
+		A30013ECC1CB1F68E636157F /* HearItURLResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HearItURLResolutionTests.swift; sourceTree = "<group>"; };
+		B5767CE1B8ABDB59615131A4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D5623BFE57B3A1953B8ED6AD /* MiniPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerView.swift; sourceTree = "<group>"; };
+		DD4E53A003161DCBF0B225C3 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		E5A75951B42CE5507DCA6A95 /* HearItTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HearItTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		EF01D70196232D3C8E081A41 /* VoiceChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceChoice.swift; sourceTree = "<group>"; };
+		F2994D976ADA2485FA28A023 /* VoicePreviews */ = {isa = PBXFileReference; lastKnownFileType = folder; name = VoicePreviews; path = HearIt/Resources/VoicePreviews; sourceTree = SOURCE_ROOT; };
+		F37D16491E5873EE8439D41E /* AppModel+Preview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Preview.swift"; sourceTree = "<group>"; };
+		F3BFBB00D4C28D4380A903C3 /* HearItApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HearItApp.swift; sourceTree = "<group>"; };
+		F87839A6EED42DEF792140EE /* PreviewSamples.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewSamples.swift; sourceTree = "<group>"; };
+		FA9A9C72C19F9A029933648C /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0A4932905DCEA4EB59A42E54 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				B5767CE1B8ABDB59615131A4 /* Assets.xcassets */,
+				F2994D976ADA2485FA28A023 /* VoicePreviews */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		0C3F26A7DC2E8B6502743CB9 /* Library */ = {
+			isa = PBXGroup;
+			children = (
+				DD4E53A003161DCBF0B225C3 /* LibraryView.swift */,
+			);
+			path = Library;
+			sourceTree = "<group>";
+		};
+		3D51E46BC9511C2EA3E9129D /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				46813C1506726D060081D23A /* Home */,
+				0C3F26A7DC2E8B6502743CB9 /* Library */,
+				4EAADC40122286F5B30A663C /* Player */,
+				DEBFC01BFDD71084D5BEED99 /* Settings */,
+				46A6E68C10821A5324E97A74 /* VoiceSelection */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		3F79E7304691E64456D3B0C2 = {
+			isa = PBXGroup;
+			children = (
+				A3E8680503A6D476F6F9C79F /* HearIt */,
+				5D58588CDFF298DCEC3D2E19 /* HearItTests */,
+				D4DDBA4C1AECB58BF044B7B8 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		46813C1506726D060081D23A /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				09DBDC9261CA52AB7D17821D /* HomeView.swift */,
+			);
+			path = Home;
+			sourceTree = "<group>";
+		};
+		46A6E68C10821A5324E97A74 /* VoiceSelection */ = {
+			isa = PBXGroup;
+			children = (
+				4E93C64E7948C26DC7D501A2 /* VoiceSelectionView.swift */,
+			);
+			path = VoiceSelection;
+			sourceTree = "<group>";
+		};
+		4EAADC40122286F5B30A663C /* Player */ = {
+			isa = PBXGroup;
+			children = (
+				D5623BFE57B3A1953B8ED6AD /* MiniPlayerView.swift */,
+				87C8FA41CD6AAEDAB113823F /* PlayerView.swift */,
+			);
+			path = Player;
+			sourceTree = "<group>";
+		};
+		5D58588CDFF298DCEC3D2E19 /* HearItTests */ = {
+			isa = PBXGroup;
+			children = (
+				A30013ECC1CB1F68E636157F /* HearItURLResolutionTests.swift */,
+			);
+			path = HearItTests;
+			sourceTree = "<group>";
+		};
+		67B97654531D5B9EBA919475 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				45E6F3A4CFD4DE0C1CD922ED /* AppModel.swift */,
+				F3BFBB00D4C28D4380A903C3 /* HearItApp.swift */,
+				8E493E67BC1B8EECE18403E0 /* RootTab.swift */,
+				FA9A9C72C19F9A029933648C /* RootView.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		8AD5373F9A553217F61FC464 /* PreviewSupport */ = {
+			isa = PBXGroup;
+			children = (
+				F37D16491E5873EE8439D41E /* AppModel+Preview.swift */,
+				F87839A6EED42DEF792140EE /* PreviewSamples.swift */,
+			);
+			path = PreviewSupport;
+			sourceTree = "<group>";
+		};
+		A3E8680503A6D476F6F9C79F /* HearIt */ = {
+			isa = PBXGroup;
+			children = (
+				67B97654531D5B9EBA919475 /* App */,
+				D01E5353271F590E49C37F56 /* Design */,
+				3D51E46BC9511C2EA3E9129D /* Features */,
+				EA2645CEF1E933BBF1A3DF09 /* Models */,
+				8AD5373F9A553217F61FC464 /* PreviewSupport */,
+				0A4932905DCEA4EB59A42E54 /* Resources */,
+				B13A1AEC46A4CC242F18A9D1 /* Services */,
+			);
+			path = HearIt;
+			sourceTree = "<group>";
+		};
+		B13A1AEC46A4CC242F18A9D1 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				4CABAF07D2D4B8ABE6EE3FCA /* AppSettings.swift */,
+				5A71946812B0A81DA6E70A8E /* AudioPlayerController.swift */,
+				3938DD84F481914666EBD96C /* HearItAPIClient.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		D01E5353271F590E49C37F56 /* Design */ = {
+			isa = PBXGroup;
+			children = (
+				0B57E46118380FA6252EEADD /* AppTheme.swift */,
+				08D89A043D4EE39A7D81998B /* Color+Hex.swift */,
+			);
+			path = Design;
+			sourceTree = "<group>";
+		};
+		D4DDBA4C1AECB58BF044B7B8 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				92F42827EE00E24900D2F408 /* HearIt.app */,
+				E5A75951B42CE5507DCA6A95 /* HearItTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		DEBFC01BFDD71084D5BEED99 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				3D587510DB7863E42F0D1761 /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		EA2645CEF1E933BBF1A3DF09 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				A068252339B48496D9BBF3FC /* Article.swift */,
+				9FE5F10C9DACB6182F536801 /* AudioJob.swift */,
+				17259412496749BEA5AA0621 /* LibraryFilter.swift */,
+				4DDA092AA8B8216A274E6BFD /* PlayerPresentation.swift */,
+				4E85C4716C27EF1438132ADF /* ServerConfig.swift */,
+				EF01D70196232D3C8E081A41 /* VoiceChoice.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4B7D26D24237DD27FCA58CB9 /* HearItTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6CC30862AAFE4B6CCF93B81A /* Build configuration list for PBXNativeTarget "HearItTests" */;
+			buildPhases = (
+				330401058478803781195D44 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				65ABA690292CC099B1673630 /* PBXTargetDependency */,
+			);
+			name = HearItTests;
+			packageProductDependencies = (
+			);
+			productName = HearItTests;
+			productReference = E5A75951B42CE5507DCA6A95 /* HearItTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		8BEB4DC71717BA0BC6AB9E6B /* HearIt */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6A3F9AEF84313154D246C9CB /* Build configuration list for PBXNativeTarget "HearIt" */;
+			buildPhases = (
+				CEBE826AF024987C0F312640 /* Sources */,
+				EBD7E0EF48D67A3179BCC635 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HearIt;
+			packageProductDependencies = (
+			);
+			productName = HearIt;
+			productReference = 92F42827EE00E24900D2F408 /* HearIt.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9CE30797020252CE02F7A8A6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					8BEB4DC71717BA0BC6AB9E6B = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 00DC3F014BBC076CC67E6DDE /* Build configuration list for PBXProject "HearIt" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 3F79E7304691E64456D3B0C2;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = D4DDBA4C1AECB58BF044B7B8 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8BEB4DC71717BA0BC6AB9E6B /* HearIt */,
+				4B7D26D24237DD27FCA58CB9 /* HearItTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		EBD7E0EF48D67A3179BCC635 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				957C62B7A10BB9666F7B8488 /* Assets.xcassets in Resources */,
+				D5A0E21D0A479A633708B8AA /* VoicePreviews in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		330401058478803781195D44 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				71A8FA213B32D6C96B0C846D /* HearItURLResolutionTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CEBE826AF024987C0F312640 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DA8C3E3FA78FA2185595D523 /* AppModel+Preview.swift in Sources */,
+				F29C597C21FC77864155B462 /* AppModel.swift in Sources */,
+				EECEA73D8BF348F63683801B /* AppSettings.swift in Sources */,
+				2C17CB99675410640072EA09 /* AppTheme.swift in Sources */,
+				29A67C704CB9FFF963B147E0 /* Article.swift in Sources */,
+				48BD34433BE16F76DE5EF3BD /* AudioJob.swift in Sources */,
+				EF3CB36F3EA16FD654BC36B5 /* AudioPlayerController.swift in Sources */,
+				9EF8DDA3273C4B3E4221FDB1 /* Color+Hex.swift in Sources */,
+				F7570A5EDF47A4AA1C2BD522 /* HearItAPIClient.swift in Sources */,
+				40AFE1923EB3FECB6CCB3AC6 /* HearItApp.swift in Sources */,
+				EAD69B303E3676D9B23762CC /* HomeView.swift in Sources */,
+				A75893BE92390D07225C1BFC /* LibraryFilter.swift in Sources */,
+				26330DCFCBC0E8BB6F2B547D /* LibraryView.swift in Sources */,
+				948AAB0B070DDE32D4391FB2 /* MiniPlayerView.swift in Sources */,
+				A4C78E2338624F2A49A7D632 /* PlayerPresentation.swift in Sources */,
+				17797B4C9DD94CEB12C90801 /* PlayerView.swift in Sources */,
+				A2368FCADAE6B6DA39ED28B6 /* PreviewSamples.swift in Sources */,
+				F8F56B98749E9FBBEE6561B8 /* RootTab.swift in Sources */,
+				D2B8B002573F34338511AD1B /* RootView.swift in Sources */,
+				BA5C2E6B0474B8E0175E1E64 /* ServerConfig.swift in Sources */,
+				0B4B4C45E125AC828C6FFE31 /* SettingsView.swift in Sources */,
+				C0DB74CA5317D0B74B2BCD33 /* VoiceChoice.swift in Sources */,
+				E5A3862FD204DF644A11F20A /* VoiceSelectionView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		65ABA690292CC099B1673630 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8BEB4DC71717BA0BC6AB9E6B /* HearIt */;
+			targetProxy = 53C695F3A112B4B84406BF5D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		44117768072E3CACC5A79417 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.tome.hearit.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HearIt.app/HearIt";
+			};
+			name = Release;
+		};
+		7C478EF8703EAF057517EE9D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		867D85B386CC0D182466657C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.tome.hearit.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HearIt.app/HearIt";
+			};
+			name = Debug;
+		};
+		97FDE13BA3CD26DC88CE2970 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HearIt/Support/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.tome.hearit;
+				PRODUCT_NAME = HearIt;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		BE19246FB97AE8E1AC962DA5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HearIt/Support/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.tome.hearit;
+				PRODUCT_NAME = HearIt;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		D4DD3C0B14B78E8E755EA3C4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		00DC3F014BBC076CC67E6DDE /* Build configuration list for PBXProject "HearIt" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7C478EF8703EAF057517EE9D /* Debug */,
+				D4DD3C0B14B78E8E755EA3C4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6A3F9AEF84313154D246C9CB /* Build configuration list for PBXNativeTarget "HearIt" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				97FDE13BA3CD26DC88CE2970 /* Debug */,
+				BE19246FB97AE8E1AC962DA5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6CC30862AAFE4B6CCF93B81A /* Build configuration list for PBXNativeTarget "HearItTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				867D85B386CC0D182466657C /* Debug */,
+				44117768072E3CACC5A79417 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 9CE30797020252CE02F7A8A6 /* Project object */;
+}

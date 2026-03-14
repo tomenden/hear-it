@@ -1,0 +1,46 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+import { extractArticle } from "./extractor.js";
+
+const simpleArticleHtml = loadFixture("simple-article.html");
+const fallbackArticleHtml = loadFixture("fallback-article.html");
+
+describe("article extraction", () => {
+  it("extracts article content from supplied HTML", async () => {
+    const article = await extractArticle({
+      url: "https://example.com/posts/side-projects",
+      html: simpleArticleHtml,
+    });
+
+    expect(article.title).toContain("How to Ship Better Side Projects");
+    expect(article.textContent).toContain(
+      "Most side projects fail because they try to do too much too early.",
+    );
+    expect(article.textContent).not.toContain("Subscribe to our newsletter");
+    expect(article.estimatedMinutes).toBe(1);
+  });
+
+  it("uses canonical metadata and paragraph fallback when needed", async () => {
+    const article = await extractArticle({
+      url: "https://example.com/shared-link",
+      html: fallbackArticleHtml,
+    });
+
+    expect(article.url).toBe("https://blog.example.com/posts/reader-apps");
+    expect(article.siteName).toBe("Example Engineering");
+    expect(article.byline).toBe("Nina Patel");
+    expect(article.excerpt).toContain("reducing perceived latency");
+    expect(article.textContent).toContain(
+      "Instant-feeling apps do less work before the first meaningful response reaches the user.",
+    );
+    expect(article.textContent).not.toContain("All rights reserved.");
+    expect(article.textContent).not.toContain("Subscribe to our newsletter");
+  });
+});
+
+function loadFixture(fileName: string): string {
+  return readFileSync(join(import.meta.dirname, "fixtures", fileName), "utf8");
+}

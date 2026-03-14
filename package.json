@@ -1,0 +1,15 @@
+{
+  "name": "hear-it",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @hear-it/api",
+    "dev": "npm run dev:server",
+    "dev:server": "npm run dev --workspace @hear-it/api",
+    "api:dev": "npm run dev --workspace @hear-it/api",
+    "test": "npm run test --workspace @hear-it/api"
+  }
+}

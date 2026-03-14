@@ -1,0 +1,64 @@
+{
+  "jobs": [
+    {
+      "id": "1",
+      "status": "completed",
+      "article": {
+        "url": "https://steipete.me/posts/2026/openclaw",
+        "title": "OpenClaw, OpenAI and the future | Peter Steinberger",
+        "byline": "Peter Steinberger",
+        "siteName": "steipete.me",
+        "excerpt": "I'm joining OpenAI to work on bringing agents to everyone. OpenClaw will move to a foundation and stay open and independent.",
+        "textContent": "tl;dr: I’m joining OpenAI to work on bringing agents to everyone. OpenClaw will move to a foundation and stay open and independent.\nThe last month was a whirlwind, never would I have expected that my playground project would create such waves. The internet got weird again, and it’s been incredibly fun to see how my work inspired so many people around the world.\nThere’s an endless array of possibilities that opened up for me, countless people trying to push me into various directions, giving me advice, asking how they can invest or what I will do. Saying it’s overwhelming is an understatement.\nWhen I started exploring AI, my goal was to have fun and inspire people. And here we are, the lobster is taking over the world. My next mission is to build an agent that even my mum can use. That’ll need a much broader change, a lot more thought on how to do it safely, and access to the very latest models and research.\nYes, I could totally see how OpenClaw could become a huge company. And no, it’s not really exciting for me. I’m a builder at heart. I did the whole creating-a-company game already, poured 13 years of my life into it and learned a lot. What I want is to change the world, not build a large company and teaming up with OpenAI is the fastest way to bring this to everyone.\nI spent last week in San Francisco talking with the major labs, getting access to people and unreleased research, and it’s been inspiring on all fronts. I want to thank all the folks I talked to this week and am thankful for the opportunities.\nIt’s always been important to me that OpenClaw stays open source and given the freedom to flourish. Ultimately, I felt OpenAI was the best place to continue pushing on my vision and expand its reach. The more I talked with the people there, the clearer it became that we both share the same vision.\nThe community around OpenClaw is something magical and OpenAI has made strong commitments to enable me to dedicate my time to it and already sponsors the project. To get this into a proper structure I’m working on making it a foundation. It will stay a place for thinkers, hackers and people that want a way to own their data, with the goal of supporting even more models and companies.\nPersonally I’m super excited to join OpenAI, be part of the frontier of AI research and development, and continue building with all of you.\nThe claw is the law.",
+        "wordCount": 433,
+        "estimatedMinutes": 3
+      },
+      "speechOptions": {
+        "voice": "ash"
+      },
+      "provider": "openai",
+      "audioUrl": "/audio/1-part-1.mp3",
+      "playlistUrl": "/audio/1-part-1.mp3",
+      "audioSegments": [
+        {
+          "url": "/audio/1-part-1.mp3",
+          "durationSeconds": 161
+        }
+      ],
+      "durationSeconds": 161,
+      "error": null,
+      "createdAt": "2026-03-13T12:35:00.271Z",
+      "updatedAt": "2026-03-13T12:35:24.673Z"
+    },
+    {
+      "id": "2",
+      "status": "completed",
+      "article": {
+        "url": "https://developer.chrome.com/blog/chrome-devtools-mcp-debug-your-browser-session",
+        "title": "Let your Coding Agent debug your browser session with Chrome DevTools MCP  |  Blog  |  Chrome for Developers",
+        "byline": null,
+        "siteName": "Chrome for Developers",
+        "excerpt": "We shipped a new feature to the Chrome DevTools MCP server that is going to make it a lot easier for your coding agent to debug your current browser sessions.",
+        "textContent": "Published: December 11, 2025\n\nWe shipped an enhancement to the Chrome DevTools MCP server that many of our\nusers have been asking for: the ability for coding agents to directly connect to\nactive browser sessions.\n\nWith this enhancement, coding agents are able to:\n\nRe-use an existing browser session: Imagine you want your coding agent\nto fix an issue that is gated behind a sign-in. Your coding agent can now\ndirectly access your current browsing session not requiring an additional\nsign-in.\nAccess active debugging sessions: Coding agents can now access an active\ndebugging session in the DevTools UI. For example, when you discover a\nfailing network request in the Chrome DevTools network panel, select the\nrequest and ask your coding agent to investigate it. The same also works\nwith elements selected in the Elements panel. We are excited about this new\nability to seamlessly transition between manual and AI-assisted debugging.\n\nSee it in action:\n\nThe auto connection feature is an addition to the existing ways for the Chrome\nDevTools MCP to connect to a Chrome instance. Note that you can still:\n\nRun Chrome with a Chrome DevTools MCP server-specific user profile (current\ndefault).\nConnect to a running Chrome instance with a remote debug port.\nRun multiple Chrome instances in isolation with each instance running in a\ntemporary profile.\n\nHow it works\n\nWe've added a new feature to Chrome M144 (currently in Beta) that allows the\nChrome DevTools MCP server to request a remote debugging connection. This new\nflow builds on top of the existing remote debugging capabilities of\nChrome. By default, remote\ndebugging connections are disabled in Chrome. Developers have to explicitly\nenable the feature first by going to chrome://inspect#remote-debugging.\n\nWhen the Chrome DevTools MCP server is configured with the --autoConnect\noption, the MCP server will connect to an active Chrome instance and request a\nremote debugging session. To avoid misuse by malicious actors, every time the\nChrome DevTools MCP server requests a remote debugging session, Chrome will show\na dialog to the user and ask for their permission to allow the remote debugging\nsession. In addition to that, while a debugging session is active, Chrome\ndisplays the \"Chrome is being controlled by automated test software\" banner at\nthe top.\n\nThe new remote debugging flow and UI in Chrome.\n\nGet started\n\nTo use the new remote debugging capabilities. You have to first enable remote\ndebugging in Chrome and then configure the Chrome DevTools MCP server to use the\nnew auto connection feature.\n\nStep 1: Set up remote debugging in Chrome\n\nIn Chrome (>=144), do the following to set up remote debugging:\n\nNavigate to chrome://inspect/#remote-debugging to enable remote debugging.\nFollow the dialog UI to allow or disallow incoming debugging connections.\n\nRemote debugging needs to be enabled, before clients can request a remote debugging connection.\n\nStep 2: Configure Chrome DevTools MCP server to automatically connect to a running Chrome Instance\n\nTo connect the chrome-devtools-mcp server to the running Chrome instance, use\n--autoConnect command line argument for the MCP server set.\n\nThe following code snippet is an example configuration for gemini-cli:\n{\n \"mcpServers\": {\n \"chrome-devtools\": {\n \"command\": \"npx\",\n \"args\": [\n \"chrome-devtools-mcp@latest\",\n \"--autoConnect\",\n \"--channel=beta\"\n ]\n }\n }\n}\n\nStep 3: Test your setup\n\nNow open gemini-cli and run the following prompt:\nCheck the performance of https://developers.chrome.com\n\nThe Chrome DevTools MCP server will try to connect to your running Chrome\ninstance. It shows a dialog asking for user permission:\n\nChrome asking for user permission to start a remote debugging session.\n\nClicking Allow results in the Chrome DevTools MCP server opening\ndevelopers.chrome.com and taking a performance\ntrace.\n\nFor full instructions, check out the README on\nGitHub.\n\nLet your coding agent take over your debugging session\n\nBeing able to connect to a live Chrome instance means you don't have to choose\nbetween automation and manual control. You can use DevTools yourself or hand\nover a debugging task to your coding agent. If you discover a problem on your\nwebsite, you can open DevTools to take a look to identify the element that's\ncausing the issue. If you want your coding agent to fix the issue, you can now\ndo so with Chrome DevTools MCP Server. You can select the element in the\nElements panel and ask the coding agent to investigate the issue.\n\nThe same also works for the Network panel. You can select a network request and\nask your coding agent to investigate it.\n\nBut this is just a first step. We plan to incrementally expose more and more\npanel data to coding agents through the Chrome DevTools MCP Server. Stay tuned!",
+        "wordCount": 755,
+        "estimatedMinutes": 5
+      },
+      "speechOptions": {
+        "voice": "alloy"
+      },
+      "provider": "openai",
+      "audioUrl": "/audio/let-your-coding-agent-debug-your-browser-session-with-chrome-devtools-mcp-blog-c--alloy--job-2.mp3",
+      "playlistUrl": null,
+      "audioSegments": [
+        {
+          "url": "/audio/let-your-coding-agent-debug-your-browser-session-with-chrome-devtools-mcp-blog-c--alloy--job-2.mp3",
+          "durationSeconds": 280
+        }
+      ],
+      "durationSeconds": 280,
+      "error": null,
+      "createdAt": "2026-03-14T11:45:44.348Z",
+      "updatedAt": "2026-03-14T11:46:31.574Z"
+    }
+  ]
+}

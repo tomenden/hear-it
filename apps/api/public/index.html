@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hear It</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <div class="device-frame">
+        <header class="status-bar">
+          <p class="status-time">9:41</p>
+          <div class="status-icons" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </header>
+
+        <section
+          id="homeScreen"
+          class="screen screen-active"
+          data-screen="home"
+          aria-label="Home"
+        >
+          <div class="screen-content">
+            <section class="hero-block">
+              <p class="eyebrow">Hear It</p>
+              <h1>Turn any article into audio</h1>
+              <p class="hero-copy">
+                Paste a link below and let AI narrate it for you. The current app is
+                wired for fast article-to-audio creation first.
+              </p>
+              <div class="hero-meta">
+                <article class="meta-pill">
+                  <span class="meta-label">Provider</span>
+                  <span id="providerName" class="meta-value">Loading...</span>
+                </article>
+                <article class="meta-pill">
+                  <span class="meta-label">Mode</span>
+                  <span id="providerMode" class="meta-value">Loading...</span>
+                </article>
+              </div>
+            </section>
+
+            <section class="card form-card">
+              <div class="card-heading">
+                <div>
+                  <p class="section-label">Article URL</p>
+                  <h2>Start with the link</h2>
+                </div>
+              </div>
+
+              <label class="input-shell">
+                <span>Article URL</span>
+                <input
+                  id="urlInput"
+                  type="url"
+                  inputmode="url"
+                  placeholder="https://example.com/article"
+                />
+              </label>
+
+              <div class="form-actions">
+                <button id="pasteButton" class="secondary-button" type="button">
+                  Paste from clipboard
+                </button>
+                <button id="voiceButton" class="secondary-button" type="button">
+                  Voice: <span id="selectedVoiceLabel">alloy</span>
+                </button>
+              </div>
+
+              <button id="submitButton" class="primary-button" type="button">
+                Start Narrating
+              </button>
+              <p id="formMessage" class="form-message" aria-live="polite"></p>
+            </section>
+
+            <section class="feature-list" aria-label="Highlights">
+              <article class="feature-row">
+                <div class="feature-icon feature-icon-green">AI</div>
+                <div>
+                  <h3>Natural AI Voices</h3>
+                  <p>Backed by the existing speech provider integration in this repo.</p>
+                </div>
+              </article>
+              <article class="feature-row">
+                <div class="feature-icon feature-icon-coral">GO</div>
+                <div>
+                  <h3>Listen Anywhere</h3>
+                  <p>Generated narrations stay in your recent library and open in the player.</p>
+                </div>
+              </article>
+              <article class="feature-row">
+                <div class="feature-icon feature-icon-warm">FAST</div>
+                <div>
+                  <h3>Instant Conversion</h3>
+                  <p>Paste a URL, pick a voice, and the queue starts immediately.</p>
+                </div>
+              </article>
+            </section>
+
+            <section class="card compact-card">
+              <div class="card-heading">
+                <div>
+                  <p class="section-label">Latest activity</p>
+                  <h2>Queue snapshot</h2>
+                </div>
+                <button id="jumpToLibraryButton" class="inline-button" type="button">
+                  Open library
+                </button>
+              </div>
+              <div id="homeSnapshot" class="snapshot-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="voiceScreen" class="screen" data-screen="voice" aria-label="Voice selection">
+          <div class="screen-content">
+            <div class="screen-header">
+              <button id="voiceBackButton" class="round-button" type="button">Back</button>
+              <h2>Choose a Voice</h2>
+            </div>
+
+            <section class="card preview-card">
+              <p class="section-label">Article to narrate</p>
+              <h3 id="previewTitle">Paste a URL on the home screen to preview it here.</h3>
+              <p id="previewMeta" class="preview-meta">No article preview loaded yet.</p>
+              <p id="previewExcerpt" class="preview-excerpt">
+                This screen mirrors the pen design and uses the existing extraction endpoint
+                when you ask for a preview.
+              </p>
+              <div class="preview-actions">
+                <button id="previewButton" class="secondary-button" type="button">
+                  Review Article
+                </button>
+                <span id="previewStatus" class="status-inline">Idle</span>
+              </div>
+            </section>
+
+            <section class="voice-section">
+              <div class="card-heading">
+                <div>
+                  <p class="section-label">Select a voice</p>
+                  <h2>Compare tone</h2>
+                </div>
+              </div>
+              <div id="voiceSamples" class="voice-list"></div>
+            </section>
+
+            <button id="voiceCreateButton" class="primary-button sticky-cta" type="button">
+              Create Narration
+            </button>
+          </div>
+        </section>
+
+        <section id="libraryScreen" class="screen" data-screen="library" aria-label="Library">
+          <div class="screen-content">
+            <div class="screen-header screen-header-wide">
+              <div>
+                <p class="section-label">My Library</p>
+                <h2>Recent narrations</h2>
+              </div>
+              <button id="refreshButton" class="round-button" type="button">Refresh</button>
+            </div>
+
+            <section class="stats-row" aria-label="Library stats">
+              <article class="stat-card">
+                <span class="stat-label">All Jobs</span>
+                <strong id="statTotal">0</strong>
+              </article>
+              <article class="stat-card">
+                <span class="stat-label">Ready</span>
+                <strong id="statReady">0</strong>
+              </article>
+              <article class="stat-card">
+                <span class="stat-label">Minutes</span>
+                <strong id="statMinutes">0</strong>
+              </article>
+            </section>
+
+            <div id="jobsList" class="library-list"></div>
+          </div>
+        </section>
+
+        <section id="playerScreen" class="screen" data-screen="player" aria-label="Player">
+          <div class="screen-content player-content">
+            <div class="screen-header screen-header-player">
+              <button id="playerBackButton" class="round-button" type="button">Library</button>
+              <h2>Now Playing</h2>
+              <button id="playerOpenLinkButton" class="round-button" type="button">Source</button>
+            </div>
+
+            <div id="playerState" class="player-state">
+              <section id="playerReadyView" class="player-view" hidden>
+                <div class="artwork-card">
+                  <div class="artwork-rings"></div>
+                  <div class="artwork-glyph">HEAR IT</div>
+                </div>
+
+                <section class="player-meta">
+                  <h3 id="playerTitle">No narration selected</h3>
+                  <p id="playerSource">Choose a completed job from your library.</p>
+                  <p id="playerVoice" class="player-voice"></p>
+                </section>
+
+                <section class="progress-section">
+                  <input id="playerSeek" type="range" min="0" max="1" step="0.01" value="0" />
+                  <div class="time-row">
+                    <span id="playerCurrentTime">0:00</span>
+                    <span id="playerDuration">0:00</span>
+                  </div>
+                </section>
+
+                <section class="transport-row">
+                  <button id="playerRestartButton" class="transport-button" type="button">
+                    Restart
+                  </button>
+                  <button id="playerToggleButton" class="transport-button transport-primary" type="button">
+                    Play
+                  </button>
+                  <button id="playerForwardButton" class="transport-button" type="button">
+                    +15s
+                  </button>
+                </section>
+
+                <section class="speed-row" id="speedButtons">
+                  <button class="speed-button" data-speed="0.75" type="button">0.75x</button>
+                  <button class="speed-button speed-active" data-speed="1" type="button">1x</button>
+                  <button class="speed-button" data-speed="1.25" type="button">1.25x</button>
+                  <button class="speed-button" data-speed="1.5" type="button">1.5x</button>
+                </section>
+
+                <label class="volume-row">
+                  <span>Volume</span>
+                  <input id="playerVolume" type="range" min="0" max="1" step="0.05" value="1" />
+                </label>
+
+                <audio id="playerAudio" preload="none"></audio>
+              </section>
+
+              <section id="playerProcessingView" class="player-view processing-view" hidden>
+                <div class="processing-orb">
+                  <span class="processing-wave"></span>
+                  <span class="processing-wave"></span>
+                  <span class="processing-wave"></span>
+                  <span class="processing-wave"></span>
+                  <span class="processing-wave"></span>
+                </div>
+                <h3 id="processingTitle">Generating narration...</h3>
+                <p id="processingSubtitle" class="processing-copy">
+                  This may take a moment while the current job moves through the queue.
+                </p>
+                <div class="processing-progress">
+                  <div class="processing-progress-bar"></div>
+                </div>
+              </section>
+
+              <section id="playerEmptyView" class="player-view empty-player-view">
+                <div class="empty-artwork">HEAR IT</div>
+                <h3>No active narration</h3>
+                <p>
+                  Create a job from the home screen, or open any completed item from the library.
+                </p>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <section id="discoverScreen" class="screen" data-screen="discover" aria-label="Discover">
+          <div class="screen-content placeholder-content">
+            <p class="section-label">Discover</p>
+            <h2>Designed, not implemented</h2>
+            <p>
+              The pen file includes a broader app model than the current backend supports.
+              This tab is styled to match that direction without adding new product logic yet.
+            </p>
+          </div>
+        </section>
+
+        <section id="profileScreen" class="screen" data-screen="profile" aria-label="Profile">
+          <div class="screen-content placeholder-content">
+            <p class="section-label">Profile</p>
+            <h2>Designed, not implemented</h2>
+            <p>
+              Account, favorites, sync, and preferences are outside the current shipped feature
+              set, so this stays as a visual placeholder for now.
+            </p>
+          </div>
+        </section>
+
+        <nav class="tab-bar" aria-label="Primary navigation">
+          <button class="tab-button tab-active" data-tab="home" type="button">
+            <span>Home</span>
+          </button>
+          <button class="tab-button" data-tab="library" type="button">
+            <span>Library</span>
+          </button>
+          <button class="tab-button" data-tab="discover" type="button">
+            <span>Discover</span>
+          </button>
+          <button class="tab-button" data-tab="profile" type="button">
+            <span>Profile</span>
+          </button>
+        </nav>
+      </div>
+    </main>
+
+    <template id="jobTemplate">
+      <article class="library-card">
+        <div class="library-card-top">
+          <div>
+            <p class="job-status"></p>
+            <h3 class="job-title"></h3>
+          </div>
+          <button class="open-player-button" type="button">Open</button>
+        </div>
+        <p class="job-meta"></p>
+        <p class="job-excerpt"></p>
+        <p class="job-note"></p>
+        <div class="job-links">
+          <a class="job-audio-link" target="_blank" rel="noreferrer" hidden>Open audio</a>
+          <button class="job-source-link inline-button" type="button">Article</button>
+        </div>
+        <div class="job-variation-controls">
+          <select class="job-voice-select"></select>
+          <button class="job-variation-button" type="button">Create variation</button>
+        </div>
+      </article>
+    </template>
+
+    <template id="snapshotTemplate">
+      <article class="snapshot-item">
+        <div>
+          <p class="snapshot-status"></p>
+          <h3 class="snapshot-title"></h3>
+        </div>
+        <button class="snapshot-open inline-button" type="button">View</button>
+      </article>
+    </template>
+
+    <template id="voiceSampleTemplate">
+      <article class="voice-card">
+        <div class="voice-card-main">
+          <div class="voice-avatar"></div>
+          <div class="voice-copy">
+            <h3 class="voice-name"></h3>
+            <p class="voice-tone"></p>
+          </div>
+          <button class="voice-use-button" type="button">Use</button>
+        </div>
+        <div class="voice-actions">
+          <button class="voice-preview-button secondary-button" type="button">
+            Generate sample
+          </button>
+          <audio class="voice-preview-player" controls preload="none" hidden></audio>
+        </div>
+      </article>
+    </template>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

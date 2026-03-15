@@ -2,7 +2,7 @@ import Foundation
 
 struct ServerConfig: Codable, Hashable {
     let provider: String
-    let audioPublicBaseURL: String
+    let audioPublicBaseURL: String?
     let openAIConfigured: Bool
 
     enum CodingKeys: String, CodingKey {

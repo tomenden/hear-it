@@ -69,7 +69,7 @@ function normalizeText(text: string): string {
     .trim();
 }
 
-function countWords(text: string): number {
+export function countWords(text: string): number {
   const parts = text.match(/\S+/g);
   return parts ? parts.length : 0;
 }

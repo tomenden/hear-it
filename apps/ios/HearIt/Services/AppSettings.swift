@@ -54,10 +54,6 @@ final class AppSettings {
     }
 
     private static var defaultBaseURLString: String {
-#if targetEnvironment(simulator)
-        "http://127.0.0.1:3000"
-#else
-        ""
-#endif
+        "https://project-q60ho.vercel.app"
     }
 }

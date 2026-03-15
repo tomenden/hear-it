@@ -3,7 +3,7 @@ import Foundation
 enum PreviewSamples {
     static let serverConfig = ServerConfig(
         provider: "openai",
-        audioPublicBaseURL: "http://127.0.0.1:3000/audio",
+        audioPublicBaseURL: nil,
         openAIConfigured: true
     )
 

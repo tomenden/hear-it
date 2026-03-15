@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { createAudioJobSchema, extractRequestSchema } from "./app.js";
 import { AudioJobService, isTerminalStatus } from "./jobs.js";
+import { FileJobStore, FileAudioStore } from "./storage-fs.js";
 import type {
   AudioRenderResult,
   ExtractedArticle,
@@ -18,21 +19,19 @@ class InstantSpeechProvider implements SpeechProvider {
 
   async synthesize(
     _article: ExtractedArticle,
-    speechOptions: SpeechOptions,
+    _speechOptions: SpeechOptions,
     context: SpeechSynthesisContext,
   ): Promise<AudioRenderResult> {
-    const audioFile = join(context.outputDir, `${context.fileStem}.mp3`);
-    await writeFixtureAudio(audioFile);
+    const audioUrl = await context.audioStore.put(
+      context.fileKey,
+      Buffer.from("ID3FAKEAUDIO"),
+      "audio/mpeg",
+    );
 
     return {
-      audioUrl: `${context.publicBaseUrl}/${context.fileStem}.mp3`,
+      audioUrl,
       playlistUrl: null,
-      audioSegments: [
-        {
-          url: `${context.publicBaseUrl}/${context.fileStem}.mp3`,
-          durationSeconds: 42,
-        },
-      ],
+      audioSegments: [{ url: audioUrl, durationSeconds: 42 }],
       durationSeconds: 42,
     };
   }
@@ -45,7 +44,7 @@ class InstantSpeechProvider implements SpeechProvider {
     return this.synthesize(
       {
         url: "https://example.com",
-        title: context.fileStem,
+        title: "preview",
         byline: null,
         siteName: null,
         excerpt: null,
@@ -76,16 +75,21 @@ const sampleHtml = `
 </html>
 `;
 
+function createTestService(audioDir: string, jobsFilePath: string) {
+  const audioStore = new FileAudioStore(audioDir, "/audio");
+  const jobStore = new FileJobStore(jobsFilePath);
+  return new AudioJobService({
+    jobStore,
+    audioStore,
+    speechProvider: new InstantSpeechProvider(),
+  });
+}
+
 describe("audio job service", () => {
   it("creates and completes an audio job", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
-    const service = new AudioJobService({
-      speechProvider: new InstantSpeechProvider(),
-      audioOutputDir: audioDir,
-      audioPublicBaseUrl: "/audio",
-      jobsFilePath,
-    });
+    const service = createTestService(audioDir, jobsFilePath);
     const queuedJob = await service.createJob({
       url: "https://example.com/posts/jobs",
       html: sampleHtml,
@@ -97,9 +101,10 @@ describe("audio job service", () => {
     expect(queuedJob.status).toBe("queued");
     expect(queuedJob.provider).toBe("instant-test");
 
-    await waitForTerminalStatus(service, queuedJob.id);
+    // Process the job directly (in tests we don't rely on background fire)
+    await service.processJob(queuedJob.id);
 
-    const completedJob = service.getJob(queuedJob.id);
+    const completedJob = await service.getJob(queuedJob.id);
     expect(completedJob?.status).toBe("completed");
     expect(completedJob?.audioUrl).toContain("/audio/queueing-speech-jobs--narrator--job-1.mp3");
     expect(completedJob?.playlistUrl).toBeNull();
@@ -110,41 +115,26 @@ describe("audio job service", () => {
   it("reloads persisted jobs from disk", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
-    const firstService = new AudioJobService({
-      speechProvider: new InstantSpeechProvider(),
-      audioOutputDir: audioDir,
-      audioPublicBaseUrl: "/audio",
-      jobsFilePath,
-    });
+    const firstService = createTestService(audioDir, jobsFilePath);
 
     const createdJob = await firstService.createJob({
       url: "https://example.com/posts/jobs",
       html: sampleHtml,
     });
-    await waitForTerminalStatus(firstService, createdJob.id);
+    await firstService.processJob(createdJob.id);
 
-    const secondService = new AudioJobService({
-      speechProvider: new InstantSpeechProvider(),
-      audioOutputDir: audioDir,
-      audioPublicBaseUrl: "/audio",
-      jobsFilePath,
-    });
+    const secondService = createTestService(audioDir, jobsFilePath);
     await secondService.init();
 
-    const persistedJob = secondService.getJob(createdJob.id);
+    const persistedJob = await secondService.getJob(createdJob.id);
     expect(persistedJob?.status).toBe("completed");
-    expect(secondService.listJobs()).toHaveLength(1);
+    expect(await secondService.listJobs()).toHaveLength(1);
     expect(persistedJob?.audioSegments).toHaveLength(1);
   });
 
   it("creates a cached voice preview", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
-    const service = new AudioJobService({
-      speechProvider: new InstantSpeechProvider(),
-      audioOutputDir: audioDir,
-      audioPublicBaseUrl: "/audio",
-      jobsFilePath: join(audioDir, "jobs.json"),
-    });
+    const service = createTestService(audioDir, join(audioDir, "jobs.json"));
 
     const preview = await service.getOrCreateVoicePreview("alloy");
     expect(preview.audioUrl).toBe("/audio/previews/voice-preview--alloy.mp3");
@@ -165,22 +155,3 @@ describe("audio job service", () => {
     expect(invalidExtractRequest.success).toBe(false);
   });
 });
-
-async function waitForTerminalStatus(service: AudioJobService, jobId: string): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const job = service.getJob(jobId);
-    if (job && isTerminalStatus(job.status)) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-
-  throw new Error("Job did not reach a terminal state.");
-}
-
-async function writeFixtureAudio(filePath: string): Promise<string> {
-  const fakeAudio = Buffer.from("ID3FAKEAUDIO");
-  await writeFile(filePath, fakeAudio);
-  return filePath;
-}

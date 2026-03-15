@@ -1,15 +1,13 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
-
 import { extractArticle } from "./extractor.js";
 import {
   DEFAULT_SPEECH_OPTIONS,
   AVAILABLE_VOICES,
   VOICE_PREVIEW_TEXT,
-  buildAudioFileStem,
+  buildAudioFileKey,
   createSpeechProvider,
   type SpeechProvider,
 } from "./tts.js";
+import type { AudioStore, JobStore } from "./storage.js";
 import type {
   AudioJob,
   AudioJobStatus,
@@ -18,48 +16,26 @@ import type {
 } from "./types.js";
 
 export class AudioJobService {
-  private readonly jobs = new Map<string, AudioJob>();
+  private readonly jobStore: JobStore;
+  private readonly audioStore: AudioStore;
   private readonly speechProvider: SpeechProvider;
-  private readonly audioOutputDir: string;
-  private readonly audioPublicBaseUrl: string;
-  private readonly jobsFilePath: string;
-  private nextId = 1;
   private initPromise: Promise<void> | null = null;
 
-  constructor(options?: {
+  constructor(options: {
+    jobStore: JobStore;
+    audioStore: AudioStore;
     speechProvider?: SpeechProvider;
-    audioOutputDir?: string;
-    audioPublicBaseUrl?: string;
-    jobsFilePath?: string;
   }) {
-    this.audioOutputDir = resolve(
-      options?.audioOutputDir ?? process.env.AUDIO_OUTPUT_DIR ?? "data/audio",
-    );
-    this.jobsFilePath = resolve(options?.jobsFilePath ?? process.env.JOBS_FILE_PATH ?? "data/jobs.json");
-    this.audioPublicBaseUrl =
-      options?.audioPublicBaseUrl ?? process.env.AUDIO_PUBLIC_BASE_URL ?? "/audio";
-    this.speechProvider = options?.speechProvider ?? createSpeechProvider();
-  }
-
-  async ensureStorage(): Promise<void> {
-    await mkdir(this.audioOutputDir, { recursive: true });
-    await mkdir(dirname(this.jobsFilePath), { recursive: true });
+    this.jobStore = options.jobStore;
+    this.audioStore = options.audioStore;
+    this.speechProvider = options.speechProvider ?? createSpeechProvider();
   }
 
   async init(): Promise<void> {
     if (!this.initPromise) {
-      this.initPromise = this.loadPersistedJobs();
+      this.initPromise = this.jobStore.init();
     }
-
     await this.initPromise;
-  }
-
-  getAudioOutputDir(): string {
-    return this.audioOutputDir;
-  }
-
-  getAudioPublicBaseUrl(): string {
-    return this.audioPublicBaseUrl;
   }
 
   getProviderName(): string {
@@ -68,11 +44,10 @@ export class AudioJobService {
 
   async createJob(input: CreateAudioJobInput): Promise<AudioJob> {
     await this.init();
-    await this.ensureStorage();
     const article = await extractArticle(input);
     const speechOptions = resolveSpeechOptions(input.speechOptions);
     const timestamp = new Date().toISOString();
-    const jobId = String(this.nextId++);
+    const jobId = await this.jobStore.nextId();
     const job: AudioJob = {
       id: jobId,
       status: "queued",
@@ -88,26 +63,23 @@ export class AudioJobService {
       updatedAt: timestamp,
     };
 
-    this.jobs.set(job.id, job);
-    await this.persistJobs();
-    void this.processJob(job.id);
-
+    await this.jobStore.save(job);
     return job;
   }
 
-  getJob(jobId: string): AudioJob | null {
-    return this.jobs.get(jobId) ?? null;
+  async getJob(jobId: string): Promise<AudioJob | null> {
+    await this.init();
+    return this.jobStore.get(jobId);
   }
 
-  listJobs(): AudioJob[] {
-    return Array.from(this.jobs.values()).sort((left, right) =>
-      right.createdAt.localeCompare(left.createdAt),
-    );
+  async listJobs(): Promise<AudioJob[]> {
+    await this.init();
+    return this.jobStore.getAll();
   }
 
   async processJob(jobId: string): Promise<void> {
     await this.init();
-    const queuedJob = this.jobs.get(jobId);
+    const queuedJob = await this.jobStore.get(jobId);
     if (!queuedJob || queuedJob.status !== "queued") {
       return;
     }
@@ -115,18 +87,16 @@ export class AudioJobService {
     await this.updateJob(jobId, { status: "processing", error: null });
 
     try {
+      const fileKey = buildAudioFileKey(
+        queuedJob.article.title ?? queuedJob.article.url,
+        queuedJob.speechOptions.voice,
+        `job-${jobId}`,
+      );
+
       const result = await this.speechProvider.synthesize(
         queuedJob.article,
         queuedJob.speechOptions,
-        {
-          outputDir: this.audioOutputDir,
-          publicBaseUrl: this.audioPublicBaseUrl,
-          fileStem: buildAudioFileStem(
-            queuedJob.article.title ?? queuedJob.article.url,
-            queuedJob.speechOptions.voice,
-            `job-${jobId}`,
-          ),
-        },
+        { audioStore: this.audioStore, fileKey },
       );
 
       await this.updateJob(jobId, {
@@ -139,7 +109,8 @@ export class AudioJobService {
     } catch (error) {
       await this.updateJob(jobId, {
         status: "failed",
-        error: error instanceof Error ? error.message : "Speech generation failed.",
+        error:
+          error instanceof Error ? error.message : "Speech generation failed.",
       });
     }
   }
@@ -148,51 +119,41 @@ export class AudioJobService {
     return [...AVAILABLE_VOICES];
   }
 
-  async getOrCreateVoicePreview(voice: string): Promise<{ voice: string; audioUrl: string }> {
-    if (!AVAILABLE_VOICES.includes(voice as (typeof AVAILABLE_VOICES)[number])) {
+  async getOrCreateVoicePreview(
+    voice: string,
+  ): Promise<{ voice: string; audioUrl: string }> {
+    if (
+      !AVAILABLE_VOICES.includes(voice as (typeof AVAILABLE_VOICES)[number])
+    ) {
       throw new Error("Unsupported voice.");
     }
 
-    await this.ensureStorage();
-    const previewOutputDir = join(this.audioOutputDir, "previews");
-    const previewPublicBaseUrl = `${this.audioPublicBaseUrl}/previews`;
-    await mkdir(previewOutputDir, { recursive: true });
-    const fileStem = buildAudioFileStem("voice-preview", voice);
-    const fileName = `${fileStem}.mp3`;
-    const filePath = join(previewOutputDir, fileName);
+    const fileKey = `previews/${buildAudioFileKey("voice-preview", voice)}`;
 
-    try {
-      await access(filePath);
-      return {
-        voice,
-        audioUrl: `${previewPublicBaseUrl}/${fileName}`,
-      };
-    } catch {
-      const result = await this.speechProvider.synthesizeText(
-        VOICE_PREVIEW_TEXT,
-        { voice },
-        {
-          outputDir: previewOutputDir,
-          publicBaseUrl: previewPublicBaseUrl,
-          fileStem,
-        },
-      );
-
-      if (!result.audioUrl) {
-        throw new Error("Voice preview generation failed.");
-      }
-
-      return {
-        voice,
-        audioUrl: result.audioUrl,
-      };
+    // Return cached preview if it exists
+    const existingUrl = await this.audioStore.head(fileKey);
+    if (existingUrl) {
+      return { voice, audioUrl: existingUrl };
     }
+
+    const result = await this.speechProvider.synthesizeText(
+      VOICE_PREVIEW_TEXT,
+      { voice },
+      { audioStore: this.audioStore, fileKey },
+    );
+
+    if (!result.audioUrl) {
+      throw new Error("Voice preview generation failed.");
+    }
+
+    return { voice, audioUrl: result.audioUrl };
   }
 
   async requeueInterruptedJobs(): Promise<void> {
     await this.init();
+    const jobs = await this.jobStore.getAll();
 
-    for (const job of this.jobs.values()) {
+    for (const job of jobs) {
       if (job.status === "processing") {
         await this.updateJob(job.id, {
           status: "queued",
@@ -203,52 +164,8 @@ export class AudioJobService {
     }
   }
 
-  private async loadPersistedJobs(): Promise<void> {
-    await this.ensureStorage();
-
-    try {
-      const raw = await readFile(this.jobsFilePath, "utf8");
-      const parsed = JSON.parse(raw) as { jobs?: AudioJob[] };
-      const jobs = parsed.jobs ?? [];
-
-      this.jobs.clear();
-      for (const job of jobs) {
-        this.jobs.set(job.id, job);
-      }
-
-      this.nextId = jobs.reduce((maxId, job) => {
-        const numericId = Number(job.id);
-        return Number.isFinite(numericId) ? Math.max(maxId, numericId + 1) : maxId;
-      }, 1);
-    } catch (error) {
-      const errorCode = error instanceof Error && "code" in error ? (error as NodeJS.ErrnoException).code : null;
-      if (errorCode !== "ENOENT") {
-        throw error;
-      }
-    }
-  }
-
-  private async persistJobs(): Promise<void> {
-    const jobs = Array.from(this.jobs.values()).sort((left, right) =>
-      left.createdAt.localeCompare(right.createdAt),
-    );
-
-    await writeFile(this.jobsFilePath, JSON.stringify({ jobs }, null, 2), "utf8");
-  }
-
   private async updateJob(jobId: string, patch: Partial<AudioJob>) {
-    const existing = this.jobs.get(jobId);
-    if (!existing) {
-      return;
-    }
-
-    this.jobs.set(jobId, {
-      ...existing,
-      ...patch,
-      updatedAt: new Date().toISOString(),
-    });
-
-    await this.persistJobs();
+    await this.jobStore.update(jobId, patch);
   }
 }
 

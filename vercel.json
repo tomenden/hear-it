@@ -1,0 +1,13 @@
+{
+  "framework": null,
+  "installCommand": "yarn install",
+  "buildCommand": "yarn build",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api" }
+  ],
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 120
+    }
+  }
+}

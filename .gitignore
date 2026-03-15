@@ -13,3 +13,5 @@ DerivedData/
 
 # Temporary files
 .tmp/
+.vercel
+.env*.local

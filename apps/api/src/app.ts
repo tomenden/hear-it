@@ -5,6 +5,7 @@ import { z } from "zod";
 import { extractArticle } from "./extractor.js";
 import { AudioJobService } from "./jobs.js";
 import { AVAILABLE_VOICES } from "./tts.js";
+import type { CreateAudioJobInput, ExtractArticleInput } from "./types.js";
 
 export const extractRequestSchema = z.object({
   url: z.string().url(),
@@ -23,15 +24,31 @@ const voicePreviewSchema = z.object({
   voice: z.enum(AVAILABLE_VOICES),
 });
 
-export function createApp(options?: { audioJobService?: AudioJobService }) {
+export interface CreateAppOptions {
+  audioJobService: AudioJobService;
+  /** Called with a promise that should keep running after the response is sent. */
+  onBackgroundWork?: (promise: Promise<void>) => void;
+  /** Whether to serve the local /audio directory (local dev only). */
+  serveStaticAudio?: string;
+  /** Base URL for audio files — included in /api/config for clients that resolve relative URLs. */
+  audioPublicBaseUrl?: string;
+}
+
+export function createApp(options: CreateAppOptions) {
+  const { audioJobService, onBackgroundWork } = options;
   const app = express();
-  const audioJobService = options?.audioJobService ?? new AudioJobService();
-  const publicDir = join(import.meta.dirname, "..", "public");
+
   void audioJobService.init().then(() => audioJobService.requeueInterruptedJobs());
 
   app.use(express.json({ limit: "1mb" }));
-  app.use("/audio", express.static(audioJobService.getAudioOutputDir()));
-  app.use(express.static(publicDir));
+
+  // In local dev, serve audio files from disk and the web prototype.
+  // In production (Vercel), audio URLs are absolute blob URLs.
+  if (options.serveStaticAudio) {
+    app.use("/audio", express.static(options.serveStaticAudio));
+    const publicDir = join(import.meta.dirname, "..", "public");
+    app.use(express.static(publicDir));
+  }
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true });
@@ -40,8 +57,8 @@ export function createApp(options?: { audioJobService?: AudioJobService }) {
   app.get("/api/config", (_req, res) => {
     res.json({
       provider: audioJobService.getProviderName(),
-      audioPublicBaseUrl: audioJobService.getAudioPublicBaseUrl(),
       openAiConfigured: Boolean(process.env.OPENAI_API_KEY?.trim()),
+      ...(options.audioPublicBaseUrl && { audioPublicBaseUrl: options.audioPublicBaseUrl }),
     });
   });
 
@@ -84,7 +101,7 @@ export function createApp(options?: { audioJobService?: AudioJobService }) {
     }
 
     try {
-      const article = await extractArticle(parsedBody.data);
+      const article = await extractArticle(parsedBody.data as ExtractArticleInput);
       res.json({ article });
     } catch (error) {
       res.status(422).json({
@@ -106,8 +123,17 @@ export function createApp(options?: { audioJobService?: AudioJobService }) {
     }
 
     try {
-      const job = await audioJobService.createJob(parsedBody.data);
+      const job = await audioJobService.createJob(parsedBody.data as CreateAudioJobInput);
       res.status(202).json({ job });
+
+      // Process the job in the background — on Vercel this uses waitUntil,
+      // in local dev the promise just runs detached.
+      const work = audioJobService.processJob(job.id);
+      if (onBackgroundWork) {
+        onBackgroundWork(work);
+      } else {
+        void work;
+      }
     } catch (error) {
       res.status(422).json({
         error: error instanceof Error ? error.message : "Failed to create audio job.",
@@ -115,12 +141,12 @@ export function createApp(options?: { audioJobService?: AudioJobService }) {
     }
   });
 
-  app.get("/api/jobs", (_req, res) => {
-    res.json({ jobs: audioJobService.listJobs() });
+  app.get("/api/jobs", async (_req, res) => {
+    res.json({ jobs: await audioJobService.listJobs() });
   });
 
-  app.get("/api/jobs/:jobId", (req, res) => {
-    const job = audioJobService.getJob(req.params.jobId);
+  app.get("/api/jobs/:jobId", async (req, res) => {
+    const job = await audioJobService.getJob(req.params.jobId);
 
     if (!job) {
       res.status(404).json({ error: "Job not found." });

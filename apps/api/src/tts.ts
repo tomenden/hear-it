@@ -1,12 +1,10 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
+import { countWords } from "./extractor.js";
 import type {
   AudioRenderResult,
-  AudioSegment,
   ExtractedArticle,
   SpeechOptions,
 } from "./types.js";
+import type { AudioStore } from "./storage.js";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/audio/speech";
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini-tts";
@@ -18,9 +16,9 @@ export const VOICE_PREVIEW_TEXT =
   "This is Hear It. I turn articles into clear, natural audio you can listen to on the move.";
 
 export interface SpeechSynthesisContext {
-  outputDir: string;
-  publicBaseUrl: string;
-  fileStem: string;
+  audioStore: AudioStore;
+  /** Path-like key for the audio file, e.g. "voice-preview--alloy.mp3" */
+  fileKey: string;
 }
 
 export interface SpeechProvider {
@@ -46,22 +44,21 @@ export class FakeSpeechProvider implements SpeechProvider {
 
   async synthesizeText(
     text: string,
-    speechOptions: SpeechOptions,
+    _speechOptions: SpeechOptions,
     context: SpeechSynthesisContext,
   ): Promise<AudioRenderResult> {
-    const fileName = `${context.fileStem}.mp3`;
-    const audioUrl = toPublicUrl(context.publicBaseUrl, fileName);
+    // In fake mode we don't write a real file — just return a plausible URL.
+    const audioUrl = await context.audioStore.put(
+      context.fileKey,
+      Buffer.from("fake-audio"),
+      "audio/mpeg",
+    );
     const durationSeconds = Math.max(15, Math.ceil(countWords(text) / 2.7));
 
     return {
       audioUrl,
       playlistUrl: null,
-      audioSegments: [
-        {
-          url: audioUrl,
-          durationSeconds,
-        },
-      ],
+      audioSegments: [{ url: audioUrl, durationSeconds }],
       durationSeconds,
     };
   }
@@ -96,7 +93,6 @@ export class OpenAISpeechProvider implements SpeechProvider {
     speechOptions: SpeechOptions,
     context: SpeechSynthesisContext,
   ): Promise<AudioRenderResult> {
-    await mkdir(context.outputDir, { recursive: true });
     const response = await fetch(OPENAI_API_URL, {
       method: "POST",
       headers: {
@@ -116,23 +112,19 @@ export class OpenAISpeechProvider implements SpeechProvider {
       throw new Error(`OpenAI speech generation failed: ${response.status}`);
     }
 
-    const fileName = `${context.fileStem}.mp3`;
-    const filePath = join(context.outputDir, fileName);
     const buffer = Buffer.from(await response.arrayBuffer());
-    await writeFile(filePath, buffer);
+    const audioUrl = await context.audioStore.put(
+      context.fileKey,
+      buffer,
+      "audio/mpeg",
+    );
 
     const durationSeconds = estimateDurationSeconds(text);
-    const audioUrl = toPublicUrl(context.publicBaseUrl, fileName);
 
     return {
       audioUrl,
       playlistUrl: null,
-      audioSegments: [
-        {
-          url: audioUrl,
-          durationSeconds,
-        },
-      ],
+      audioSegments: [{ url: audioUrl, durationSeconds }],
       durationSeconds,
     };
   }
@@ -160,20 +152,12 @@ function estimateDurationSeconds(text: string): number {
   return Math.max(1, Math.ceil(countWords(text) / 2.7));
 }
 
-function toPublicUrl(baseUrl: string, fileName: string): string {
-  const normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-  return `${normalizedBaseUrl}/${fileName}`;
-}
-
-function countWords(text: string): number {
-  return text.match(/\S+/g)?.length ?? 0;
-}
-
-export function buildAudioFileStem(
+export function buildAudioFileKey(
   titleOrUrl: string,
   voice: string,
   uniqueSuffix?: string,
 ): string {
   const base = `${slugify(titleOrUrl)}--${voice}`;
-  return uniqueSuffix ? `${base}--${slugify(uniqueSuffix)}` : base;
+  const stem = uniqueSuffix ? `${base}--${slugify(uniqueSuffix)}` : base;
+  return `${stem}.mp3`;
 }

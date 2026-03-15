@@ -44,6 +44,15 @@ struct HearItAPIClient {
         return response.article
     }
 
+    func deleteJob(jobID: String, baseURL: URL) async throws {
+        _ = try await request(
+            path: "/api/jobs/\(jobID)",
+            method: "DELETE",
+            baseURL: baseURL,
+            responseType: OkResponse.self
+        )
+    }
+
     func createJob(articleURL: String, voiceID: String, baseURL: URL) async throws -> AudioJob {
         let response = try await request(
             path: "/api/jobs",
@@ -160,6 +169,10 @@ extension HearItAPIClient {
 
     private struct ArticleResponse: Decodable {
         let article: Article
+    }
+
+    private struct OkResponse: Decodable {
+        let ok: Bool
     }
 
     private struct ErrorResponse: Decodable {

@@ -28,6 +28,15 @@ struct LibraryView: View {
                 }
             }
         }
+        .sheet(item: $model.jobPendingDeletion) { job in
+            DeleteConfirmationSheet(job: job) {
+                Task { await model.confirmDeleteJob() }
+            } onCancel: {
+                model.jobPendingDeletion = nil
+            }
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+        }
     }
 
     private var header: some View {
@@ -124,6 +133,20 @@ struct LibraryView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
 
+                        // Delete button
+                        Button {
+                            model.jobPendingDeletion = job
+                        } label: {
+                            Circle()
+                                .fill(AppTheme.Colors.accentRedLight)
+                                .frame(width: 36, height: 36)
+                                .overlay(
+                                    Image(systemName: "trash")
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(AppTheme.Colors.accentRed)
+                                )
+                        }
+
                         // Play button
                         Button {
                             model.openPlayer(for: job.id)
@@ -177,6 +200,93 @@ private struct LibraryStatCard: View {
                 .fill(AppTheme.Colors.card)
                 .shadow(color: .black.opacity(0.05), radius: 14, y: 6)
         )
+    }
+}
+
+private struct DeleteConfirmationSheet: View {
+    let job: AudioJob
+    let onDelete: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            // Trash icon
+            Circle()
+                .fill(AppTheme.Colors.accentRedLight)
+                .frame(width: 56, height: 56)
+                .overlay(
+                    Image(systemName: "trash")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(AppTheme.Colors.accentRed)
+                )
+
+            Text("Delete Narration?")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(AppTheme.Colors.textPrimary)
+
+            Text("This narration will be permanently removed from your library. This action cannot be undone.")
+                .font(.system(size: 14))
+                .foregroundStyle(AppTheme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Context card showing which narration
+            HStack(spacing: 12) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 18))
+                    .foregroundStyle(AppTheme.Colors.textTertiary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(job.article.displayTitle)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(AppTheme.Colors.textPrimary)
+                        .lineLimit(1)
+
+                    Text("\(job.article.estimatedMinutes) min · Added \(job.createdAt.formatted(.dateTime.month(.abbreviated).day()))")
+                        .font(.system(size: 12))
+                        .foregroundStyle(AppTheme.Colors.textTertiary)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(AppTheme.Colors.page)
+            )
+
+            Divider()
+
+            // Buttons
+            VStack(spacing: 10) {
+                Button(action: onDelete) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 14))
+                        Text("Delete Narration")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(AppTheme.Colors.accentRed, in: RoundedRectangle(cornerRadius: 14))
+                }
+
+                Button(action: onCancel) {
+                    Text("Cancel")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(AppTheme.Colors.textPrimary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(AppTheme.Colors.page, in: RoundedRectangle(cornerRadius: 14))
+                }
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 32)
+        .padding(.bottom, 28)
     }
 }
 

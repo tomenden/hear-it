@@ -23,18 +23,20 @@ export async function extractArticle(
   const article = new Readability(document.cloneNode(true) as Document).parse();
   const fallback = buildFallbackExtraction(document);
   const extracted = pickBestExtraction(article?.textContent ?? "", fallback.textContent);
-  const textContent = normalizeText(extracted);
+  const title = article?.title ?? fallback.title;
+  const bodyText = normalizeText(extracted);
 
-  if (!textContent) {
+  if (!bodyText) {
     throw new Error("Failed to extract article content.");
   }
 
+  const textContent = title ? `${title}\n\n${bodyText}` : bodyText;
   const wordCount = countWords(textContent);
   const canonicalUrl = detectCanonicalUrl(document, input.url);
 
   return {
     url: canonicalUrl,
-    title: article?.title ?? fallback.title,
+    title,
     byline: article?.byline ?? fallback.byline,
     siteName: article?.siteName ?? fallback.siteName,
     excerpt: article?.excerpt ?? fallback.excerpt,
@@ -112,9 +114,22 @@ function isRepetitiveText(text: string): boolean {
 
 function buildFallbackExtraction(document: Document) {
   const root = selectContentRoot(document) ?? document.body ?? document.documentElement;
-  const paragraphs = Array.from(root.querySelectorAll("p, li, blockquote"))
-    .map((el) => normalizeText(el.textContent ?? ""))
-    .filter((text) => isLikelyContentParagraph(text));
+  const olCounters = new WeakMap<Element, number>();
+  const paragraphs: string[] = [];
+  for (const el of root.querySelectorAll("p, li, blockquote")) {
+    const text = normalizeText(el.textContent ?? "");
+    const isListItem = el.tagName === "LI";
+    if (!(isListItem ? text.length > 0 : isLikelyContentParagraph(text))) {
+      continue;
+    }
+    if (isListItem && el.parentElement?.tagName === "OL") {
+      const count = (olCounters.get(el.parentElement) ?? 0) + 1;
+      olCounters.set(el.parentElement, count);
+      paragraphs.push(`${count}. ${text}`);
+    } else {
+      paragraphs.push(text);
+    }
+  }
   const fallbackTitle = firstDefined(
     readMetaContent(document, 'meta[property="og:title"]'),
     normalizeText(document.querySelector("title")?.textContent ?? "") || null,

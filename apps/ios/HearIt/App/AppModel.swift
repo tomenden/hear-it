@@ -40,6 +40,7 @@ final class AppModel {
     var isRefreshingLibrary = false
     var libraryFilter: LibraryFilter = .all
     var playerPresentation: PlayerPresentation?
+    var jobPendingDeletion: AudioJob?
 
     @ObservationIgnored private let apiClient: HearItAPIClient
     @ObservationIgnored private let previewMode: Bool
@@ -278,10 +279,35 @@ final class AppModel {
         }
     }
 
+    func confirmDeleteJob() async {
+        guard !previewMode else { return }
+        guard let job = jobPendingDeletion else { return }
+        guard let baseURL = settings.apiBaseURL else { return }
+
+        // If the player is showing this job, close it
+        if playerPresentation?.jobID == job.id {
+            closePlayer()
+            player.unload()
+        }
+
+        do {
+            try await apiClient.deleteJob(jobID: job.id, baseURL: baseURL)
+            jobs.removeAll(where: { $0.id == job.id })
+        } catch {
+            homeMessage = InlineMessage(text: error.localizedDescription, kind: .error)
+        }
+
+        jobPendingDeletion = nil
+    }
+
     func openPlayer(for jobID: String) {
+        let shouldAutoPlay = player.loadedJobID != jobID
         settings.lastPresentedJobID = jobID
         playerPresentation = PlayerPresentation(jobID: jobID)
         preparePlayer(for: jobID)
+        if shouldAutoPlay, job(with: jobID)?.status == .completed {
+            player.togglePlayback()
+        }
     }
 
     func closePlayer() {

@@ -77,6 +77,11 @@ export class AudioJobService {
     return this.jobStore.getAll();
   }
 
+  async deleteJob(jobId: string): Promise<boolean> {
+    await this.init();
+    return this.jobStore.delete(jobId);
+  }
+
   async processJob(jobId: string): Promise<void> {
     await this.init();
     const queuedJob = await this.jobStore.get(jobId);

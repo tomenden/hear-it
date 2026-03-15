@@ -11,6 +11,8 @@ export interface JobStore {
   save(job: AudioJob): Promise<void>;
   /** Update specific fields on an existing job. Returns false if the job doesn't exist. */
   update(jobId: string, patch: Partial<AudioJob>): Promise<boolean>;
+  /** Delete a job by ID. Returns false if the job doesn't exist. */
+  delete(jobId: string): Promise<boolean>;
   nextId(): Promise<string>;
 }
 

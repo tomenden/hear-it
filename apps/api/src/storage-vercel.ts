@@ -114,6 +114,13 @@ export class VercelJobStore implements JobStore {
     return rows.length > 0;
   }
 
+  async delete(jobId: string): Promise<boolean> {
+    const rows = await this.sql`
+      DELETE FROM audio_jobs WHERE id = ${jobId} RETURNING id
+    `;
+    return rows.length > 0;
+  }
+
   async nextId(): Promise<string> {
     const rows = await this.sql`SELECT nextval('audio_jobs_id_seq') AS id`;
     return String(rows[0].id);

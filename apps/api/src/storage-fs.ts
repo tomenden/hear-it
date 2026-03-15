@@ -72,6 +72,13 @@ export class FileJobStore implements JobStore {
     return true;
   }
 
+  async delete(jobId: string): Promise<boolean> {
+    if (!this.jobs.has(jobId)) return false;
+    this.jobs.delete(jobId);
+    await this.persist();
+    return true;
+  }
+
   async nextId(): Promise<string> {
     return String(this._nextId++);
   }

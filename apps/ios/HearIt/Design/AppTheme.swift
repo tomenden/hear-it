@@ -17,6 +17,8 @@ enum AppTheme {
         static let textSecondary = Color(hex: "#6D6C6A")
         static let textTertiary = Color(hex: "#9C9B99")
         static let textInactive = Color(hex: "#A8A7A5")
+        static let accentRed = Color(hex: "#D08068")
+        static let accentRedLight = Color(hex: "#D08068").opacity(0.08)
         static let error = Color(hex: "#D08068")
 
         // Mini player specific

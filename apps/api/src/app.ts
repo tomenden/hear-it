@@ -156,5 +156,16 @@ export function createApp(options: CreateAppOptions) {
     res.json({ job });
   });
 
+  app.delete("/api/jobs/:jobId", async (req, res) => {
+    const deleted = await audioJobService.deleteJob(req.params.jobId);
+
+    if (!deleted) {
+      res.status(404).json({ error: "Job not found." });
+      return;
+    }
+
+    res.json({ ok: true });
+  });
+
   return app;
 }

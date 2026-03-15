@@ -13,6 +13,7 @@ apps/api/data/audio/
 *.xcuserstate
 xcuserdata/
 DerivedData/
+.derived-data-local/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 
 # Temporary files

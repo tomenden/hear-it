@@ -279,7 +279,7 @@ final class AppModel {
         }
 
         do {
-            applyJobs(try await apiClient.fetchJobs(baseURL: baseURL))
+            applyJobs(try await apiClient.fetchJobs(baseURL: baseURL, reportErrors: !silent))
             if !silent {
                 homeMessage = InlineMessage(text: "Library refreshed.", kind: .success)
             }

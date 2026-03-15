@@ -21,8 +21,8 @@ struct HearItAPIClient {
         return response.voices
     }
 
-    func fetchJobs(baseURL: URL) async throws -> [AudioJob] {
-        let response: JobsResponse = try await request(path: "/api/jobs", baseURL: baseURL)
+    func fetchJobs(baseURL: URL, reportErrors: Bool = true) async throws -> [AudioJob] {
+        let response: JobsResponse = try await request(path: "/api/jobs", baseURL: baseURL, reportToSentry: reportErrors)
         return response.jobs
     }
 
@@ -71,7 +71,8 @@ struct HearItAPIClient {
         path: String,
         method: HTTPMethod = .get,
         body: Encodable? = nil,
-        baseURL: URL
+        baseURL: URL,
+        reportToSentry: Bool = true
     ) async throws -> Response {
         guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
             throw APIError.invalidBaseURL
@@ -102,8 +103,10 @@ struct HearItAPIClient {
 
         guard let httpResponse else {
             let apiError = APIError.invalidResponse
-            SentrySDK.capture(error: apiError) { scope in
-                scope.setContext(value: ["path": path, "method": method.rawValue], key: "api_request")
+            if reportToSentry {
+                SentrySDK.capture(error: apiError) { scope in
+                    scope.setContext(value: ["path": path, "method": method.rawValue], key: "api_request")
+                }
             }
             throw apiError
         }
@@ -115,12 +118,14 @@ struct HearItAPIClient {
             } else {
                 apiError = .server("The Hear It API returned status \(httpResponse.statusCode).")
             }
-            SentrySDK.capture(error: apiError) { scope in
-                scope.setContext(value: [
-                    "path": path,
-                    "method": method.rawValue,
-                    "statusCode": httpResponse.statusCode,
-                ], key: "api_request")
+            if reportToSentry {
+                SentrySDK.capture(error: apiError) { scope in
+                    scope.setContext(value: [
+                        "path": path,
+                        "method": method.rawValue,
+                        "statusCode": httpResponse.statusCode,
+                    ], key: "api_request")
+                }
             }
             throw apiError
         }
@@ -132,8 +137,10 @@ struct HearItAPIClient {
             print("[HearIt] Decode error for \(Response.self): \(error)")
             #endif
             let apiError = APIError.decodingFailed(detail: String(describing: error))
-            SentrySDK.capture(error: apiError) { scope in
-                scope.setContext(value: ["path": path, "method": method.rawValue], key: "api_request")
+            if reportToSentry {
+                SentrySDK.capture(error: apiError) { scope in
+                    scope.setContext(value: ["path": path, "method": method.rawValue], key: "api_request")
+                }
             }
             throw apiError
         }

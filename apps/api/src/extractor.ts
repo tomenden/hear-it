@@ -127,7 +127,7 @@ function buildFallbackExtraction(document: Document) {
   const root = selectContentRoot(document) ?? document.body ?? document.documentElement;
   const olCounters = new WeakMap<Element, number>();
   const paragraphs: string[] = [];
-  for (const el of root.querySelectorAll("p, li, blockquote")) {
+  for (const el of Array.from(root.querySelectorAll("p, li, blockquote"))) {
     const text = normalizeText(el.textContent ?? "");
     const isListItem = el.tagName === "LI";
     if (!(isListItem ? text.length > 0 : isLikelyContentParagraph(text))) {

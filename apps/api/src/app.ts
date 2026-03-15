@@ -207,7 +207,7 @@ export function createApp(options: CreateAppOptions) {
   });
 
   app.delete("/api/jobs/:jobId", writeEndpointLimiter, async (req, res) => {
-    const deleted = await audioJobService.deleteJob(req.params.jobId);
+    const deleted = await audioJobService.deleteJob(req.params.jobId as string);
 
     if (!deleted) {
       res.status(404).json({ error: "Job not found." });

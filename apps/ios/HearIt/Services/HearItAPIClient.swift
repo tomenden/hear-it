@@ -12,57 +12,46 @@ struct HearItAPIClient {
     }
 
     func fetchConfig(baseURL: URL) async throws -> ServerConfig {
-        try await request(path: "/api/config", baseURL: baseURL, responseType: ServerConfig.self)
+        try await request(path: "/api/config", baseURL: baseURL)
     }
 
     func fetchVoices(baseURL: URL) async throws -> [String] {
-        let response = try await request(
-            path: "/api/voices",
-            baseURL: baseURL,
-            responseType: VoicesResponse.self
-        )
+        let response: VoicesResponse = try await request(path: "/api/voices", baseURL: baseURL)
         return response.voices
     }
 
     func fetchJobs(baseURL: URL) async throws -> [AudioJob] {
-        let response = try await request(
-            path: "/api/jobs",
-            baseURL: baseURL,
-            responseType: JobsResponse.self
-        )
+        let response: JobsResponse = try await request(path: "/api/jobs", baseURL: baseURL)
         return response.jobs
     }
 
     func extractArticle(articleURL: String, baseURL: URL) async throws -> Article {
-        let response = try await request(
+        let response: ArticleResponse = try await request(
             path: "/api/extract",
-            method: "POST",
+            method: .post,
             body: CreateJobBody(url: articleURL, speechOptions: nil),
-            baseURL: baseURL,
-            responseType: ArticleResponse.self
+            baseURL: baseURL
         )
         return response.article
     }
 
     func deleteJob(jobID: String, baseURL: URL) async throws {
-        _ = try await request(
+        let _: OkResponse = try await request(
             path: "/api/jobs/\(jobID)",
-            method: "DELETE",
-            baseURL: baseURL,
-            responseType: OkResponse.self
+            method: .delete,
+            baseURL: baseURL
         )
     }
 
     func createJob(articleURL: String, voiceID: String, baseURL: URL) async throws -> AudioJob {
-        let response = try await request(
+        let response: JobResponse = try await request(
             path: "/api/jobs",
-            method: "POST",
+            method: .post,
             body: CreateJobBody(
                 url: articleURL,
                 speechOptions: CreateJobBody.SpeechOptions(voice: voiceID)
             ),
-            baseURL: baseURL,
-            responseType: JobResponse.self
+            baseURL: baseURL
         )
         return response.job
     }
@@ -79,17 +68,16 @@ struct HearItAPIClient {
 
     private func request<Response: Decodable>(
         path: String,
-        method: String = "GET",
+        method: HTTPMethod = .get,
         body: Encodable? = nil,
-        baseURL: URL,
-        responseType: Response.Type
+        baseURL: URL
     ) async throws -> Response {
         guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
             throw APIError.invalidBaseURL
         }
 
         var request = URLRequest(url: url)
-        request.httpMethod = method
+        request.httpMethod = method.rawValue
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         if let body {
@@ -98,14 +86,14 @@ struct HearItAPIClient {
         }
 
         #if DEBUG
-        print("[HearIt] \(method) \(url.absoluteString)")
+        print("[HearIt] \(method.rawValue) \(url.absoluteString)")
         #endif
 
         let (data, response) = try await session.data(for: request)
         let httpResponse = response as? HTTPURLResponse
 
         #if DEBUG
-        print("[HearIt] \(method) \(url.absoluteString) → \(httpResponse?.statusCode ?? -1) (\(data.count) bytes)")
+        print("[HearIt] \(method.rawValue) \(url.absoluteString) → \(httpResponse?.statusCode ?? -1) (\(data.count) bytes)")
         if let bodyPreview = String(data: data.prefix(500), encoding: .utf8) {
             print("[HearIt] body: \(bodyPreview)")
         }
@@ -135,6 +123,12 @@ struct HearItAPIClient {
 }
 
 extension HearItAPIClient {
+    enum HTTPMethod: String {
+        case get = "GET"
+        case post = "POST"
+        case delete = "DELETE"
+    }
+
     enum APIError: LocalizedError {
         case invalidBaseURL
         case invalidResponse

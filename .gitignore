@@ -5,6 +5,10 @@ dist/
 data/audio/
 apps/api/data/audio/
 
+# Yarn PnP (machine-specific)
+.yarn/install-state.gz
+.yarn/unplugged/
+
 # Xcode
 *.xcuserstate
 xcuserdata/
@@ -15,3 +19,6 @@ DerivedData/
 .tmp/
 .vercel
 .env*.local
+
+# dev-3.0 local config
+.dev3/config.local.json

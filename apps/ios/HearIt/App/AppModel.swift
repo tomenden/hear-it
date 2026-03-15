@@ -362,10 +362,7 @@ final class AppModel {
         }
 
         if job.status == .completed {
-            player.load(url: playbackURL, for: jobID)
-            if let knownDuration = job.durationSeconds, knownDuration > 0 {
-                player.duration = knownDuration
-            }
+            player.load(url: playbackURL, for: jobID, knownDuration: job.durationSeconds)
         } else {
             player.unload()
         }
@@ -404,10 +401,18 @@ final class AppModel {
 
     private func applyJobs(_ updatedJobs: [AudioJob]) {
         guard jobs != updatedJobs else { return }
+        let previousJobs = jobs
         jobs = updatedJobs
 
         if let currentPresentation = playerPresentation {
+            let wasCompleted = previousJobs.first(where: { $0.id == currentPresentation.jobID })?.status == .completed
             preparePlayer(for: currentPresentation.jobID)
+            // Auto-play when a job just finished processing while the player is open
+            if !wasCompleted,
+               job(with: currentPresentation.jobID)?.status == .completed,
+               !player.isPlaying {
+                player.togglePlayback()
+            }
             return
         }
 

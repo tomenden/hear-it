@@ -49,12 +49,18 @@ final class AudioPlayerController {
         }
     }
 
-    func load(url: URL, for jobID: String) {
-        guard loadedJobID != jobID || currentAssetURL != url else { return }
+    func load(url: URL, for jobID: String, knownDuration: Double? = nil) {
+        guard loadedJobID != jobID || currentAssetURL != url else {
+            // Already loaded — just update duration if we have a better value
+            if let knownDuration, knownDuration > 0, duration == 0 {
+                duration = knownDuration
+            }
+            return
+        }
 
         loadedJobID = jobID
         currentTime = 0
-        duration = 0
+        duration = knownDuration ?? 0
         isPlaying = false
         guard !previewMode else { return }
         player.replaceCurrentItem(with: AVPlayerItem(url: url))

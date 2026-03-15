@@ -363,6 +363,9 @@ final class AppModel {
 
         if job.status == .completed {
             player.load(url: playbackURL, for: jobID)
+            if let knownDuration = job.durationSeconds, knownDuration > 0 {
+                player.duration = knownDuration
+            }
         } else {
             player.unload()
         }

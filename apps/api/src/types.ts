@@ -29,6 +29,8 @@ export interface AudioRenderResult {
   playlistUrl: string | null;
   audioSegments: AudioSegment[];
   durationSeconds: number;
+  audioData?: Buffer;
+  contentType?: string;
 }
 
 export interface AudioSegment {
@@ -43,6 +45,7 @@ export interface AudioJob {
   speechOptions: SpeechOptions;
   provider: string;
   audioUrl: string | null;
+  audioDownloadPath?: string | null;
   playlistUrl: string | null;
   audioSegments: AudioSegment[];
   durationSeconds: number | null;

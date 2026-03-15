@@ -18,12 +18,8 @@ struct PlayerView: View {
     }
 
     private var hasPlayableAudio: Bool {
-        guard let currentJob,
-              let baseURL = model.settings.apiBaseURL else {
-            return false
-        }
-
-        return currentJob.playbackURL(relativeTo: baseURL) != nil
+        guard let currentJob else { return false }
+        return model.hasPlayableAudio(for: currentJob)
     }
 
     var body: some View {
@@ -219,6 +215,7 @@ struct PlayerView: View {
 
     private func processingView(for job: AudioJob) -> some View {
         let isFailed = job.status == .failed
+        let isDownloadingToDevice = job.status == .completed && !hasPlayableAudio && model.isDownloadingAudio(for: job)
         let barCount = 15
         let barWidth: CGFloat = 4
         let barSpacing: CGFloat = 5
@@ -268,7 +265,13 @@ struct PlayerView: View {
 
             // Status text
             VStack(spacing: 10) {
-                Text(isFailed ? "Narration failed" : "Generating narration…")
+                Text(
+                    isFailed
+                        ? "Narration failed"
+                        : isDownloadingToDevice
+                            ? "Downloading narration…"
+                            : "Generating narration…"
+                )
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(isFailed ? AppTheme.Colors.error : AppTheme.Colors.textPrimary)
 
@@ -310,7 +313,13 @@ struct PlayerView: View {
             .clipped()
 
             // Tertiary hint
-            Text(isFailed ? job.statusMessage : "This may take a moment")
+            Text(
+                isFailed
+                    ? job.statusMessage
+                    : isDownloadingToDevice
+                        ? "Saving this narration to your device."
+                        : "This may take a moment"
+            )
                 .font(.system(size: 12))
                 .foregroundStyle(isFailed ? AppTheme.Colors.error : AppTheme.Colors.textTertiary)
                 .multilineTextAlignment(.center)

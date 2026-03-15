@@ -36,6 +36,7 @@ struct AudioJob: Codable, Hashable, Identifiable {
     let speechOptions: SpeechOptions
     let provider: String
     let audioUrl: String?
+    let audioDownloadPath: String?
     let playlistUrl: String?
     let audioSegments: [Segment]
     let durationSeconds: Double?
@@ -58,5 +59,9 @@ struct AudioJob: Codable, Hashable, Identifiable {
 
     func playbackURL(relativeTo baseURL: URL) -> URL? {
         HearItAPIClient.resolveURL(audioUrl ?? playlistUrl, relativeTo: baseURL)
+    }
+
+    func narrationDownloadURL(relativeTo baseURL: URL) -> URL? {
+        HearItAPIClient.resolveURL(audioDownloadPath, relativeTo: baseURL)
     }
 }

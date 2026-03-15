@@ -127,6 +127,7 @@ enum PreviewSamples {
             speechOptions: AudioJob.SpeechOptions(voice: voice),
             provider: "openai",
             audioUrl: audioURL,
+            audioDownloadPath: audioURL,
             playlistUrl: nil,
             audioSegments: [],
             durationSeconds: durationSeconds,

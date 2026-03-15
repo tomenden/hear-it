@@ -9,7 +9,7 @@ import { extractArticle } from "./extractor.js";
 import { AudioJobService } from "./jobs.js";
 import type { AudioStore, JobStore } from "./storage.js";
 import { AVAILABLE_VOICES } from "./tts.js";
-import type { CreateAudioJobInput, ExtractArticleInput } from "./types.js";
+import type { AudioJob, CreateAudioJobInput, ExtractArticleInput } from "./types.js";
 
 if (process.env.SENTRY_DSN) {
   Sentry.init({
@@ -74,6 +74,13 @@ const writeEndpointLimiter = rateLimit({
 export function createApp(options: CreateAppOptions) {
   const { audioJobService, jobStore, audioStore, onBackgroundWork } = options;
   const app = express();
+  const serializeJob = (job: AudioJob) => ({
+    ...job,
+    audioDownloadPath:
+      job.status === "completed" && audioJobService.hasNarrationAudio(job.id)
+        ? audioJobService.buildNarrationDownloadPath(job.id)
+        : null,
+  });
 
   void audioJobService.init().then(() => audioJobService.requeueInterruptedJobs());
 
@@ -185,8 +192,11 @@ export function createApp(options: CreateAppOptions) {
     }
 
     try {
-      const job = await audioJobService.createJob(parsedBody.data as CreateAudioJobInput, req.userId);
-      res.status(202).json({ job });
+      const job = await audioJobService.createJob(
+        parsedBody.data as CreateAudioJobInput,
+        req.userId,
+      );
+      res.status(202).json({ job: serializeJob(job) });
 
       // Process the job in the background — on Vercel this uses waitUntil,
       // in local dev the promise just runs detached.
@@ -204,7 +214,7 @@ export function createApp(options: CreateAppOptions) {
   });
 
   app.get("/api/jobs", async (req, res) => {
-    res.json({ jobs: await audioJobService.listJobs(req.userId) });
+    res.json({ jobs: (await audioJobService.listJobs(req.userId)).map(serializeJob) });
   });
 
   app.get("/api/jobs/:jobId", async (req, res) => {
@@ -215,7 +225,37 @@ export function createApp(options: CreateAppOptions) {
       return;
     }
 
-    res.json({ job });
+    res.json({ job: serializeJob(job) });
+  });
+
+  app.get("/api/jobs/:jobId/audio", async (req, res) => {
+    const job = await audioJobService.getJob(req.params.jobId, req.userId);
+
+    if (!job) {
+      res.status(404).json({ error: "Job not found." });
+      return;
+    }
+
+    if (job.status !== "completed") {
+      res.status(409).json({ error: "Narration audio is not ready yet." });
+      return;
+    }
+
+    const audio = audioJobService.getNarrationAudio(job.id);
+    if (!audio) {
+      res.status(404).json({
+        error: "Narration audio is no longer available for download. Re-create the narration to fetch it again.",
+      });
+      return;
+    }
+
+    res.setHeader("Content-Type", audio.contentType);
+    res.setHeader("Cache-Control", "private, no-store, max-age=0");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="narration-${job.id}.mp3"`,
+    );
+    res.send(audio.buffer);
   });
 
   app.delete("/api/jobs/:jobId", writeEndpointLimiter, async (req, res) => {

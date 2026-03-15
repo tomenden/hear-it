@@ -86,16 +86,35 @@ function pickBestExtraction(primary: string, fallback: string): string {
     return normalizedPrimary;
   }
 
+  if (isRepetitiveText(normalizedPrimary)) {
+    return normalizedFallback;
+  }
+
   return normalizedPrimary.length >= normalizedFallback.length * 0.6
     ? normalizedPrimary
     : normalizedFallback;
 }
 
+function isRepetitiveText(text: string): boolean {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 10) {
+    return false;
+  }
+
+  const freq = new Map<string, number>();
+  for (const line of lines) {
+    freq.set(line, (freq.get(line) ?? 0) + 1);
+  }
+
+  const mostRepeated = Math.max(...freq.values());
+  return mostRepeated / lines.length > 0.3;
+}
+
 function buildFallbackExtraction(document: Document) {
   const root = selectContentRoot(document) ?? document.body ?? document.documentElement;
-  const paragraphs = Array.from(root.querySelectorAll("p"))
-    .map((paragraph) => normalizeText(paragraph.textContent ?? ""))
-    .filter((paragraph) => isLikelyContentParagraph(paragraph));
+  const paragraphs = Array.from(root.querySelectorAll("p, li, blockquote"))
+    .map((el) => normalizeText(el.textContent ?? ""))
+    .filter((text) => isLikelyContentParagraph(text));
   const fallbackTitle = firstDefined(
     readMetaContent(document, 'meta[property="og:title"]'),
     normalizeText(document.querySelector("title")?.textContent ?? "") || null,

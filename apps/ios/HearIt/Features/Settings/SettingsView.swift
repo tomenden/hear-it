@@ -18,6 +18,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         apiSection
                         testingSection
+                        accountSection
                     }
                     .padding(.horizontal, 24)
                     .padding(.bottom, 24)
@@ -123,6 +124,51 @@ struct SettingsView: View {
                 Text("Example: http://192.168.1.12:3000")
                     .font(.system(size: 13, weight: .medium, design: .monospaced))
                     .foregroundStyle(AppTheme.Colors.textSecondary)
+            }
+            .padding(20)
+            .background(cardBackground)
+        }
+    }
+
+    private var accountSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("Account")
+
+            VStack(alignment: .leading, spacing: 14) {
+                if let email = model.authManager.userEmail {
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(AppTheme.Colors.accentGreen)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Signed in as")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(AppTheme.Colors.textTertiary)
+                                .textCase(.uppercase)
+                            Text(email)
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(AppTheme.Colors.textPrimary)
+                        }
+                    }
+
+                    Divider()
+                        .overlay(AppTheme.Colors.border)
+                }
+
+                Button {
+                    Task { await model.signOut() }
+                } label: {
+                    HStack {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                            .font(.system(size: 15, weight: .medium))
+                        Text("Sign Out")
+                            .font(.system(size: 16, weight: .medium))
+                    }
+                    .foregroundStyle(AppTheme.Colors.accentRed)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
             }
             .padding(20)
             .background(cardBackground)

@@ -15,6 +15,7 @@ const app = createApp({
   audioStore,
   serveStaticAudio: audioStore.getOutputDir(),
   audioPublicBaseUrl: "/audio",
+  supabaseJwtSecret: process.env.SUPABASE_JWT_SECRET,
 });
 
 app.listen(port, () => {

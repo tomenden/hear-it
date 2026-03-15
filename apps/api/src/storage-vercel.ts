@@ -1,11 +1,11 @@
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 import { put, head } from "@vercel/blob";
 
 import type { AudioJob } from "./types.js";
 import type { AudioStore, JobStore } from "./storage.js";
 
 // ---------------------------------------------------------------------------
-// Neon Postgres JobStore
+// Postgres JobStore
 // ---------------------------------------------------------------------------
 
 function getSQL() {
@@ -13,7 +13,7 @@ function getSQL() {
   if (!url) {
     throw new Error("POSTGRES_URL environment variable is not set.");
   }
-  return neon(url);
+  return postgres(url);
 }
 
 export class VercelJobStore implements JobStore {
@@ -51,6 +51,14 @@ export class VercelJobStore implements JobStore {
     await this.sql`
       CREATE SEQUENCE IF NOT EXISTS audio_jobs_id_seq
     `;
+
+    await this.sql`
+      ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS user_id TEXT
+    `;
+
+    await this.sql`
+      CREATE INDEX IF NOT EXISTS idx_audio_jobs_user_id ON audio_jobs(user_id)
+    `;
   }
 
   async getAll(): Promise<AudioJob[]> {
@@ -72,7 +80,7 @@ export class VercelJobStore implements JobStore {
       INSERT INTO audio_jobs (
         id, status, article, speech_options, provider,
         audio_url, playlist_url, audio_segments, duration_seconds,
-        error, created_at, updated_at
+        error, created_at, updated_at, user_id
       ) VALUES (
         ${job.id},
         ${job.status},
@@ -85,7 +93,8 @@ export class VercelJobStore implements JobStore {
         ${job.durationSeconds},
         ${job.error},
         ${job.createdAt},
-        ${job.updatedAt}
+        ${job.updatedAt},
+        ${job.userId}
       )
       ON CONFLICT (id) DO UPDATE SET
         status = EXCLUDED.status,
@@ -97,7 +106,8 @@ export class VercelJobStore implements JobStore {
         audio_segments = EXCLUDED.audio_segments,
         duration_seconds = EXCLUDED.duration_seconds,
         error = EXCLUDED.error,
-        updated_at = EXCLUDED.updated_at
+        updated_at = EXCLUDED.updated_at,
+        user_id = EXCLUDED.user_id
     `;
   }
 
@@ -129,6 +139,27 @@ export class VercelJobStore implements JobStore {
     const rows = await this.sql`SELECT nextval('audio_jobs_id_seq') AS id`;
     return String(rows[0].id);
   }
+
+  async getAllForUser(userId: string): Promise<AudioJob[]> {
+    const rows = await this.sql`
+      SELECT * FROM audio_jobs WHERE user_id = ${userId} ORDER BY created_at DESC
+    `;
+    return rows.map(rowToJob);
+  }
+
+  async getForUser(jobId: string, userId: string): Promise<AudioJob | null> {
+    const rows = await this.sql`
+      SELECT * FROM audio_jobs WHERE id = ${jobId} AND user_id = ${userId}
+    `;
+    return rows.length > 0 ? rowToJob(rows[0]) : null;
+  }
+
+  async deleteForUser(jobId: string, userId: string): Promise<boolean> {
+    const rows = await this.sql`
+      DELETE FROM audio_jobs WHERE id = ${jobId} AND user_id = ${userId} RETURNING id
+    `;
+    return rows.length > 0;
+  }
 }
 
 function rowToJob(row: Record<string, unknown>): AudioJob {
@@ -145,6 +176,7 @@ function rowToJob(row: Record<string, unknown>): AudioJob {
     error: (row.error as string) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+    userId: (row.user_id as string) ?? null,
   };
 }
 

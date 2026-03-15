@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import * as jose from "jose";
 
+import { createAuthMiddleware } from "./auth.js";
 import { createAudioJobSchema, extractRequestSchema } from "./app.js";
 import { AudioJobService, isTerminalStatus } from "./jobs.js";
 import { FileJobStore, FileAudioStore } from "./storage-fs.js";
@@ -153,5 +155,59 @@ describe("audio job service", () => {
 
     expect(validRequest.success).toBe(true);
     expect(invalidExtractRequest.success).toBe(false);
+  });
+});
+
+describe("auth middleware", () => {
+  const secret = "test-jwt-secret-at-least-32-characters-long!!";
+
+  async function makeTestJWT(sub: string) {
+    return new jose.SignJWT({})
+      .setSubject(sub)
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("1h")
+      .sign(new TextEncoder().encode(secret));
+  }
+
+  function callMiddleware(authHeader?: string) {
+    const middleware = createAuthMiddleware(secret);
+    return new Promise<{ statusCode?: number; userId?: string; nextCalled: boolean }>((resolve) => {
+      const req = { headers: { authorization: authHeader } } as any;
+      const res = {
+        _status: undefined as number | undefined,
+        status(code: number) { this._status = code; return this; },
+        json() { resolve({ statusCode: this._status, nextCalled: false }); },
+      } as any;
+      const next = () => resolve({ userId: req.userId, nextCalled: true });
+      middleware(req, res, next);
+    });
+  }
+
+  it("passes through when no secret configured", async () => {
+    const middleware = createAuthMiddleware(undefined);
+    const result = await new Promise<{ nextCalled: boolean }>((resolve) => {
+      const req = { headers: {} } as any;
+      const next = () => resolve({ nextCalled: true });
+      middleware(req, {} as any, next);
+    });
+    expect(result.nextCalled).toBe(true);
+  });
+
+  it("rejects missing token", async () => {
+    const result = await callMiddleware(undefined);
+    expect(result.statusCode).toBe(401);
+  });
+
+  it("rejects invalid token", async () => {
+    const result = await callMiddleware("Bearer invalid.token.here");
+    expect(result.statusCode).toBe(401);
+  });
+
+  it("accepts valid token and sets userId", async () => {
+    const token = await makeTestJWT("user-abc");
+    const result = await callMiddleware(`Bearer ${token}`);
+    expect(result.nextCalled).toBe(true);
+    expect(result.userId).toBe("user-abc");
   });
 });

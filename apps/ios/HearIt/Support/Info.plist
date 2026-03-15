@@ -18,13 +18,11 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>SUPABASE_ANON_KEY</key>
+	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>SUPABASE_URL</key>
+	<string>$(SUPABASE_URL)</string>
 	<key>UILaunchScreen</key>
 	<dict/>
-	<key>SentryDSN</key>
-	<string>https://92e80dd7e7b8779e974032e4af6370ac@o4511049880436736.ingest.de.sentry.io/4511049897803856</string>
-	<key>POSTHOG_API_KEY</key>
-	<string>phc_WoekR63Pb8KvZpmu3nlrCEbfsYZ0ePuFKvsgakj4dym</string>
-	<key>POSTHOG_HOST</key>
-	<string>https://eu.i.posthog.com</string>
 </dict>
 </plist>

@@ -17,6 +17,9 @@ packages:
   Sentry:
     url: https://github.com/getsentry/sentry-cocoa
     from: "8.0.0"
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: "2.0.0"
 targets:
   HearIt:
     type: application
@@ -27,6 +30,10 @@ targets:
         product: PostHog
       - package: Sentry
         product: Sentry
+      - package: Supabase
+        product: Auth
+      - package: Supabase
+        product: Supabase
     sources:
       - path: HearIt
         excludes:
@@ -43,8 +50,12 @@ targets:
       path: HearIt/Support/Info.plist
       properties:
         UILaunchScreen: {}
+        SUPABASE_URL: "$(SUPABASE_URL)"
+        SUPABASE_ANON_KEY: "$(SUPABASE_ANON_KEY)"
     settings:
       base:
+        SUPABASE_URL: "https://YOUR_PROJECT.supabase.co"
+        SUPABASE_ANON_KEY: "YOUR_ANON_KEY"
         PRODUCT_BUNDLE_IDENTIFIER: com.tome.hearit
         PRODUCT_NAME: HearIt
         CODE_SIGN_STYLE: Automatic

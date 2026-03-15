@@ -4,6 +4,7 @@ import rateLimit from "express-rate-limit";
 import { join } from "node:path";
 import { z } from "zod";
 
+import { createAuthMiddleware } from "./auth.js";
 import { extractArticle } from "./extractor.js";
 import { AudioJobService } from "./jobs.js";
 import type { AudioStore, JobStore } from "./storage.js";
@@ -44,6 +45,8 @@ export interface CreateAppOptions {
   serveStaticAudio?: string;
   /** Base URL for audio files — included in /api/config for clients that resolve relative URLs. */
   audioPublicBaseUrl?: string;
+  /** Supabase JWT secret for verifying auth tokens. When omitted, auth is disabled (pass-through). */
+  supabaseJwtSecret?: string;
 }
 
 // Rate limiting uses the default in-memory store. On Vercel serverless, the
@@ -112,6 +115,10 @@ export function createApp(options: CreateAppOptions) {
     });
   });
 
+  // Auth middleware — applied to all /api routes below this point.
+  // /health and /api/config above remain public.
+  app.use("/api", createAuthMiddleware(options.supabaseJwtSecret));
+
   app.get("/api/voices", (_req, res) => {
     res.json({
       voices: audioJobService.getAvailableVoices(),
@@ -173,7 +180,7 @@ export function createApp(options: CreateAppOptions) {
     }
 
     try {
-      const job = await audioJobService.createJob(parsedBody.data as CreateAudioJobInput);
+      const job = await audioJobService.createJob(parsedBody.data as CreateAudioJobInput, req.userId);
       res.status(202).json({ job });
 
       // Process the job in the background — on Vercel this uses waitUntil,
@@ -191,12 +198,12 @@ export function createApp(options: CreateAppOptions) {
     }
   });
 
-  app.get("/api/jobs", async (_req, res) => {
-    res.json({ jobs: await audioJobService.listJobs() });
+  app.get("/api/jobs", async (req, res) => {
+    res.json({ jobs: await audioJobService.listJobs(req.userId) });
   });
 
   app.get("/api/jobs/:jobId", async (req, res) => {
-    const job = await audioJobService.getJob(req.params.jobId);
+    const job = await audioJobService.getJob(req.params.jobId, req.userId);
 
     if (!job) {
       res.status(404).json({ error: "Job not found." });
@@ -207,7 +214,7 @@ export function createApp(options: CreateAppOptions) {
   });
 
   app.delete("/api/jobs/:jobId", writeEndpointLimiter, async (req, res) => {
-    const deleted = await audioJobService.deleteJob(req.params.jobId as string);
+    const deleted = await audioJobService.deleteJob(req.params.jobId as string, req.userId);
 
     if (!deleted) {
       res.status(404).json({ error: "Job not found." });

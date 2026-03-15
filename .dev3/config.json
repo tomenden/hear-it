@@ -1,9 +1,0 @@
-{
-  "clonePaths": [
-    ".pnp.cjs",
-    ".pnp.loader.mjs",
-    ".env",
-    ".env.local"
-  ],
-  "defaultBaseBranch": "master"
-}

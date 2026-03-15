@@ -19,6 +19,10 @@ export class FileJobStore implements JobStore {
     );
   }
 
+  async check(): Promise<void> {
+    await access(this.filePath);
+  }
+
   async init(): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
 
@@ -109,6 +113,10 @@ export class FileAudioStore implements AudioStore {
     );
     this.publicBaseUrl =
       publicBaseUrl ?? process.env.AUDIO_PUBLIC_BASE_URL ?? "/audio";
+  }
+
+  async check(): Promise<void> {
+    await access(this.outputDir);
   }
 
   async put(key: string, data: Buffer, _contentType?: string): Promise<string> {

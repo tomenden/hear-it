@@ -10,6 +10,8 @@ const audioJobService = new AudioJobService({ jobStore, audioStore });
 
 const app = createApp({
   audioJobService,
+  jobStore,
+  audioStore,
   onBackgroundWork: (promise) => waitUntil(promise),
 });
 

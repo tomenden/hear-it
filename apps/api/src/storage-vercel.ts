@@ -26,6 +26,10 @@ export class VercelJobStore implements JobStore {
     return this._sql;
   }
 
+  async check(): Promise<void> {
+    await this.sql`SELECT 1`;
+  }
+
   async init(): Promise<void> {
     await this.sql`
       CREATE TABLE IF NOT EXISTS audio_jobs (
@@ -149,6 +153,18 @@ function rowToJob(row: Record<string, unknown>): AudioJob {
 // ---------------------------------------------------------------------------
 
 export class VercelAudioStore implements AudioStore {
+  async check(): Promise<void> {
+    // Attempt a head request for a non-existent key. A "not found" error is
+    // expected and means the store is reachable. Any other error propagates.
+    try {
+      await head("__health_check__");
+    } catch (error: unknown) {
+      const isBlobNotFound =
+        error instanceof Error && error.name === "BlobNotFoundError";
+      if (!isBlobNotFound) throw error;
+    }
+  }
+
   async put(key: string, data: Buffer, contentType = "audio/mpeg"): Promise<string> {
     const blob = await put(key, data, {
       access: "public",

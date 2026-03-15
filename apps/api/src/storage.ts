@@ -6,6 +6,8 @@ import type { AudioJob } from "./types.js";
 
 export interface JobStore {
   init(): Promise<void>;
+  /** Lightweight connectivity check (e.g. SELECT 1). */
+  check(): Promise<void>;
   getAll(): Promise<AudioJob[]>;
   get(jobId: string): Promise<AudioJob | null>;
   save(job: AudioJob): Promise<void>;
@@ -21,6 +23,9 @@ export interface JobStore {
 // ---------------------------------------------------------------------------
 
 export interface AudioStore {
+  /** Lightweight reachability check. */
+  check(): Promise<void>;
+
   /**
    * Write an audio buffer and return its public URL.
    * `key` is a path-like identifier, e.g. "previews/voice-preview--alloy.mp3"

@@ -1,11 +1,21 @@
+import * as Sentry from "@sentry/node";
 import express from "express";
+import rateLimit from "express-rate-limit";
 import { join } from "node:path";
 import { z } from "zod";
 
 import { extractArticle } from "./extractor.js";
 import { AudioJobService } from "./jobs.js";
+import type { AudioStore, JobStore } from "./storage.js";
 import { AVAILABLE_VOICES } from "./tts.js";
 import type { CreateAudioJobInput, ExtractArticleInput } from "./types.js";
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV ?? "development",
+  });
+}
 
 export const extractRequestSchema = z.object({
   url: z.string().url(),
@@ -26,6 +36,8 @@ const voicePreviewSchema = z.object({
 
 export interface CreateAppOptions {
   audioJobService: AudioJobService;
+  jobStore: JobStore;
+  audioStore: AudioStore;
   /** Called with a promise that should keep running after the response is sent. */
   onBackgroundWork?: (promise: Promise<void>) => void;
   /** Whether to serve the local /audio directory (local dev only). */
@@ -34,8 +46,28 @@ export interface CreateAppOptions {
   audioPublicBaseUrl?: string;
 }
 
+// Rate limiting uses the default in-memory store. On Vercel serverless, the
+// counter resets on each cold start — acceptable for launch but not watertight.
+const rateLimitMessage = { error: "Too many requests. Please try again later." };
+
+const jobCreationLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: rateLimitMessage,
+});
+
+const writeEndpointLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: rateLimitMessage,
+});
+
 export function createApp(options: CreateAppOptions) {
-  const { audioJobService, onBackgroundWork } = options;
+  const { audioJobService, jobStore, audioStore, onBackgroundWork } = options;
   const app = express();
 
   void audioJobService.init().then(() => audioJobService.requeueInterruptedJobs());
@@ -50,8 +82,26 @@ export function createApp(options: CreateAppOptions) {
     app.use(express.static(publicDir));
   }
 
-  app.get("/health", (_req, res) => {
-    res.json({ ok: true });
+  app.get("/health", async (_req, res) => {
+    const dependencies: Record<string, "ok" | "error"> = {
+      database: "ok",
+      storage: "ok",
+    };
+
+    try {
+      await jobStore.check();
+    } catch {
+      dependencies.database = "error";
+    }
+
+    try {
+      await audioStore.check();
+    } catch {
+      dependencies.storage = "error";
+    }
+
+    const ok = dependencies.database === "ok" && dependencies.storage === "ok";
+    res.json({ ok, dependencies });
   });
 
   app.get("/api/config", (_req, res) => {
@@ -68,7 +118,7 @@ export function createApp(options: CreateAppOptions) {
     });
   });
 
-  app.post("/api/voice-previews", async (req, res) => {
+  app.post("/api/voice-previews", writeEndpointLimiter, async (req, res) => {
     const parsedBody = voicePreviewSchema.safeParse(req.body);
 
     if (!parsedBody.success) {
@@ -89,7 +139,7 @@ export function createApp(options: CreateAppOptions) {
     }
   });
 
-  app.post("/api/extract", async (req, res) => {
+  app.post("/api/extract", writeEndpointLimiter, async (req, res) => {
     const parsedBody = extractRequestSchema.safeParse(req.body);
 
     if (!parsedBody.success) {
@@ -111,7 +161,7 @@ export function createApp(options: CreateAppOptions) {
     }
   });
 
-  app.post("/api/jobs", async (req, res) => {
+  app.post("/api/jobs", jobCreationLimiter, async (req, res) => {
     const parsedBody = createAudioJobSchema.safeParse(req.body);
 
     if (!parsedBody.success) {
@@ -156,7 +206,7 @@ export function createApp(options: CreateAppOptions) {
     res.json({ job });
   });
 
-  app.delete("/api/jobs/:jobId", async (req, res) => {
+  app.delete("/api/jobs/:jobId", writeEndpointLimiter, async (req, res) => {
     const deleted = await audioJobService.deleteJob(req.params.jobId);
 
     if (!deleted) {
@@ -166,6 +216,8 @@ export function createApp(options: CreateAppOptions) {
 
     res.json({ ok: true });
   });
+
+  Sentry.setupExpressErrorHandler(app);
 
   return app;
 }

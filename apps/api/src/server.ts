@@ -11,6 +11,8 @@ const audioJobService = new AudioJobService({ jobStore, audioStore });
 
 const app = createApp({
   audioJobService,
+  jobStore,
+  audioStore,
   serveStaticAudio: audioStore.getOutputDir(),
   audioPublicBaseUrl: "/audio",
 });

@@ -1,4 +1,5 @@
 import Foundation
+import Sentry
 
 struct HearItAPIClient {
     private let session: URLSession
@@ -100,15 +101,28 @@ struct HearItAPIClient {
         #endif
 
         guard let httpResponse else {
-            throw APIError.invalidResponse
+            let apiError = APIError.invalidResponse
+            SentrySDK.capture(error: apiError) { scope in
+                scope.setContext(value: ["path": path, "method": method.rawValue], key: "api_request")
+            }
+            throw apiError
         }
 
         guard (200 ..< 300).contains(httpResponse.statusCode) else {
-            if let apiError = try? decoder.decode(ErrorResponse.self, from: data) {
-                throw APIError.server(apiError.error)
+            let apiError: APIError
+            if let decoded = try? decoder.decode(ErrorResponse.self, from: data) {
+                apiError = .server(decoded.error)
+            } else {
+                apiError = .server("The Hear It API returned status \(httpResponse.statusCode).")
             }
-
-            throw APIError.server("The Hear It API returned status \(httpResponse.statusCode).")
+            SentrySDK.capture(error: apiError) { scope in
+                scope.setContext(value: [
+                    "path": path,
+                    "method": method.rawValue,
+                    "statusCode": httpResponse.statusCode,
+                ], key: "api_request")
+            }
+            throw apiError
         }
 
         do {
@@ -117,7 +131,11 @@ struct HearItAPIClient {
             #if DEBUG
             print("[HearIt] Decode error for \(Response.self): \(error)")
             #endif
-            throw APIError.decodingFailed(detail: String(describing: error))
+            let apiError = APIError.decodingFailed(detail: String(describing: error))
+            SentrySDK.capture(error: apiError) { scope in
+                scope.setContext(value: ["path": path, "method": method.rawValue], key: "api_request")
+            }
+            throw apiError
         }
     }
 }

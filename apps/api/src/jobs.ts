@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/node";
+import { trackEvent } from "./analytics.js";
 import { extractArticle } from "./extractor.js";
 import {
   DEFAULT_SPEECH_OPTIONS,
@@ -64,6 +66,16 @@ export class AudioJobService {
     };
 
     await this.jobStore.save(job);
+
+    const domain = safeHostname(article.url);
+    trackEvent("narration_created", {
+      url: article.url,
+      domain,
+      voice: speechOptions.voice,
+      word_count: article.wordCount,
+      estimated_minutes: article.estimatedMinutes,
+    });
+
     return job;
   }
 
@@ -112,10 +124,23 @@ export class AudioJobService {
         durationSeconds: result.durationSeconds,
       });
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Speech generation failed.";
+      Sentry.captureException(error, {
+        tags: {
+          jobId,
+          voice: queuedJob.speechOptions.voice,
+          url: queuedJob.article.url,
+        },
+      });
+      trackEvent("tts_failed", {
+        job_id: jobId,
+        voice: queuedJob.speechOptions.voice,
+        error: message,
+      });
       await this.updateJob(jobId, {
         status: "failed",
-        error:
-          error instanceof Error ? error.message : "Speech generation failed.",
+        error: message,
       });
     }
   }
@@ -182,4 +207,12 @@ function resolveSpeechOptions(input?: Partial<SpeechOptions>): SpeechOptions {
 
 export function isTerminalStatus(status: AudioJobStatus): boolean {
   return status === "completed" || status === "failed";
+}
+
+function safeHostname(url: string): string | null {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
 }

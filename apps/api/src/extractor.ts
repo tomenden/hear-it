@@ -1,6 +1,8 @@
+import * as Sentry from "@sentry/node";
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 
+import { trackEvent } from "./analytics.js";
 import type { ExtractArticleInput, ExtractedArticle } from "./types.js";
 
 const WORDS_PER_MINUTE = 160;
@@ -27,7 +29,14 @@ export async function extractArticle(
   const bodyText = normalizeText(extracted);
 
   if (!bodyText) {
-    throw new Error("Failed to extract article content.");
+    const err = new Error("Failed to extract article content.");
+    Sentry.captureException(err, { tags: { url: input.url } });
+    trackEvent("extraction_failed", {
+      url: input.url,
+      domain: safeHostname(input.url),
+      error: err.message,
+    });
+    throw err;
   }
 
   const textContent = title ? `${title}\n\n${bodyText}` : bodyText;
@@ -56,7 +65,9 @@ async function fetchHtml(url: string): Promise<string> {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch URL: ${response.status}`);
+    const err = new Error(`Failed to fetch URL: ${response.status}`);
+    Sentry.captureException(err, { tags: { url, httpStatus: response.status } });
+    throw err;
   }
 
   return await response.text();

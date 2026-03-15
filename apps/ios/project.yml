@@ -10,11 +10,23 @@ settings:
     CURRENT_PROJECT_VERSION: 1
     SWIFT_VERSION: 6.0
     IPHONEOS_DEPLOYMENT_TARGET: 26.0
+packages:
+  PostHog:
+    url: https://github.com/PostHog/posthog-ios
+    from: "3.0.0"
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    from: "8.0.0"
 targets:
   HearIt:
     type: application
     platform: iOS
     deploymentTarget: "26.0"
+    dependencies:
+      - package: PostHog
+        product: PostHog
+      - package: Sentry
+        product: Sentry
     sources:
       - path: HearIt
         excludes:

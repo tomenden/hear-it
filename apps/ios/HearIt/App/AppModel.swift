@@ -1,4 +1,5 @@
 import Observation
+import Sentry
 import SwiftUI
 
 @MainActor
@@ -235,6 +236,11 @@ final class AppModel {
         isCreatingNarration = true
         homeMessage = InlineMessage(text: "Creating your narration…", kind: .neutral)
 
+        let breadcrumb = Breadcrumb(level: .info, category: "narration")
+        breadcrumb.message = "Create narration"
+        breadcrumb.data = ["url": articleURL, "voice": selectedVoice.id]
+        SentrySDK.addBreadcrumb(breadcrumb)
+
         do {
             let job = try await apiClient.createJob(
                 articleURL: articleURL,
@@ -248,7 +254,12 @@ final class AppModel {
             selectedTab = .library
             homeMessage = InlineMessage(text: "Narration queued successfully.", kind: .success)
             openPlayer(for: job.id)
+            trackFirstNarrationCreated()
         } catch {
+            SentrySDK.capture(error: error) { scope in
+                scope.setTag(value: "create_narration", key: "action")
+                scope.setExtra(value: articleURL, key: "articleURL")
+            }
             homeMessage = InlineMessage(text: error.localizedDescription, kind: .error)
         }
 
@@ -290,10 +301,20 @@ final class AppModel {
             player.unload()
         }
 
+        let crumb = Breadcrumb(level: .info, category: "narration")
+        crumb.message = "Delete narration"
+        crumb.data = ["jobID": job.id]
+        SentrySDK.addBreadcrumb(crumb)
+
         do {
             try await apiClient.deleteJob(jobID: job.id, baseURL: baseURL)
             jobs.removeAll(where: { $0.id == job.id })
+            Analytics.track("narration_deleted", properties: ["job_id": job.id])
         } catch {
+            SentrySDK.capture(error: error) { scope in
+                scope.setTag(value: "delete_narration", key: "action")
+                scope.setExtra(value: job.id, key: "jobID")
+            }
             homeMessage = InlineMessage(text: error.localizedDescription, kind: .error)
         }
 
@@ -301,12 +322,23 @@ final class AppModel {
     }
 
     func openPlayer(for jobID: String) {
+        let crumb = Breadcrumb(level: .info, category: "player")
+        crumb.message = "Open player"
+        crumb.data = ["jobID": jobID]
+        SentrySDK.addBreadcrumb(crumb)
+
         let shouldAutoPlay = player.loadedJobID != jobID
         settings.lastPresentedJobID = jobID
         playerPresentation = PlayerPresentation(jobID: jobID)
         preparePlayer(for: jobID)
         if shouldAutoPlay, job(with: jobID)?.status == .completed {
             player.togglePlayback()
+            Analytics.track("narration_played", properties: [
+                "job_id": jobID,
+                "duration_listened": 0,
+                "pct_completed": 0,
+            ])
+            trackFirstNarrationCompleted()
         }
     }
 
@@ -388,5 +420,19 @@ final class AppModel {
         jobs.removeAll(where: { $0.id == job.id })
         jobs.insert(job, at: 0)
         settings.lastPresentedJobID = job.id
+    }
+
+    private func trackFirstNarrationCreated() {
+        let key = "analytics_first_narration_created"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        Analytics.track("first_narration_created")
+    }
+
+    private func trackFirstNarrationCompleted() {
+        let key = "analytics_first_narration_completed"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        Analytics.track("first_narration_completed")
     }
 }

@@ -187,6 +187,7 @@ struct VoiceSelectionView: View {
         }
 
         player.play()
+        Analytics.track("voice_preview_played", properties: ["voice": voice.id])
     }
 
     private func stopPreview() {

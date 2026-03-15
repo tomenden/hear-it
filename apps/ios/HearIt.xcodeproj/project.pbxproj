@@ -12,11 +12,14 @@
 		26330DCFCBC0E8BB6F2B547D /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4E53A003161DCBF0B225C3 /* LibraryView.swift */; };
 		29A67C704CB9FFF963B147E0 /* Article.swift in Sources */ = {isa = PBXBuildFile; fileRef = A068252339B48496D9BBF3FC /* Article.swift */; };
 		2C17CB99675410640072EA09 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B57E46118380FA6252EEADD /* AppTheme.swift */; };
+		3D005C4BBA6025C34B96D861 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = DB17BEC52CCAE6649EE60610 /* Sentry */; };
 		40AFE1923EB3FECB6CCB3AC6 /* HearItApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3BFBB00D4C28D4380A903C3 /* HearItApp.swift */; };
 		48BD34433BE16F76DE5EF3BD /* AudioJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE5F10C9DACB6182F536801 /* AudioJob.swift */; };
+		6B58532F5C7E786DA796EE2D /* Analytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F3560F788EC4A94E9909A0 /* Analytics.swift */; };
 		71A8FA213B32D6C96B0C846D /* HearItURLResolutionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30013ECC1CB1F68E636157F /* HearItURLResolutionTests.swift */; };
 		948AAB0B070DDE32D4391FB2 /* MiniPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5623BFE57B3A1953B8ED6AD /* MiniPlayerView.swift */; };
 		957C62B7A10BB9666F7B8488 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B5767CE1B8ABDB59615131A4 /* Assets.xcassets */; };
+		9D22E32298D6890C76A42085 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = CE4352C5A050B4DC22E2A42B /* PostHog */; };
 		9EF8DDA3273C4B3E4221FDB1 /* Color+Hex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08D89A043D4EE39A7D81998B /* Color+Hex.swift */; };
 		A2368FCADAE6B6DA39ED28B6 /* PreviewSamples.swift in Sources */ = {isa = PBXBuildFile; fileRef = F87839A6EED42DEF792140EE /* PreviewSamples.swift */; };
 		A4C78E2338624F2A49A7D632 /* PlayerPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DDA092AA8B8216A274E6BFD /* PlayerPresentation.swift */; };
@@ -57,6 +60,7 @@
 		4DDA092AA8B8216A274E6BFD /* PlayerPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerPresentation.swift; sourceTree = "<group>"; };
 		4E85C4716C27EF1438132ADF /* ServerConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfig.swift; sourceTree = "<group>"; };
 		4E93C64E7948C26DC7D501A2 /* VoiceSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSelectionView.swift; sourceTree = "<group>"; };
+		54F3560F788EC4A94E9909A0 /* Analytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Analytics.swift; sourceTree = "<group>"; };
 		5A71946812B0A81DA6E70A8E /* AudioPlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerController.swift; sourceTree = "<group>"; };
 		87C8FA41CD6AAEDAB113823F /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		8E493E67BC1B8EECE18403E0 /* RootTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTab.swift; sourceTree = "<group>"; };
@@ -75,6 +79,18 @@
 		F87839A6EED42DEF792140EE /* PreviewSamples.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewSamples.swift; sourceTree = "<group>"; };
 		FA9A9C72C19F9A029933648C /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		BCEC2C4A823DEC45928CA6E2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9D22E32298D6890C76A42085 /* PostHog in Frameworks */,
+				3D005C4BBA6025C34B96D861 /* Sentry in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		0A4932905DCEA4EB59A42E54 /* Resources */ = {
@@ -185,6 +201,7 @@
 		B13A1AEC46A4CC242F18A9D1 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				54F3560F788EC4A94E9909A0 /* Analytics.swift */,
 				4CABAF07D2D4B8ABE6EE3FCA /* AppSettings.swift */,
 				5A71946812B0A81DA6E70A8E /* AudioPlayerController.swift */,
 				3938DD84F481914666EBD96C /* HearItAPIClient.swift */,
@@ -258,6 +275,7 @@
 			buildPhases = (
 				CEBE826AF024987C0F312640 /* Sources */,
 				EBD7E0EF48D67A3179BCC635 /* Resources */,
+				BCEC2C4A823DEC45928CA6E2 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -265,6 +283,8 @@
 			);
 			name = HearIt;
 			packageProductDependencies = (
+				CE4352C5A050B4DC22E2A42B /* PostHog */,
+				DB17BEC52CCAE6649EE60610 /* Sentry */,
 			);
 			productName = HearIt;
 			productReference = 92F42827EE00E24900D2F408 /* HearIt.app */;
@@ -293,6 +313,10 @@
 			);
 			mainGroup = 3F79E7304691E64456D3B0C2;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				201AB899CF38260A80567AE1 /* XCRemoteSwiftPackageReference "posthog-ios" */,
+				945C68938987B159D09DAA2A /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D4DDBA4C1AECB58BF044B7B8 /* Products */;
 			projectDirPath = "";
@@ -329,6 +353,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6B58532F5C7E786DA796EE2D /* Analytics.swift in Sources */,
 				DA8C3E3FA78FA2185595D523 /* AppModel+Preview.swift in Sources */,
 				F29C597C21FC77864155B462 /* AppModel.swift in Sources */,
 				EECEA73D8BF348F63683801B /* AppSettings.swift in Sources */,
@@ -604,6 +629,38 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		201AB899CF38260A80567AE1 /* XCRemoteSwiftPackageReference "posthog-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/PostHog/posthog-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.0.0;
+			};
+		};
+		945C68938987B159D09DAA2A /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CE4352C5A050B4DC22E2A42B /* PostHog */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 201AB899CF38260A80567AE1 /* XCRemoteSwiftPackageReference "posthog-ios" */;
+			productName = PostHog;
+		};
+		DB17BEC52CCAE6649EE60610 /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 945C68938987B159D09DAA2A /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9CE30797020252CE02F7A8A6 /* Project object */;
 }

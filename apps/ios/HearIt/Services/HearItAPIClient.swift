@@ -58,6 +58,55 @@ struct HearItAPIClient {
         return response.job
     }
 
+    func downloadNarrationAudio(from url: URL) async throws -> Data {
+        var request = URLRequest(url: url)
+        request.httpMethod = HTTPMethod.get.rawValue
+        request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
+
+        if let tokenProvider, let token = await tokenProvider() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        #if DEBUG
+        print("[HearIt] GET \(url.absoluteString)")
+        #endif
+
+        let (data, response) = try await session.data(for: request)
+        let httpResponse = response as? HTTPURLResponse
+
+        #if DEBUG
+        print("[HearIt] GET \(url.absoluteString) → \(httpResponse?.statusCode ?? -1) (\(data.count) bytes)")
+        #endif
+
+        guard let httpResponse else {
+            let apiError = APIError.invalidResponse
+            SentrySDK.capture(error: apiError) { scope in
+                scope.setContext(value: ["path": url.path, "method": HTTPMethod.get.rawValue], key: "api_request")
+            }
+            throw apiError
+        }
+
+        guard (200 ..< 300).contains(httpResponse.statusCode) else {
+            let apiError: APIError
+            if let decoded = try? decoder.decode(ErrorResponse.self, from: data) {
+                apiError = .server(decoded.error)
+            } else {
+                apiError = .server("The Hear It API returned status \(httpResponse.statusCode).")
+            }
+
+            SentrySDK.capture(error: apiError) { scope in
+                scope.setContext(value: [
+                    "path": url.path,
+                    "method": HTTPMethod.get.rawValue,
+                    "statusCode": httpResponse.statusCode,
+                ], key: "api_request")
+            }
+            throw apiError
+        }
+
+        return data
+    }
+
     static func resolveURL(_ rawValue: String?, relativeTo baseURL: URL) -> URL? {
         guard let rawValue, !rawValue.isEmpty else { return nil }
 

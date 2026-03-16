@@ -18,10 +18,15 @@ import type {
 } from "./types.js";
 
 export class AudioJobService {
+  private static readonly NARRATION_AUDIO_TTL_MS = 15 * 60 * 1000;
   private readonly jobStore: JobStore;
   private readonly audioStore: AudioStore;
   private readonly speechProvider: SpeechProvider;
   private initPromise: Promise<void> | null = null;
+  private readonly transientNarrationAudio = new Map<
+    string,
+    { buffer: Buffer; contentType: string; expiresAt: number }
+  >();
 
   constructor(options: {
     jobStore: JobStore;
@@ -94,6 +99,7 @@ export class AudioJobService {
 
   async deleteJob(jobId: string, userId?: string): Promise<boolean> {
     await this.init();
+    this.transientNarrationAudio.delete(jobId);
     if (userId) return this.jobStore.deleteForUser(jobId, userId);
     return this.jobStore.delete(jobId);
   }
@@ -108,21 +114,23 @@ export class AudioJobService {
     await this.updateJob(jobId, { status: "processing", error: null });
 
     try {
-      const fileKey = buildAudioFileKey(
-        queuedJob.article.title ?? queuedJob.article.url,
-        queuedJob.speechOptions.voice,
-        `job-${jobId}`,
-      );
-
       const result = await this.speechProvider.synthesize(
         queuedJob.article,
         queuedJob.speechOptions,
-        { audioStore: this.audioStore, fileKey },
+        {},
       );
+
+      if (result.audioData) {
+        this.setNarrationAudio(
+          jobId,
+          result.audioData,
+          result.contentType ?? "audio/mpeg",
+        );
+      }
 
       await this.updateJob(jobId, {
         status: "completed",
-        audioUrl: result.audioUrl,
+        audioUrl: null,
         playlistUrl: result.playlistUrl,
         audioSegments: result.audioSegments,
         durationSeconds: result.durationSeconds,
@@ -198,8 +206,48 @@ export class AudioJobService {
     }
   }
 
+  getNarrationAudio(jobId: string): { buffer: Buffer; contentType: string } | null {
+    this.pruneExpiredNarrationAudio();
+    const entry = this.transientNarrationAudio.get(jobId);
+    if (!entry) {
+      return null;
+    }
+
+    return {
+      buffer: entry.buffer,
+      contentType: entry.contentType,
+    };
+  }
+
+  hasNarrationAudio(jobId: string): boolean {
+    this.pruneExpiredNarrationAudio();
+    return this.transientNarrationAudio.has(jobId);
+  }
+
+  buildNarrationDownloadPath(jobId: string): string {
+    return `/api/jobs/${jobId}/audio`;
+  }
+
   private async updateJob(jobId: string, patch: Partial<AudioJob>) {
     await this.jobStore.update(jobId, patch);
+  }
+
+  private setNarrationAudio(jobId: string, buffer: Buffer, contentType: string) {
+    this.pruneExpiredNarrationAudio();
+    this.transientNarrationAudio.set(jobId, {
+      buffer,
+      contentType,
+      expiresAt: Date.now() + AudioJobService.NARRATION_AUDIO_TTL_MS,
+    });
+  }
+
+  private pruneExpiredNarrationAudio() {
+    const now = Date.now();
+    for (const [jobId, entry] of this.transientNarrationAudio.entries()) {
+      if (entry.expiresAt <= now) {
+        this.transientNarrationAudio.delete(jobId);
+      }
+    }
   }
 }
 

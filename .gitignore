@@ -4,6 +4,7 @@ dist/
 .env
 data/audio/
 apps/api/data/audio/
+apps/api/data/jobs.json
 
 # Yarn PnP (machine-specific)
 .yarn/install-state.gz
@@ -13,6 +14,7 @@ apps/api/data/audio/
 *.xcuserstate
 xcuserdata/
 DerivedData/
+.derived-data-local/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 
 # Temporary files

@@ -45,19 +45,23 @@ final class AppModel {
 
     let authManager: AuthManager
     @ObservationIgnored private var apiClient: HearItAPIClient
+    @ObservationIgnored private let localAudioStore: LocalNarrationAudioStore
     @ObservationIgnored private let previewMode: Bool
     @ObservationIgnored private var hasBootstrapped = false
     @ObservationIgnored private var pollingTask: Task<Void, Never>?
+    @ObservationIgnored private var narrationDownloadTasks: [String: Task<Void, Never>] = [:]
 
     init(
         settings: AppSettings = AppSettings(),
         apiClient: HearItAPIClient = HearItAPIClient(),
+        localAudioStore: LocalNarrationAudioStore = LocalNarrationAudioStore(),
         player: AudioPlayerController = AudioPlayerController(),
         authManager: AuthManager = AuthManager(),
         previewMode: Bool = false
     ) {
         self.settings = settings
         self.apiClient = apiClient
+        self.localAudioStore = localAudioStore
         self.player = player
         self.authManager = authManager
         self.previewMode = previewMode
@@ -323,6 +327,9 @@ final class AppModel {
         guard let job = jobPendingDeletion else { return }
         guard let baseURL = settings.apiBaseURL else { return }
 
+        narrationDownloadTasks[job.id]?.cancel()
+        narrationDownloadTasks[job.id] = nil
+
         // If the player is showing this job, close it
         if playerPresentation?.jobID == job.id {
             closePlayer()
@@ -336,6 +343,7 @@ final class AppModel {
 
         do {
             try await apiClient.deleteJob(jobID: job.id, baseURL: baseURL)
+            try? await localAudioStore.removeAudio(forJobID: job.id)
             jobs.removeAll(where: { $0.id == job.id })
             Analytics.track("narration_deleted", properties: ["job_id": job.id])
         } catch HearItAPIClient.APIError.unauthorized {
@@ -361,7 +369,9 @@ final class AppModel {
         settings.lastPresentedJobID = jobID
         playerPresentation = PlayerPresentation(jobID: jobID)
         preparePlayer(for: jobID)
-        if shouldAutoPlay, job(with: jobID)?.status == .completed {
+        if shouldAutoPlay,
+           let job = job(with: jobID),
+           hasPlayableAudio(for: job) {
             player.togglePlayback()
             Analytics.track("narration_played", properties: [
                 "job_id": jobID,
@@ -385,17 +395,109 @@ final class AppModel {
 
         settings.lastPresentedJobID = jobID
 
-        guard let baseURL = settings.apiBaseURL,
-              let playbackURL = job.playbackURL(relativeTo: baseURL) else {
-            player.unload()
-            return
-        }
-
         if job.status == .completed {
-            player.load(url: playbackURL, for: jobID, knownDuration: job.durationSeconds)
+            if let playbackURL = localAudioStore.audioFileURLIfExists(forJobID: jobID) {
+                player.load(url: playbackURL, for: jobID, knownDuration: job.durationSeconds)
+                return
+            }
+
+            ensureNarrationAudioDownloadRequested(for: job)
+            player.unload()
         } else {
             player.unload()
         }
+    }
+
+    func hasPlayableAudio(for job: AudioJob) -> Bool {
+        if previewMode {
+            return job.status == .completed
+        }
+
+        return localAudioStore.audioFileURLIfExists(forJobID: job.id) != nil
+    }
+
+    func isDownloadingAudio(for job: AudioJob) -> Bool {
+        return narrationDownloadTasks[job.id] != nil
+    }
+
+    private func ensureNarrationAudioDownloadRequested(for job: AudioJob) {
+        guard !previewMode else { return }
+        guard job.status == .completed else { return }
+        guard narrationDownloadTasks[job.id] == nil else { return }
+        guard localAudioStore.audioFileURLIfExists(forJobID: job.id) == nil else { return }
+        guard let baseURL = settings.apiBaseURL,
+              let downloadURL = job.narrationDownloadURL(relativeTo: baseURL) else { return }
+
+        narrationDownloadTasks[job.id] = Task { [weak self] in
+            guard let self else { return }
+
+            defer {
+                narrationDownloadTasks[job.id] = nil
+            }
+
+            do {
+                let audioData = try await apiClient.downloadNarrationAudio(from: downloadURL)
+                _ = try await localAudioStore.save(audioData, forJobID: job.id)
+
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    if playerPresentation?.jobID == job.id {
+                        preparePlayer(for: job.id)
+                        if !player.isPlaying {
+                            player.togglePlayback()
+                            Analytics.track("narration_played", properties: [
+                                "job_id": job.id,
+                                "duration_listened": 0,
+                                "pct_completed": 0,
+                            ])
+                            trackFirstNarrationCompleted()
+                        }
+                    }
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                SentrySDK.capture(error: error) { scope in
+                    scope.setTag(value: "download_narration_audio", key: "action")
+                    scope.setExtra(value: job.id, key: "jobID")
+                }
+            }
+        }
+    }
+
+    private func synchronizeNarrationDownloads(with updatedJobs: [AudioJob]) {
+        let activeJobIDs = Set(updatedJobs.map(\.id))
+        let staleJobIDs = narrationDownloadTasks.keys.filter { !activeJobIDs.contains($0) }
+
+        for jobID in staleJobIDs {
+            narrationDownloadTasks[jobID]?.cancel()
+            narrationDownloadTasks[jobID] = nil
+        }
+
+        for job in updatedJobs where job.status == .completed {
+            ensureNarrationAudioDownloadRequested(for: job)
+        }
+    }
+
+    private func preparePresentedPlayerIfNeeded(for updatedJobs: [AudioJob], previousJobs: [AudioJob]) {
+        if let currentPresentation = playerPresentation {
+            let wasCompleted = previousJobs.first(where: { $0.id == currentPresentation.jobID })?.status == .completed
+            preparePlayer(for: currentPresentation.jobID)
+            if !wasCompleted,
+               let currentJob = updatedJobs.first(where: { $0.id == currentPresentation.jobID }),
+               hasPlayableAudio(for: currentJob),
+               !player.isPlaying {
+                player.togglePlayback()
+            }
+            return
+        }
+
+        if let lastPresentedJobID = settings.lastPresentedJobID,
+           updatedJobs.contains(where: { $0.id == lastPresentedJobID }) {
+            return
+        }
+
+        settings.lastPresentedJobID = updatedJobs.first?.id
     }
 
     func job(with jobID: String) -> AudioJob? {
@@ -430,34 +532,19 @@ final class AppModel {
     }
 
     private func applyJobs(_ updatedJobs: [AudioJob]) {
-        guard jobs != updatedJobs else { return }
         let previousJobs = jobs
+        synchronizeNarrationDownloads(with: updatedJobs)
+
+        guard jobs != updatedJobs else { return }
         jobs = updatedJobs
-
-        if let currentPresentation = playerPresentation {
-            let wasCompleted = previousJobs.first(where: { $0.id == currentPresentation.jobID })?.status == .completed
-            preparePlayer(for: currentPresentation.jobID)
-            // Auto-play when a job just finished processing while the player is open
-            if !wasCompleted,
-               job(with: currentPresentation.jobID)?.status == .completed,
-               !player.isPlaying {
-                player.togglePlayback()
-            }
-            return
-        }
-
-        if let lastPresentedJobID = settings.lastPresentedJobID,
-           jobs.contains(where: { $0.id == lastPresentedJobID }) {
-            return
-        }
-
-        settings.lastPresentedJobID = jobs.first?.id
+        preparePresentedPlayerIfNeeded(for: updatedJobs, previousJobs: previousJobs)
     }
 
     private func applyUpsert(_ job: AudioJob) {
         jobs.removeAll(where: { $0.id == job.id })
         jobs.insert(job, at: 0)
         settings.lastPresentedJobID = job.id
+        ensureNarrationAudioDownloadRequested(for: job)
     }
 
     private func trackFirstNarrationCreated() {

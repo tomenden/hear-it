@@ -151,8 +151,7 @@ async function refreshJobs() {
         id: job.id,
         status: job.status,
         updatedAt: job.updatedAt,
-        audioUrl: job.audioUrl,
-        playlistUrl: job.playlistUrl,
+        audioDownloadPath: job.audioDownloadPath,
         error: job.error,
         voice: job.speechOptions?.voice,
       })),
@@ -381,9 +380,11 @@ function renderLibrary() {
     excerpt.textContent = job.article.excerpt || job.article.textContent.slice(0, 160);
     note.textContent = buildStatusMessage(job);
 
-    if (job.audioUrl || job.playlistUrl) {
+    const audioSource = resolveNarrationAudioSource(job);
+
+    if (audioSource) {
       audioLink.hidden = false;
-      audioLink.href = job.audioUrl || job.playlistUrl;
+      audioLink.href = audioSource;
       audioLink.textContent = "Open audio";
     } else {
       audioLink.hidden = true;
@@ -442,7 +443,9 @@ function renderPlayer() {
 
   elements.playerOpenLinkButton.disabled = false;
 
-  if (job.status !== "completed" || !(job.audioUrl || job.playlistUrl)) {
+  const source = resolveNarrationAudioSource(job);
+
+  if (job.status !== "completed" || !source) {
     elements.playerProcessingView.hidden = false;
     elements.processingTitle.textContent =
       job.status === "failed" ? "Narration failed" : "Generating narration...";
@@ -461,7 +464,6 @@ function renderPlayer() {
     .join("  •  ");
   elements.playerVoice.textContent = `Narrated by ${capitalize(job.speechOptions.voice)}`;
 
-  const source = job.audioUrl || job.playlistUrl;
   if (elements.playerAudio.dataset.jobId !== job.id) {
     elements.playerAudio.src = source;
     elements.playerAudio.dataset.jobId = job.id;
@@ -511,6 +513,10 @@ function setLoading(isLoading) {
 
 function syncVoiceSummary() {
   elements.selectedVoiceLabel.textContent = state.selectedVoice;
+}
+
+function resolveNarrationAudioSource(job) {
+  return job.audioDownloadPath || job.audioUrl || job.playlistUrl || null;
 }
 
 function syncVoiceSelectOptions(select, selectedValue) {

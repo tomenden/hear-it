@@ -1,8 +1,11 @@
-import postgres from "postgres";
-import { put, head } from "@vercel/blob";
+import postgres, { type JSONValue } from "postgres";
+import { put, head, del } from "@vercel/blob";
 
 import type { AudioJob } from "./types.js";
 import type { AudioStore, JobStore } from "./storage.js";
+
+/** Cast a typed object to JSONValue for postgres.js JSONB parameters. */
+const jsonb = (value: unknown) => value as JSONValue;
 
 // ---------------------------------------------------------------------------
 // Postgres JobStore
@@ -90,12 +93,12 @@ export class VercelJobStore implements JobStore {
       ) VALUES (
         ${job.id},
         ${job.status},
-        ${JSON.stringify(job.article)},
-        ${JSON.stringify(job.speechOptions)},
+        ${this.sql.json(jsonb(job.article))},
+        ${this.sql.json(jsonb(job.speechOptions))},
         ${job.provider},
         ${job.audioUrl},
         ${job.playlistUrl},
-        ${JSON.stringify(job.audioSegments)},
+        ${this.sql.json(jsonb(job.audioSegments))},
         ${job.durationSeconds},
         ${job.error},
         ${job.createdAt},
@@ -124,7 +127,7 @@ export class VercelJobStore implements JobStore {
         status = COALESCE(${patch.status ?? null}, status),
         audio_url = COALESCE(${patch.audioUrl ?? null}, audio_url),
         playlist_url = COALESCE(${patch.playlistUrl ?? null}, playlist_url),
-        audio_segments = COALESCE(${patch.audioSegments ? JSON.stringify(patch.audioSegments) : null}, audio_segments),
+        audio_segments = COALESCE(${patch.audioSegments ? this.sql.json(jsonb(patch.audioSegments)) : null}, audio_segments),
         duration_seconds = COALESCE(${patch.durationSeconds ?? null}, duration_seconds),
         error = ${patch.error !== undefined ? patch.error : null},
         updated_at = ${now}
@@ -218,6 +221,14 @@ export class VercelAudioStore implements AudioStore {
       return blob.url;
     } catch {
       return null;
+    }
+  }
+
+  async delete(key: string): Promise<void> {
+    try {
+      await del(key);
+    } catch {
+      // Ignore — blob may already be gone.
     }
   }
 }

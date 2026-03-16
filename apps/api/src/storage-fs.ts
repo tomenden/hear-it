@@ -1,4 +1,4 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import type { AudioJob } from "./types.js";
@@ -153,6 +153,14 @@ export class FileAudioStore implements AudioStore {
       return this.toPublicUrl(key);
     } catch {
       return null;
+    }
+  }
+
+  async delete(key: string): Promise<void> {
+    try {
+      await unlink(join(this.outputDir, key));
+    } catch {
+      // Ignore — file may already be gone.
     }
   }
 

@@ -2,8 +2,8 @@ node_modules/
 dist/
 .DS_Store
 .env
-data/audio/
-apps/api/data/audio/
+data/
+apps/api/data/
 
 # Yarn PnP (machine-specific)
 .pnp.*
@@ -14,9 +14,13 @@ apps/api/data/audio/
 *.xcuserstate
 xcuserdata/
 DerivedData/
+.derived-data-local/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 
 # Temporary files
 .tmp/
 .vercel
 .env*.local
+
+# dev-3.0 local config
+.dev3/config.local.json

@@ -3,10 +3,15 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { extractArticle } from "./extractor.js";
+import {
+  ArticleTooLongError,
+  MAX_NARRATION_CHARS,
+  extractArticle,
+} from "./extractor.js";
 
 const simpleArticleHtml = loadFixture("simple-article.html");
 const fallbackArticleHtml = loadFixture("fallback-article.html");
+const wikipediaArticleHtml = loadFixture("wikipedia-article.html");
 
 describe("article extraction", () => {
   it("extracts article content from supplied HTML", async () => {
@@ -38,6 +43,55 @@ describe("article extraction", () => {
     );
     expect(article.textContent).not.toContain("All rights reserved.");
     expect(article.textContent).not.toContain("Subscribe to our newsletter");
+  });
+
+  it("strips wikipedia citation noise and trailing references", async () => {
+    const article = await extractArticle({
+      url: "https://en.wikipedia.org/wiki/Chinese_room",
+      html: wikipediaArticleHtml,
+    });
+    const flattenedText = article.textContent.replace(/\s+/g, " ");
+
+    expect(flattenedText).toContain(
+      "The Chinese room argument claims that symbol manipulation alone does not amount to understanding.",
+    );
+    expect(flattenedText).toContain(
+      "Searle imagines a person in a room following rules to produce convincing Chinese replies without understanding Chinese.",
+    );
+    expect(article.textContent).not.toContain("For the video game studio");
+    expect(article.textContent).not.toContain("[1]");
+    expect(article.textContent).not.toContain("[a]");
+    expect(article.textContent).not.toContain("[edit]");
+    expect(article.textContent).not.toContain("John Searle, \"Minds, Brains, and Programs\".");
+  });
+
+  it("rejects articles that exceed narration limits", async () => {
+    const oversizedHtml = `
+      <!doctype html>
+      <html>
+        <head><title>Very Long Article</title></head>
+        <body>
+          <article>
+            <h1>Very Long Article</h1>
+            <p>${"A".repeat(MAX_NARRATION_CHARS + 500)}</p>
+          </article>
+        </body>
+      </html>
+    `;
+
+    await expect(
+      extractArticle({
+        url: "https://example.com/very-long",
+        html: oversizedHtml,
+      }),
+    ).rejects.toMatchObject({
+      name: "ArticleTooLongError",
+      code: "article_too_long",
+      statusCode: 422,
+      details: {
+        maxCharacterCount: MAX_NARRATION_CHARS,
+      },
+    });
   });
 });
 

@@ -19,6 +19,8 @@ struct RootView: View {
                 NavigationStack {
                     LibraryView(model: model)
                 }
+            case .profile:
+                ProfileView(model: model)
             }
         }
         .overlay(alignment: .top) {
@@ -66,6 +68,7 @@ private struct AppTabBar: View {
         HStack(spacing: 0) {
             tabButton(title: "HOME", systemImage: "house.fill", tab: .home)
             tabButton(title: "LIBRARY", systemImage: "books.vertical.fill", tab: .library)
+            tabButton(title: "PROFILE", systemImage: "person.fill", tab: .profile)
         }
         .padding(4)
         .frame(maxWidth: .infinity)

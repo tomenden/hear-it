@@ -94,6 +94,7 @@ export class AudioJobService {
 
   async deleteJob(jobId: string, userId?: string): Promise<boolean> {
     await this.init();
+    await this.audioStore.delete(`narrations/narration-${jobId}.mp3`);
     if (userId) return this.jobStore.deleteForUser(jobId, userId);
     return this.jobStore.delete(jobId);
   }
@@ -108,21 +109,25 @@ export class AudioJobService {
     await this.updateJob(jobId, { status: "processing", error: null });
 
     try {
-      const fileKey = buildAudioFileKey(
-        queuedJob.article.title ?? queuedJob.article.url,
-        queuedJob.speechOptions.voice,
-        `job-${jobId}`,
-      );
-
       const result = await this.speechProvider.synthesize(
         queuedJob.article,
         queuedJob.speechOptions,
-        { audioStore: this.audioStore, fileKey },
+        {},
       );
+
+      let audioUrl: string | null = null;
+      if (result.audioData) {
+        const key = `narrations/narration-${jobId}.mp3`;
+        audioUrl = await this.audioStore.put(
+          key,
+          result.audioData,
+          result.contentType ?? "audio/mpeg",
+        );
+      }
 
       await this.updateJob(jobId, {
         status: "completed",
-        audioUrl: result.audioUrl,
+        audioUrl,
         playlistUrl: result.playlistUrl,
         audioSegments: result.audioSegments,
         durationSeconds: result.durationSeconds,
@@ -134,7 +139,17 @@ export class AudioJobService {
         tags: {
           jobId,
           voice: queuedJob.speechOptions.voice,
-          url: queuedJob.article.url,
+          provider: queuedJob.provider,
+        },
+        contexts: {
+          job: {
+            id: jobId,
+            articleUrl: queuedJob.article.url,
+            articleTitle: queuedJob.article.title,
+            wordCount: queuedJob.article.wordCount,
+            voice: queuedJob.speechOptions.voice,
+            provider: queuedJob.provider,
+          },
         },
       });
       trackEvent("tts_failed", {
@@ -196,6 +211,20 @@ export class AudioJobService {
         void this.processJob(job.id);
       }
     }
+  }
+
+  /** Returns the blob URL for the narration audio, or null if not yet stored. */
+  async getNarrationAudioUrl(jobId: string): Promise<string | null> {
+    return this.audioStore.head(`narrations/narration-${jobId}.mp3`);
+  }
+
+  /** Delete the narration audio blob (cleanup after client download). */
+  async deleteNarrationAudio(jobId: string): Promise<void> {
+    await this.audioStore.delete(`narrations/narration-${jobId}.mp3`);
+  }
+
+  buildNarrationDownloadPath(jobId: string): string {
+    return `/api/jobs/${jobId}/audio`;
   }
 
   private async updateJob(jobId: string, patch: Partial<AudioJob>) {

@@ -18,12 +18,8 @@ struct PlayerView: View {
     }
 
     private var hasPlayableAudio: Bool {
-        guard let currentJob,
-              let baseURL = model.settings.apiBaseURL else {
-            return false
-        }
-
-        return currentJob.playbackURL(relativeTo: baseURL) != nil
+        guard let currentJob else { return false }
+        return model.hasPlayableAudio(for: currentJob)
     }
 
     var body: some View {
@@ -219,6 +215,8 @@ struct PlayerView: View {
 
     private func processingView(for job: AudioJob) -> some View {
         let isFailed = job.status == .failed
+        let isDownloadingToDevice = job.status == .completed && !hasPlayableAudio && model.isDownloadingAudio(for: job)
+        let isAudioUnavailable = job.status == .completed && !hasPlayableAudio && !model.isDownloadingAudio(for: job)
         let barCount = 15
         let barWidth: CGFloat = 4
         let barSpacing: CGFloat = 5
@@ -229,7 +227,7 @@ struct PlayerView: View {
             Ellipse()
                 .fill(
                     RadialGradient(
-                        colors: isFailed
+                        colors: (isFailed || isAudioUnavailable)
                             ? [AppTheme.Colors.error.opacity(0.094), AppTheme.Colors.error.opacity(0)]
                             : [AppTheme.Colors.accentGreen.opacity(0.094), AppTheme.Colors.accentGreen.opacity(0)],
                         center: .center,
@@ -240,8 +238,8 @@ struct PlayerView: View {
                 .frame(width: 140, height: 140)
 
             // Waveform bars
-            if isFailed {
-                Image(systemName: "exclamationmark.triangle.fill")
+            if isFailed || isAudioUnavailable {
+                Image(systemName: isFailed ? "exclamationmark.triangle.fill" : "arrow.trianglehead.2.clockwise")
                     .font(.system(size: 42, weight: .bold))
                     .foregroundStyle(AppTheme.Colors.error)
             } else {
@@ -268,9 +266,17 @@ struct PlayerView: View {
 
             // Status text
             VStack(spacing: 10) {
-                Text(isFailed ? "Narration failed" : "Generating narration…")
+                Text(
+                    isFailed
+                        ? "Narration failed"
+                        : isAudioUnavailable
+                            ? "Audio unavailable"
+                            : isDownloadingToDevice
+                                ? "Downloading narration…"
+                                : "Generating narration…"
+                )
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(isFailed ? AppTheme.Colors.error : AppTheme.Colors.textPrimary)
+                    .foregroundStyle((isFailed || isAudioUnavailable) ? AppTheme.Colors.error : AppTheme.Colors.textPrimary)
 
                 Text(job.article.displayTitle)
                     .font(.system(size: 15, weight: .medium))
@@ -289,7 +295,7 @@ struct PlayerView: View {
                     .fill(AppTheme.Colors.muted)
                     .frame(width: 200, height: 4)
 
-                if isFailed {
+                if isFailed || isAudioUnavailable {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(AppTheme.Colors.error)
                         .frame(width: 200, height: 4)
@@ -310,9 +316,17 @@ struct PlayerView: View {
             .clipped()
 
             // Tertiary hint
-            Text(isFailed ? job.statusMessage : "This may take a moment")
+            Text(
+                isFailed
+                    ? job.statusMessage
+                    : isAudioUnavailable
+                        ? "Delete this narration and create a new one to listen again."
+                        : isDownloadingToDevice
+                            ? "Saving this narration to your device."
+                            : "This may take a moment"
+            )
                 .font(.system(size: 12))
-                .foregroundStyle(isFailed ? AppTheme.Colors.error : AppTheme.Colors.textTertiary)
+                .foregroundStyle((isFailed || isAudioUnavailable) ? AppTheme.Colors.error : AppTheme.Colors.textTertiary)
                 .multilineTextAlignment(.center)
         }
         .padding(.top, 80)

@@ -1,13 +1,17 @@
+import { once } from "node:events";
+import { createServer } from "node:http";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AddressInfo } from "node:net";
 
 import { describe, expect, it } from "vitest";
 import * as jose from "jose";
 
 import { createAuthMiddleware } from "./auth.js";
-import { createAudioJobSchema, extractRequestSchema } from "./app.js";
-import { AudioJobService, isTerminalStatus } from "./jobs.js";
+import { createApp, createAudioJobSchema, extractRequestSchema } from "./app.js";
+import { MAX_NARRATION_CHARS } from "./extractor.js";
+import { AudioJobService } from "./jobs.js";
 import { FileJobStore, FileAudioStore } from "./storage-fs.js";
 import type {
   AudioRenderResult,
@@ -24,17 +28,23 @@ class InstantSpeechProvider implements SpeechProvider {
     _speechOptions: SpeechOptions,
     context: SpeechSynthesisContext,
   ): Promise<AudioRenderResult> {
-    const audioUrl = await context.audioStore.put(
-      context.fileKey,
-      Buffer.from("ID3FAKEAUDIO"),
-      "audio/mpeg",
-    );
+    const audioData = Buffer.from("ID3FAKEAUDIO");
+    const audioUrl =
+      context.audioStore && context.fileKey
+        ? await context.audioStore.put(
+            context.fileKey,
+            audioData,
+            "audio/mpeg",
+          )
+        : null;
 
     return {
       audioUrl,
       playlistUrl: null,
-      audioSegments: [{ url: audioUrl, durationSeconds: 42 }],
+      audioSegments: audioUrl ? [{ url: audioUrl, durationSeconds: 42 }] : [],
       durationSeconds: 42,
+      audioData,
+      contentType: "audio/mpeg",
     };
   }
 
@@ -77,21 +87,22 @@ const sampleHtml = `
 </html>
 `;
 
-function createTestService(audioDir: string, jobsFilePath: string) {
+function createTestContext(audioDir: string, jobsFilePath: string) {
   const audioStore = new FileAudioStore(audioDir, "/audio");
   const jobStore = new FileJobStore(jobsFilePath);
-  return new AudioJobService({
+  const service = new AudioJobService({
     jobStore,
     audioStore,
     speechProvider: new InstantSpeechProvider(),
   });
+  return { service, jobStore, audioStore };
 }
 
 describe("audio job service", () => {
   it("creates and completes an audio job", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
-    const service = createTestService(audioDir, jobsFilePath);
+    const { service } = createTestContext(audioDir, jobsFilePath);
     const queuedJob = await service.createJob({
       url: "https://example.com/posts/jobs",
       html: sampleHtml,
@@ -108,16 +119,17 @@ describe("audio job service", () => {
 
     const completedJob = await service.getJob(queuedJob.id);
     expect(completedJob?.status).toBe("completed");
-    expect(completedJob?.audioUrl).toContain("/audio/queueing-speech-jobs--narrator--job-1.mp3");
+    expect(completedJob?.audioUrl).toContain("narration-");
     expect(completedJob?.playlistUrl).toBeNull();
-    expect(completedJob?.audioSegments).toHaveLength(1);
+    expect(completedJob?.audioSegments).toHaveLength(0);
     expect(completedJob?.durationSeconds).toBe(42);
+    expect(await service.getNarrationAudioUrl(queuedJob.id)).toBeTruthy();
   });
 
   it("reloads persisted jobs from disk", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
-    const firstService = createTestService(audioDir, jobsFilePath);
+    const { service: firstService } = createTestContext(audioDir, jobsFilePath);
 
     const createdJob = await firstService.createJob({
       url: "https://example.com/posts/jobs",
@@ -125,21 +137,104 @@ describe("audio job service", () => {
     });
     await firstService.processJob(createdJob.id);
 
-    const secondService = createTestService(audioDir, jobsFilePath);
+    const { service: secondService } = createTestContext(audioDir, jobsFilePath);
     await secondService.init();
 
     const persistedJob = await secondService.getJob(createdJob.id);
     expect(persistedJob?.status).toBe("completed");
     expect(await secondService.listJobs()).toHaveLength(1);
-    expect(persistedJob?.audioSegments).toHaveLength(1);
+    expect(persistedJob?.audioSegments).toHaveLength(0);
+    // Audio blob persists across service restarts (unlike old in-memory cache).
+    expect(await secondService.getNarrationAudioUrl(createdJob.id)).toBeTruthy();
   });
 
   it("creates a cached voice preview", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
-    const service = createTestService(audioDir, join(audioDir, "jobs.json"));
+    const { service } = createTestContext(audioDir, join(audioDir, "jobs.json"));
 
     const preview = await service.getOrCreateVoicePreview("alloy");
     expect(preview.audioUrl).toBe("/audio/previews/voice-preview--alloy.mp3");
+  });
+
+  it("persists narration audio to the audio store", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const { service, jobStore, audioStore } = createTestContext(audioDir, jobsFilePath);
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/jobs",
+      html: sampleHtml,
+    });
+    await service.processJob(queuedJob.id);
+
+    const app = createApp({ audioJobService: service, jobStore, audioStore });
+    const server = createServer(app);
+    server.listen(0);
+    await once(server, "listening");
+
+    try {
+      const address = server.address() as AddressInfo;
+      const jobResponse = await fetch(`http://127.0.0.1:${address.port}/api/jobs/${queuedJob.id}`);
+      const jobPayload = await jobResponse.json() as { job: { audioDownloadPath: string | null } };
+      expect(jobPayload.job.audioDownloadPath).toBe(`/api/jobs/${queuedJob.id}/audio`);
+
+      // Verify audio was persisted to blob store
+      const audioUrl = await service.getNarrationAudioUrl(queuedJob.id);
+      expect(audioUrl).toBeTruthy();
+
+      // Verify cleanup works
+      await service.deleteNarrationAudio(queuedJob.id);
+      expect(await service.getNarrationAudioUrl(queuedJob.id)).toBeNull();
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
+  });
+
+  it("rejects oversized articles before creating a job", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const { service, jobStore, audioStore } = createTestContext(audioDir, jobsFilePath);
+    const app = createApp({ audioJobService: service, jobStore, audioStore });
+    const server = createServer(app);
+    server.listen(0);
+    await once(server, "listening");
+
+    try {
+      const address = server.address() as AddressInfo;
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://example.com/posts/too-long",
+          html: `
+            <!doctype html>
+            <html>
+              <head><title>Very Long Article</title></head>
+              <body>
+                <article>
+                  <h1>Very Long Article</h1>
+                  <p>${"A".repeat(MAX_NARRATION_CHARS + 500)}</p>
+                </article>
+              </body>
+            </html>
+          `,
+        }),
+      });
+      const payload = await response.json() as {
+        error: string;
+        code: string;
+        details: { maxCharacterCount: number; characterCount: number };
+      };
+
+      expect(response.status).toBe(422);
+      expect(payload.code).toBe("article_too_long");
+      expect(payload.details.maxCharacterCount).toBe(MAX_NARRATION_CHARS);
+      expect(payload.details.characterCount).toBeGreaterThan(MAX_NARRATION_CHARS);
+      expect(await service.listJobs()).toHaveLength(0);
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
   });
 
   it("applies request validation for audio job creation", () => {

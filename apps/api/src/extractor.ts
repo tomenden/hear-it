@@ -6,6 +6,7 @@ import { trackEvent } from "./analytics.js";
 import type { ExtractArticleInput, ExtractedArticle } from "./types.js";
 
 const WORDS_PER_MINUTE = 160;
+export const MAX_NARRATION_CHARS = 4096;
 const MIN_PARAGRAPH_LENGTH = 40;
 const BOILERPLATE_PATTERNS = [
   /subscribe/i,
@@ -15,6 +16,59 @@ const BOILERPLATE_PATTERNS = [
   /sign up/i,
   /all rights reserved/i,
 ];
+const WIKIPEDIA_REMOVAL_SELECTORS = [
+  ".hatnote",
+  ".shortdescription",
+  ".mw-editsection",
+  ".reference",
+  ".reflist",
+  ".mw-references-wrap",
+  ".navbox",
+  ".vertical-navbox",
+  ".metadata",
+  ".ambox",
+  ".infobox",
+  ".sidebar",
+  ".toc",
+  ".thumb",
+  ".portal",
+  ".catlinks",
+  ".printfooter",
+  "sup.reference",
+  "sup[id^='cite_ref']",
+  "ol.references",
+  "ul.gallery",
+];
+const WIKIPEDIA_TRAILING_SECTIONS = new Set([
+  "references",
+  "notes",
+  "citations",
+  "sources",
+  "further reading",
+  "external links",
+  "see also",
+]);
+
+export class ArticleTooLongError extends Error {
+  readonly code = "article_too_long";
+  readonly statusCode = 422;
+
+  constructor(
+    readonly details: {
+      url: string;
+      title: string | null;
+      characterCount: number;
+      maxCharacterCount: number;
+      wordCount: number;
+      estimatedMinutes: number;
+    },
+  ) {
+    super(
+      `This article is too long to narrate right now (${details.characterCount.toLocaleString()} characters, limit ${details.maxCharacterCount.toLocaleString()}). Try a shorter article.`,
+    );
+    this.name = "ArticleTooLongError";
+  }
+}
 
 export async function extractArticle(
   input: ExtractArticleInput,
@@ -22,11 +76,12 @@ export async function extractArticle(
   const html = input.html ?? (await fetchHtml(input.url));
   const dom = new JSDOM(html, { url: input.url });
   const document = dom.window.document;
+  sanitizeDocumentForExtraction(document, input.url);
   const article = new Readability(document.cloneNode(true) as Document).parse();
   const fallback = buildFallbackExtraction(document);
   const extracted = pickBestExtraction(article?.textContent ?? "", fallback.textContent);
   const title = article?.title ?? fallback.title;
-  const bodyText = normalizeText(extracted);
+  const bodyText = normalizeExtractedText(extracted, input.url);
 
   if (!bodyText) {
     const err = new Error("Failed to extract article content.");
@@ -42,6 +97,38 @@ export async function extractArticle(
   const textContent = title ? `${title}\n\n${bodyText}` : bodyText;
   const wordCount = countWords(textContent);
   const canonicalUrl = detectCanonicalUrl(document, input.url);
+  const estimatedMinutes = Math.max(1, Math.ceil(wordCount / WORDS_PER_MINUTE));
+
+  if (textContent.length > MAX_NARRATION_CHARS) {
+    const details = {
+      url: canonicalUrl,
+      title,
+      characterCount: textContent.length,
+      maxCharacterCount: MAX_NARRATION_CHARS,
+      wordCount,
+      estimatedMinutes,
+    };
+
+    console.warn("[extractor] article_too_long", details);
+    Sentry.captureMessage("Article too long for narration", {
+      level: "warning",
+      tags: {
+        url: canonicalUrl,
+        title: title ?? "untitled",
+      },
+      extra: details,
+    });
+    trackEvent("article_too_long", {
+      url: canonicalUrl,
+      domain: safeHostname(canonicalUrl),
+      title,
+      character_count: details.characterCount,
+      max_character_count: details.maxCharacterCount,
+      word_count: wordCount,
+      estimated_minutes: estimatedMinutes,
+    });
+    throw new ArticleTooLongError(details);
+  }
 
   return {
     url: canonicalUrl,
@@ -51,7 +138,7 @@ export async function extractArticle(
     excerpt: article?.excerpt ?? fallback.excerpt,
     textContent,
     wordCount,
-    estimatedMinutes: Math.max(1, Math.ceil(wordCount / WORDS_PER_MINUTE)),
+    estimatedMinutes,
   };
 }
 
@@ -80,6 +167,16 @@ function normalizeText(text: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
+}
+
+function normalizeExtractedText(text: string, sourceUrl: string): string {
+  let normalized = normalizeText(text);
+
+  if (isWikipediaUrl(sourceUrl)) {
+    normalized = stripWikipediaArtifacts(normalized);
+  }
+
+  return normalized;
 }
 
 export function countWords(text: string): number {
@@ -166,6 +263,18 @@ function buildFallbackExtraction(document: Document) {
   };
 }
 
+function sanitizeDocumentForExtraction(document: Document, sourceUrl: string) {
+  if (!isWikipediaUrl(sourceUrl)) {
+    return;
+  }
+
+  for (const selector of WIKIPEDIA_REMOVAL_SELECTORS) {
+    for (const node of Array.from(document.querySelectorAll(selector))) {
+      node.remove();
+    }
+  }
+}
+
 function selectContentRoot(document: Document): Element | null {
   const preferredSelectors = [
     "article",
@@ -217,6 +326,39 @@ function detectCanonicalUrl(document: Document, fallbackUrl: string): string {
   } catch {
     return fallbackUrl;
   }
+}
+
+function isWikipediaUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname.endsWith("wikipedia.org");
+  } catch {
+    return false;
+  }
+}
+
+function stripWikipediaArtifacts(text: string): string {
+  const cleanedLines: string[] = [];
+
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine
+      .replace(/\[(?:edit|citation needed)\]/gi, "")
+      .replace(/\[(?:\d+|[a-z]{1,3}|[A-Z]{1,3})\]/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+
+    if (!line) {
+      cleanedLines.push("");
+      continue;
+    }
+
+    if (WIKIPEDIA_TRAILING_SECTIONS.has(line.toLowerCase())) {
+      break;
+    }
+
+    cleanedLines.push(line);
+  }
+
+  return normalizeText(cleanedLines.join("\n"));
 }
 
 function readMetaContent(document: Document, selector: string): string | null {

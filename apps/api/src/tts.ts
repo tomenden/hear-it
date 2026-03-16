@@ -16,9 +16,9 @@ export const VOICE_PREVIEW_TEXT =
   "This is Hear It. I turn articles into clear, natural audio you can listen to on the move.";
 
 export interface SpeechSynthesisContext {
-  audioStore: AudioStore;
+  audioStore?: AudioStore;
   /** Path-like key for the audio file, e.g. "voice-preview--alloy.mp3" */
-  fileKey: string;
+  fileKey?: string;
 }
 
 export interface SpeechProvider {
@@ -47,19 +47,20 @@ export class FakeSpeechProvider implements SpeechProvider {
     _speechOptions: SpeechOptions,
     context: SpeechSynthesisContext,
   ): Promise<AudioRenderResult> {
-    // In fake mode we don't write a real file — just return a plausible URL.
-    const audioUrl = await context.audioStore.put(
-      context.fileKey,
-      Buffer.from("fake-audio"),
-      "audio/mpeg",
-    );
+    const audioData = Buffer.from("fake-audio");
     const durationSeconds = Math.max(15, Math.ceil(countWords(text) / 2.7));
+    const audioUrl =
+      context.audioStore && context.fileKey
+        ? await context.audioStore.put(context.fileKey, audioData, "audio/mpeg")
+        : null;
 
     return {
       audioUrl,
       playlistUrl: null,
-      audioSegments: [{ url: audioUrl, durationSeconds }],
+      audioSegments: audioUrl ? [{ url: audioUrl, durationSeconds }] : [],
       durationSeconds,
+      audioData,
+      contentType: "audio/mpeg",
     };
   }
 
@@ -109,23 +110,33 @@ export class OpenAISpeechProvider implements SpeechProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI speech generation failed: ${response.status}`);
+      let detail = "";
+      try {
+        const body = await response.json() as { error?: { message?: string; code?: string; type?: string } };
+        detail = body.error?.message ?? JSON.stringify(body);
+      } catch {
+        detail = await response.text().catch(() => "");
+      }
+      throw new Error(
+        `OpenAI speech generation failed: ${response.status}${detail ? ` — ${detail}` : ""}`,
+      );
     }
 
     const buffer = Buffer.from(await response.arrayBuffer());
-    const audioUrl = await context.audioStore.put(
-      context.fileKey,
-      buffer,
-      "audio/mpeg",
-    );
+    const audioUrl =
+      context.audioStore && context.fileKey
+        ? await context.audioStore.put(context.fileKey, buffer, "audio/mpeg")
+        : null;
 
     const durationSeconds = estimateDurationSeconds(text);
 
     return {
       audioUrl,
       playlistUrl: null,
-      audioSegments: [{ url: audioUrl, durationSeconds }],
+      audioSegments: audioUrl ? [{ url: audioUrl, durationSeconds }] : [],
       durationSeconds,
+      audioData: buffer,
+      contentType: "audio/mpeg",
     };
   }
 }

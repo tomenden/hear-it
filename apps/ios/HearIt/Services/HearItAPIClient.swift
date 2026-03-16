@@ -63,6 +63,10 @@ struct HearItAPIClient {
         request.httpMethod = HTTPMethod.get.rawValue
         request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
 
+        if let tokenProvider, let token = await tokenProvider() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
         #if DEBUG
         print("[HearIt] GET \(url.absoluteString)")
         #endif

@@ -10,7 +10,8 @@ import * as jose from "jose";
 
 import { createAuthMiddleware } from "./auth.js";
 import { createApp, createAudioJobSchema, extractRequestSchema } from "./app.js";
-import { AudioJobService, isTerminalStatus } from "./jobs.js";
+import { MAX_NARRATION_CHARS } from "./extractor.js";
+import { AudioJobService } from "./jobs.js";
 import { FileJobStore, FileAudioStore } from "./storage-fs.js";
 import type {
   AudioRenderResult,
@@ -180,6 +181,53 @@ describe("audio job service", () => {
       expect(audioResponse.status).toBe(200);
       expect(audioResponse.headers.get("content-type")).toContain("audio/mpeg");
       expect(Buffer.from(await audioResponse.arrayBuffer()).toString("utf8")).toBe("ID3FAKEAUDIO");
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
+  });
+
+  it("rejects oversized articles before creating a job", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const { service, jobStore, audioStore } = createTestContext(audioDir, jobsFilePath);
+    const app = createApp({ audioJobService: service, jobStore, audioStore });
+    const server = createServer(app);
+    server.listen(0);
+    await once(server, "listening");
+
+    try {
+      const address = server.address() as AddressInfo;
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://example.com/posts/too-long",
+          html: `
+            <!doctype html>
+            <html>
+              <head><title>Very Long Article</title></head>
+              <body>
+                <article>
+                  <h1>Very Long Article</h1>
+                  <p>${"A".repeat(MAX_NARRATION_CHARS + 500)}</p>
+                </article>
+              </body>
+            </html>
+          `,
+        }),
+      });
+      const payload = await response.json() as {
+        error: string;
+        code: string;
+        details: { maxCharacterCount: number; characterCount: number };
+      };
+
+      expect(response.status).toBe(422);
+      expect(payload.code).toBe("article_too_long");
+      expect(payload.details.maxCharacterCount).toBe(MAX_NARRATION_CHARS);
+      expect(payload.details.characterCount).toBeGreaterThan(MAX_NARRATION_CHARS);
+      expect(await service.listJobs()).toHaveLength(0);
     } finally {
       server.close();
       await once(server, "close");

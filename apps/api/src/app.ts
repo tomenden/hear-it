@@ -4,8 +4,8 @@ import rateLimit from "express-rate-limit";
 import { join } from "node:path";
 import { z } from "zod";
 
+import { ArticleTooLongError, extractArticle } from "./extractor.js";
 import { createAuthMiddleware } from "./auth.js";
-import { extractArticle } from "./extractor.js";
 import { AudioJobService } from "./jobs.js";
 import type { AudioStore, JobStore } from "./storage.js";
 import { AVAILABLE_VOICES } from "./tts.js";
@@ -81,6 +81,31 @@ export function createApp(options: CreateAppOptions) {
         ? audioJobService.buildNarrationDownloadPath(job.id)
         : null,
   });
+  const errorResponse = (
+    error: unknown,
+    fallbackMessage: string,
+  ): {
+    status: number;
+    body: Record<string, unknown>;
+  } => {
+    if (error instanceof ArticleTooLongError) {
+      return {
+        status: error.statusCode,
+        body: {
+          error: error.message,
+          code: error.code,
+          details: error.details,
+        },
+      };
+    }
+
+    return {
+      status: 422,
+      body: {
+        error: error instanceof Error ? error.message : fallbackMessage,
+      },
+    };
+  };
 
   void audioJobService.init().then(() => audioJobService.requeueInterruptedJobs());
 
@@ -173,10 +198,8 @@ export function createApp(options: CreateAppOptions) {
       const article = await extractArticle(parsedBody.data as ExtractArticleInput);
       res.json({ article });
     } catch (error) {
-      res.status(422).json({
-        error:
-          error instanceof Error ? error.message : "Article extraction failed.",
-      });
+      const response = errorResponse(error, "Article extraction failed.");
+      res.status(response.status).json(response.body);
     }
   });
 
@@ -207,9 +230,8 @@ export function createApp(options: CreateAppOptions) {
         void work;
       }
     } catch (error) {
-      res.status(422).json({
-        error: error instanceof Error ? error.message : "Failed to create audio job.",
-      });
+      const response = errorResponse(error, "Failed to create audio job.");
+      res.status(response.status).json(response.body);
     }
   });
 

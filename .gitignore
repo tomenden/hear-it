@@ -4,6 +4,7 @@ dist/
 .env
 data/audio/
 apps/api/data/audio/
+apps/api/data/jobs.json
 
 # Yarn PnP (machine-specific)
 .yarn/install-state.gz

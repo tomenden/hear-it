@@ -37,4 +37,7 @@ export interface AudioStore {
 
   /** Check whether a key already exists and return its public URL, or null. */
   head(key: string): Promise<string | null>;
+
+  /** Delete a blob by key. No-op if it doesn't exist. */
+  delete(key: string): Promise<void>;
 }

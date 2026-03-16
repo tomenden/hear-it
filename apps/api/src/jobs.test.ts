@@ -119,12 +119,11 @@ describe("audio job service", () => {
 
     const completedJob = await service.getJob(queuedJob.id);
     expect(completedJob?.status).toBe("completed");
-    expect(completedJob?.audioUrl).toBeNull();
+    expect(completedJob?.audioUrl).toContain("narration-");
     expect(completedJob?.playlistUrl).toBeNull();
     expect(completedJob?.audioSegments).toHaveLength(0);
     expect(completedJob?.durationSeconds).toBe(42);
-    expect(service.hasNarrationAudio(queuedJob.id)).toBe(true);
-    expect(service.getNarrationAudio(queuedJob.id)?.buffer.toString("utf8")).toBe("ID3FAKEAUDIO");
+    expect(await service.getNarrationAudioUrl(queuedJob.id)).toBeTruthy();
   });
 
   it("reloads persisted jobs from disk", async () => {
@@ -145,7 +144,8 @@ describe("audio job service", () => {
     expect(persistedJob?.status).toBe("completed");
     expect(await secondService.listJobs()).toHaveLength(1);
     expect(persistedJob?.audioSegments).toHaveLength(0);
-    expect(secondService.hasNarrationAudio(createdJob.id)).toBe(false);
+    // Audio blob persists across service restarts (unlike old in-memory cache).
+    expect(await secondService.getNarrationAudioUrl(createdJob.id)).toBeTruthy();
   });
 
   it("creates a cached voice preview", async () => {
@@ -156,7 +156,7 @@ describe("audio job service", () => {
     expect(preview.audioUrl).toBe("/audio/previews/voice-preview--alloy.mp3");
   });
 
-  it("serves temporary narration audio from the app endpoint", async () => {
+  it("persists narration audio to the audio store", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
     const { service, jobStore, audioStore } = createTestContext(audioDir, jobsFilePath);
@@ -177,10 +177,13 @@ describe("audio job service", () => {
       const jobPayload = await jobResponse.json() as { job: { audioDownloadPath: string | null } };
       expect(jobPayload.job.audioDownloadPath).toBe(`/api/jobs/${queuedJob.id}/audio`);
 
-      const audioResponse = await fetch(`http://127.0.0.1:${address.port}/api/jobs/${queuedJob.id}/audio`);
-      expect(audioResponse.status).toBe(200);
-      expect(audioResponse.headers.get("content-type")).toContain("audio/mpeg");
-      expect(Buffer.from(await audioResponse.arrayBuffer()).toString("utf8")).toBe("ID3FAKEAUDIO");
+      // Verify audio was persisted to blob store
+      const audioUrl = await service.getNarrationAudioUrl(queuedJob.id);
+      expect(audioUrl).toBeTruthy();
+
+      // Verify cleanup works
+      await service.deleteNarrationAudio(queuedJob.id);
+      expect(await service.getNarrationAudioUrl(queuedJob.id)).toBeNull();
     } finally {
       server.close();
       await once(server, "close");

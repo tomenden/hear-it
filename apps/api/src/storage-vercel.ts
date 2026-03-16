@@ -1,5 +1,5 @@
 import postgres, { type JSONValue } from "postgres";
-import { put, head } from "@vercel/blob";
+import { put, head, del } from "@vercel/blob";
 
 import type { AudioJob } from "./types.js";
 import type { AudioStore, JobStore } from "./storage.js";
@@ -221,6 +221,14 @@ export class VercelAudioStore implements AudioStore {
       return blob.url;
     } catch {
       return null;
+    }
+  }
+
+  async delete(key: string): Promise<void> {
+    try {
+      await del(key);
+    } catch {
+      // Ignore — blob may already be gone.
     }
   }
 }

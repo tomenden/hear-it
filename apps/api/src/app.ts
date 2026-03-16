@@ -77,7 +77,7 @@ export function createApp(options: CreateAppOptions) {
   const serializeJob = (job: AudioJob) => ({
     ...job,
     audioDownloadPath:
-      job.status === "completed" && audioJobService.hasNarrationAudio(job.id)
+      job.status === "completed"
         ? audioJobService.buildNarrationDownloadPath(job.id)
         : null,
   });
@@ -271,21 +271,48 @@ export function createApp(options: CreateAppOptions) {
       return;
     }
 
-    const audio = audioJobService.getNarrationAudio(job.id);
-    if (!audio) {
+    const audioUrl = await audioJobService.getNarrationAudioUrl(job.id);
+    if (!audioUrl) {
       res.status(404).json({
         error: "Narration audio is no longer available for download. Re-create the narration to fetch it again.",
       });
       return;
     }
 
-    res.setHeader("Content-Type", audio.contentType);
+    // Fetch from blob and stream to the client.
+    const upstream = await fetch(audioUrl);
+    if (!upstream.ok || !upstream.body) {
+      res.status(502).json({ error: "Failed to retrieve audio from storage." });
+      return;
+    }
+
+    res.setHeader("Content-Type", upstream.headers.get("content-type") ?? "audio/mpeg");
     res.setHeader("Cache-Control", "private, no-store, max-age=0");
     res.setHeader(
       "Content-Disposition",
       `attachment; filename="narration-${job.id}.mp3"`,
     );
-    res.send(audio.buffer);
+
+    const reader = upstream.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(value);
+      }
+      res.end();
+    } catch {
+      res.destroy();
+      return;
+    }
+
+    // Clean up the blob after successful download.
+    const cleanup = audioJobService.deleteNarrationAudio(job.id);
+    if (onBackgroundWork) {
+      onBackgroundWork(cleanup);
+    } else {
+      void cleanup;
+    }
   });
 
   app.delete("/api/jobs/:jobId", writeEndpointLimiter, async (req, res) => {

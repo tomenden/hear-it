@@ -18,15 +18,10 @@ import type {
 } from "./types.js";
 
 export class AudioJobService {
-  private static readonly NARRATION_AUDIO_TTL_MS = 15 * 60 * 1000;
   private readonly jobStore: JobStore;
   private readonly audioStore: AudioStore;
   private readonly speechProvider: SpeechProvider;
   private initPromise: Promise<void> | null = null;
-  private readonly transientNarrationAudio = new Map<
-    string,
-    { buffer: Buffer; contentType: string; expiresAt: number }
-  >();
 
   constructor(options: {
     jobStore: JobStore;
@@ -99,7 +94,7 @@ export class AudioJobService {
 
   async deleteJob(jobId: string, userId?: string): Promise<boolean> {
     await this.init();
-    this.transientNarrationAudio.delete(jobId);
+    await this.audioStore.delete(`narrations/narration-${jobId}.mp3`);
     if (userId) return this.jobStore.deleteForUser(jobId, userId);
     return this.jobStore.delete(jobId);
   }
@@ -120,9 +115,11 @@ export class AudioJobService {
         {},
       );
 
+      let audioUrl: string | null = null;
       if (result.audioData) {
-        this.setNarrationAudio(
-          jobId,
+        const key = `narrations/narration-${jobId}.mp3`;
+        audioUrl = await this.audioStore.put(
+          key,
           result.audioData,
           result.contentType ?? "audio/mpeg",
         );
@@ -130,7 +127,7 @@ export class AudioJobService {
 
       await this.updateJob(jobId, {
         status: "completed",
-        audioUrl: null,
+        audioUrl,
         playlistUrl: result.playlistUrl,
         audioSegments: result.audioSegments,
         durationSeconds: result.durationSeconds,
@@ -216,22 +213,14 @@ export class AudioJobService {
     }
   }
 
-  getNarrationAudio(jobId: string): { buffer: Buffer; contentType: string } | null {
-    this.pruneExpiredNarrationAudio();
-    const entry = this.transientNarrationAudio.get(jobId);
-    if (!entry) {
-      return null;
-    }
-
-    return {
-      buffer: entry.buffer,
-      contentType: entry.contentType,
-    };
+  /** Returns the blob URL for the narration audio, or null if not yet stored. */
+  async getNarrationAudioUrl(jobId: string): Promise<string | null> {
+    return this.audioStore.head(`narrations/narration-${jobId}.mp3`);
   }
 
-  hasNarrationAudio(jobId: string): boolean {
-    this.pruneExpiredNarrationAudio();
-    return this.transientNarrationAudio.has(jobId);
+  /** Delete the narration audio blob (cleanup after client download). */
+  async deleteNarrationAudio(jobId: string): Promise<void> {
+    await this.audioStore.delete(`narrations/narration-${jobId}.mp3`);
   }
 
   buildNarrationDownloadPath(jobId: string): string {
@@ -240,24 +229,6 @@ export class AudioJobService {
 
   private async updateJob(jobId: string, patch: Partial<AudioJob>) {
     await this.jobStore.update(jobId, patch);
-  }
-
-  private setNarrationAudio(jobId: string, buffer: Buffer, contentType: string) {
-    this.pruneExpiredNarrationAudio();
-    this.transientNarrationAudio.set(jobId, {
-      buffer,
-      contentType,
-      expiresAt: Date.now() + AudioJobService.NARRATION_AUDIO_TTL_MS,
-    });
-  }
-
-  private pruneExpiredNarrationAudio() {
-    const now = Date.now();
-    for (const [jobId, entry] of this.transientNarrationAudio.entries()) {
-      if (entry.expiresAt <= now) {
-        this.transientNarrationAudio.delete(jobId);
-      }
-    }
   }
 }
 

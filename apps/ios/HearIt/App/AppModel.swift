@@ -359,13 +359,92 @@ final class AppModel {
         jobPendingDeletion = nil
     }
 
+    func closePlayer() {
+        playerPresentation = nil
+    }
+
+    func preparePlayer(for jobID: String) {
+        guard !previewMode else { return }
+        guard let job = job(with: jobID) else {
+            player.unload()
+            return
+        }
+
+        settings.lastPresentedJobID = jobID
+
+        if player.loadedJobID == jobID,
+           player.isPlaying,
+           let currentSource = player.loadedSourceURL,
+           !currentSource.isFileURL,
+           localAudioStore.audioFileURLIfExists(forJobID: jobID) == nil {
+            return
+        }
+
+        if job.status == .failed {
+            player.unload()
+            return
+        }
+
+        if let playbackURL = localAudioStore.audioFileURLIfExists(forJobID: jobID) {
+            player.load(url: playbackURL, for: jobID, knownDuration: job.durationSeconds)
+            return
+        }
+
+        if job.status == .completed {
+            ensureNarrationAudioDownloadRequested(for: job)
+        }
+
+        guard let baseURL = settings.apiBaseURL,
+              let playbackURL = job.playbackURL(relativeTo: baseURL) else {
+            player.unload()
+            return
+        }
+
+        player.load(
+            url: playbackURL,
+            for: jobID,
+            knownDuration: job.durationSeconds
+        )
+    }
+
+    func hasPlayableAudio(for job: AudioJob) -> Bool {
+        if localAudioStore.audioFileURLIfExists(forJobID: job.id) != nil {
+            return true
+        }
+
+        if job.status == .failed {
+            return false
+        }
+
+        if let baseURL = settings.apiBaseURL,
+           job.playbackURL(relativeTo: baseURL) != nil {
+            return true
+        }
+
+        if previewMode {
+            return job.status == .completed || job.playlistUrl != nil
+        }
+
+        return false
+    }
+
+    func isStreamingPlayback(for job: AudioJob) -> Bool {
+        guard let baseURL = settings.apiBaseURL else { return false }
+        guard let playbackURL = job.playbackURL(relativeTo: baseURL) else { return false }
+        return !playbackURL.isFileURL && job.status == .processing
+    }
+
+    private func shouldAutoPlay(jobID: String) -> Bool {
+        player.loadedJobID != jobID
+    }
+
     func openPlayer(for jobID: String) {
         let crumb = Breadcrumb(level: .info, category: "player")
         crumb.message = "Open player"
         crumb.data = ["jobID": jobID]
         SentrySDK.addBreadcrumb(crumb)
 
-        let shouldAutoPlay = player.loadedJobID != jobID
+        let shouldAutoPlay = shouldAutoPlay(jobID: jobID)
         settings.lastPresentedJobID = jobID
         playerPresentation = PlayerPresentation(jobID: jobID)
         preparePlayer(for: jobID)
@@ -380,40 +459,6 @@ final class AppModel {
             ])
             trackFirstNarrationCompleted()
         }
-    }
-
-    func closePlayer() {
-        playerPresentation = nil
-    }
-
-    func preparePlayer(for jobID: String) {
-        guard !previewMode else { return }
-        guard let job = job(with: jobID) else {
-            player.unload()
-            return
-        }
-
-        settings.lastPresentedJobID = jobID
-
-        if job.status == .completed {
-            if let playbackURL = localAudioStore.audioFileURLIfExists(forJobID: jobID) {
-                player.load(url: playbackURL, for: jobID, knownDuration: job.durationSeconds)
-                return
-            }
-
-            ensureNarrationAudioDownloadRequested(for: job)
-            player.unload()
-        } else {
-            player.unload()
-        }
-    }
-
-    func hasPlayableAudio(for job: AudioJob) -> Bool {
-        if previewMode {
-            return job.status == .completed
-        }
-
-        return localAudioStore.audioFileURLIfExists(forJobID: job.id) != nil
     }
 
     func isDownloadingAudio(for job: AudioJob) -> Bool {

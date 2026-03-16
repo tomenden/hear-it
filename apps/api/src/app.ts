@@ -279,8 +279,10 @@ export function createApp(options: CreateAppOptions) {
       return;
     }
 
+    const storageUrl = resolveStorageUrl(audioUrl, req, options.audioPublicBaseUrl);
+
     // Fetch from blob and stream to the client.
-    const upstream = await fetch(audioUrl);
+    const upstream = await fetch(storageUrl);
     if (!upstream.ok || !upstream.body) {
       res.status(502).json({ error: "Failed to retrieve audio from storage." });
       return;
@@ -305,14 +307,6 @@ export function createApp(options: CreateAppOptions) {
       res.destroy();
       return;
     }
-
-    // Clean up the blob after successful download.
-    const cleanup = audioJobService.deleteNarrationAudio(job.id);
-    if (onBackgroundWork) {
-      onBackgroundWork(cleanup);
-    } else {
-      void cleanup;
-    }
   });
 
   app.delete("/api/jobs/:jobId", writeEndpointLimiter, async (req, res) => {
@@ -329,4 +323,14 @@ export function createApp(options: CreateAppOptions) {
   Sentry.setupExpressErrorHandler(app);
 
   return app;
+}
+
+function resolveStorageUrl(rawValue: string, req: express.Request, publicBaseUrl?: string): URL {
+  if (/^https?:\/\//i.test(rawValue)) {
+    return new URL(rawValue);
+  }
+
+  // Use the configured public base URL rather than trusting the Host header.
+  const base = publicBaseUrl ?? `${req.protocol}://${req.hostname}`;
+  return new URL(rawValue, base);
 }

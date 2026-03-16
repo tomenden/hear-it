@@ -107,7 +107,7 @@ final class AuthManager {
 
     func handleOpenURL(_ url: URL) async {
         // Only handle Supabase auth callback URLs
-        guard url.host == "auth" || url.path.contains("callback") else { return }
+        guard url.scheme == "com.tome.hearit", url.host == "auth" else { return }
         do {
             try await client.auth.session(from: url)
         } catch {

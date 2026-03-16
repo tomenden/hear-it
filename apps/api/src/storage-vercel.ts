@@ -13,7 +13,13 @@ function getSQL() {
   if (!url) {
     throw new Error("POSTGRES_URL environment variable is not set.");
   }
-  return postgres(url);
+  // Serverless-safe options: keep pool to 1 connection to avoid exhausting
+  // Neon's connection limit across concurrent Vercel function invocations.
+  return postgres(url, {
+    max: 1,
+    idle_timeout: 20,
+    connect_timeout: 10,
+  });
 }
 
 export class VercelJobStore implements JobStore {

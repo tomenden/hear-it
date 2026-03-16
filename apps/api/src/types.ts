@@ -49,6 +49,7 @@ export interface AudioJob {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  userId: string | null;
 }
 
 export interface CreateAudioJobInput extends ExtractArticleInput {

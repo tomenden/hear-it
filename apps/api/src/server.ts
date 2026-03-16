@@ -1,4 +1,8 @@
-import "dotenv/config";
+import { config } from "dotenv";
+import { resolve } from "node:path";
+
+// Load .env from the repo root (monorepo convention)
+config({ path: resolve(import.meta.dirname, "../../../.env") });
 
 import { createApp } from "./app.js";
 import { AudioJobService } from "./jobs.js";
@@ -15,6 +19,8 @@ const app = createApp({
   audioStore,
   serveStaticAudio: audioStore.getOutputDir(),
   audioPublicBaseUrl: "/audio",
+  supabaseUrl: process.env.SUPABASE_URL,
+  supabaseJwtSecret: process.env.SUPABASE_JWT_SECRET,
 });
 
 app.listen(port, () => {

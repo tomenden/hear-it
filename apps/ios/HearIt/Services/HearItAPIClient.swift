@@ -5,6 +5,7 @@ struct HearItAPIClient {
     private let session: URLSession
     private let encoder = JSONEncoder()
     private let decoder: JSONDecoder
+    var tokenProvider: (@Sendable () async -> String?)?
 
     init(session: URLSession = .shared) {
         self.session = session
@@ -87,6 +88,10 @@ struct HearItAPIClient {
             request.httpBody = try encoder.encode(AnyEncodable(body))
         }
 
+        if let tokenProvider, let token = await tokenProvider() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
         #if DEBUG
         print("[HearIt] \(method.rawValue) \(url.absoluteString)")
         #endif
@@ -109,6 +114,10 @@ struct HearItAPIClient {
                 }
             }
             throw apiError
+        }
+
+        if httpResponse.statusCode == 401 {
+            throw APIError.unauthorized
         }
 
         guard (200 ..< 300).contains(httpResponse.statusCode) else {
@@ -157,6 +166,7 @@ extension HearItAPIClient {
     enum APIError: LocalizedError {
         case invalidBaseURL
         case invalidResponse
+        case unauthorized
         case server(String)
         case decodingFailed(detail: String)
 
@@ -166,6 +176,8 @@ extension HearItAPIClient {
                 "The configured API URL is invalid."
             case .invalidResponse:
                 "Hear It received an invalid response from the server."
+            case .unauthorized:
+                "Your session has expired. Please sign in again."
             case let .server(message):
                 message
             case let .decodingFailed(detail):

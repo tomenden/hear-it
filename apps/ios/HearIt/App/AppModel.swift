@@ -43,7 +43,8 @@ final class AppModel {
     var playerPresentation: PlayerPresentation?
     var jobPendingDeletion: AudioJob?
 
-    @ObservationIgnored private let apiClient: HearItAPIClient
+    let authManager: AuthManager
+    @ObservationIgnored private var apiClient: HearItAPIClient
     @ObservationIgnored private let previewMode: Bool
     @ObservationIgnored private var hasBootstrapped = false
     @ObservationIgnored private var pollingTask: Task<Void, Never>?
@@ -52,12 +53,18 @@ final class AppModel {
         settings: AppSettings = AppSettings(),
         apiClient: HearItAPIClient = HearItAPIClient(),
         player: AudioPlayerController = AudioPlayerController(),
+        authManager: AuthManager = AuthManager(),
         previewMode: Bool = false
     ) {
         self.settings = settings
         self.apiClient = apiClient
         self.player = player
+        self.authManager = authManager
         self.previewMode = previewMode
+
+        self.apiClient.tokenProvider = { [authManager] in
+            await authManager.accessToken
+        }
     }
 
     var selectedVoice: VoiceChoice {
@@ -117,6 +124,21 @@ final class AppModel {
             selectedTab = .home
             homeMessage = InlineMessage(text: "Imported a shared article URL.", kind: .success)
         }
+    }
+
+    func signOut() async {
+        do {
+            try await authManager.signOut()
+        } catch {
+            // Best effort
+        }
+        jobs = []
+        previewArticle = nil
+        urlInput = ""
+        playerPresentation = nil
+        player.unload()
+        stopPolling()
+        hasBootstrapped = false
     }
 
     func openSettings() {
@@ -179,6 +201,8 @@ final class AppModel {
                     kind: .success
                 )
             }
+        } catch HearItAPIClient.APIError.unauthorized {
+            await signOut()
         } catch {
             connectionState = .failed(error.localizedDescription)
             if showLoadingState {
@@ -255,6 +279,8 @@ final class AppModel {
             homeMessage = InlineMessage(text: "Narration queued successfully.", kind: .success)
             openPlayer(for: job.id)
             trackFirstNarrationCreated()
+        } catch HearItAPIClient.APIError.unauthorized {
+            await signOut()
         } catch {
             SentrySDK.capture(error: error) { scope in
                 scope.setTag(value: "create_narration", key: "action")
@@ -283,6 +309,8 @@ final class AppModel {
             if !silent {
                 homeMessage = InlineMessage(text: "Library refreshed.", kind: .success)
             }
+        } catch HearItAPIClient.APIError.unauthorized {
+            await signOut()
         } catch {
             if !silent {
                 homeMessage = InlineMessage(text: error.localizedDescription, kind: .error)
@@ -310,6 +338,8 @@ final class AppModel {
             try await apiClient.deleteJob(jobID: job.id, baseURL: baseURL)
             jobs.removeAll(where: { $0.id == job.id })
             Analytics.track("narration_deleted", properties: ["job_id": job.id])
+        } catch HearItAPIClient.APIError.unauthorized {
+            await signOut()
         } catch {
             SentrySDK.capture(error: error) { scope in
                 scope.setTag(value: "delete_narration", key: "action")

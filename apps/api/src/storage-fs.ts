@@ -87,6 +87,26 @@ export class FileJobStore implements JobStore {
     return String(this._nextId++);
   }
 
+  async getAllForUser(userId: string): Promise<AudioJob[]> {
+    return Array.from(this.jobs.values())
+      .filter((job) => job.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async getForUser(jobId: string, userId: string): Promise<AudioJob | null> {
+    const job = this.jobs.get(jobId);
+    if (!job || job.userId !== userId) return null;
+    return job;
+  }
+
+  async deleteForUser(jobId: string, userId: string): Promise<boolean> {
+    const job = this.jobs.get(jobId);
+    if (!job || job.userId !== userId) return false;
+    this.jobs.delete(jobId);
+    await this.persist();
+    return true;
+  }
+
   private async persist(): Promise<void> {
     const jobs = Array.from(this.jobs.values()).sort((a, b) =>
       a.createdAt.localeCompare(b.createdAt),

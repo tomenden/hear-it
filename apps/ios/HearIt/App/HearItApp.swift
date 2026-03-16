@@ -3,7 +3,8 @@ import SwiftUI
 
 @main
 struct HearItApp: App {
-    @State private var model = AppModel()
+    @State private var authManager = AuthManager()
+    @State private var model: AppModel?
 
     init() {
         if let dsn = Bundle.main.object(forInfoDictionaryKey: "SentryDSN") as? String,
@@ -37,7 +38,45 @@ struct HearItApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView(model: model)
+            Group {
+                switch authManager.state {
+                case .loading:
+                    splashView
+                case .signedOut:
+                    LoginView(authManager: authManager)
+                case .signedIn:
+                    if let model {
+                        RootView(model: model)
+                    } else {
+                        splashView
+                            .onAppear { createModel() }
+                    }
+                }
+            }
+            .task {
+                await authManager.initialize()
+            }
+            .onChange(of: authManager.state) { _, newState in
+                if case .signedOut = newState {
+                    model = nil
+                }
+            }
+            .onOpenURL { url in
+                Task { await authManager.handleOpenURL(url) }
+                model?.handleIncomingURL(url)
+            }
         }
+    }
+
+    private var splashView: some View {
+        ZStack {
+            AppTheme.Gradients.page.ignoresSafeArea()
+            ProgressView().tint(AppTheme.Colors.accentGreen)
+        }
+    }
+
+    private func createModel() {
+        guard model == nil else { return }
+        model = AppModel(authManager: authManager)
     }
 }

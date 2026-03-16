@@ -17,6 +17,9 @@ packages:
   Sentry:
     url: https://github.com/getsentry/sentry-cocoa
     from: "8.0.0"
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: "2.0.0"
 targets:
   HearIt:
     type: application
@@ -27,6 +30,10 @@ targets:
         product: PostHog
       - package: Sentry
         product: Sentry
+      - package: Supabase
+        product: Auth
+      - package: Supabase
+        product: Supabase
     sources:
       - path: HearIt
         excludes:
@@ -43,8 +50,21 @@ targets:
       path: HearIt/Support/Info.plist
       properties:
         UILaunchScreen: {}
+        SentryDSN: "$(SENTRY_DSN)"
+        POSTHOG_API_KEY: "$(POSTHOG_API_KEY)"
+        POSTHOG_HOST: "$(POSTHOG_HOST)"
+        SUPABASE_URL: "$(SUPABASE_URL)"
+        SUPABASE_ANON_KEY: "$(SUPABASE_ANON_KEY)"
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              - com.tome.hearit
     settings:
       base:
+        SENTRY_DSN: "https://92e80dd7e7b8779e974032e4af6370ac@o4511049880436736.ingest.de.sentry.io/4511049897803856"
+        POSTHOG_API_KEY: "phc_WoekR63Pb8KvZpmu3nlrCEbfsYZ0ePuFKvsgakj4dym"
+        POSTHOG_HOST: "https://eu.i.posthog.com"
+        SUPABASE_URL: "https://qnvsdeshcxjnzlgrrhxd.supabase.co"
+        SUPABASE_ANON_KEY: "sb_publishable_X3hvegdXoNaSIXYZ5L6dSg_FabSgYKd"
         PRODUCT_BUNDLE_IDENTIFIER: com.tome.hearit
         PRODUCT_NAME: HearIt
         CODE_SIGN_STYLE: Automatic

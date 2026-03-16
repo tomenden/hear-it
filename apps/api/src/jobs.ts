@@ -44,7 +44,7 @@ export class AudioJobService {
     return this.speechProvider.name;
   }
 
-  async createJob(input: CreateAudioJobInput): Promise<AudioJob> {
+  async createJob(input: CreateAudioJobInput, userId?: string): Promise<AudioJob> {
     await this.init();
     const article = await extractArticle(input);
     const speechOptions = resolveSpeechOptions(input.speechOptions);
@@ -63,6 +63,7 @@ export class AudioJobService {
       error: null,
       createdAt: timestamp,
       updatedAt: timestamp,
+      userId: userId ?? null,
     };
 
     await this.jobStore.save(job);
@@ -79,18 +80,21 @@ export class AudioJobService {
     return job;
   }
 
-  async getJob(jobId: string): Promise<AudioJob | null> {
+  async getJob(jobId: string, userId?: string): Promise<AudioJob | null> {
     await this.init();
+    if (userId) return this.jobStore.getForUser(jobId, userId);
     return this.jobStore.get(jobId);
   }
 
-  async listJobs(): Promise<AudioJob[]> {
+  async listJobs(userId?: string): Promise<AudioJob[]> {
     await this.init();
+    if (userId) return this.jobStore.getAllForUser(userId);
     return this.jobStore.getAll();
   }
 
-  async deleteJob(jobId: string): Promise<boolean> {
+  async deleteJob(jobId: string, userId?: string): Promise<boolean> {
     await this.init();
+    if (userId) return this.jobStore.deleteForUser(jobId, userId);
     return this.jobStore.delete(jobId);
   }
 

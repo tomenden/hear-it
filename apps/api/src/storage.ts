@@ -16,6 +16,9 @@ export interface JobStore {
   /** Delete a job by ID. Returns false if the job doesn't exist. */
   delete(jobId: string): Promise<boolean>;
   nextId(): Promise<string>;
+  getAllForUser(userId: string): Promise<AudioJob[]>;
+  getForUser(jobId: string, userId: string): Promise<AudioJob | null>;
+  deleteForUser(jobId: string, userId: string): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------

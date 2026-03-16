@@ -9,13 +9,16 @@
 /* Begin PBXBuildFile section */
 		0B4B4C45E125AC828C6FFE31 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D587510DB7863E42F0D1761 /* SettingsView.swift */; };
 		17797B4C9DD94CEB12C90801 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C8FA41CD6AAEDAB113823F /* PlayerView.swift */; };
+		220DCDE216188F658A41F038 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = FACB2013E5EA584A7A759AA1 /* Supabase */; };
 		26330DCFCBC0E8BB6F2B547D /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4E53A003161DCBF0B225C3 /* LibraryView.swift */; };
 		29A67C704CB9FFF963B147E0 /* Article.swift in Sources */ = {isa = PBXBuildFile; fileRef = A068252339B48496D9BBF3FC /* Article.swift */; };
 		2C17CB99675410640072EA09 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B57E46118380FA6252EEADD /* AppTheme.swift */; };
 		3D005C4BBA6025C34B96D861 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = DB17BEC52CCAE6649EE60610 /* Sentry */; };
 		40AFE1923EB3FECB6CCB3AC6 /* HearItApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3BFBB00D4C28D4380A903C3 /* HearItApp.swift */; };
 		48BD34433BE16F76DE5EF3BD /* AudioJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE5F10C9DACB6182F536801 /* AudioJob.swift */; };
+		4AB273D154EFF671DD573076 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC3BB971CB96D85741C9C2D9 /* LoginView.swift */; };
 		6B58532F5C7E786DA796EE2D /* Analytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F3560F788EC4A94E9909A0 /* Analytics.swift */; };
+		6B7AA6FD7D83E427DA968C8C /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = 4DEFB58CCF8B0C2A4FC1699D /* Auth */; };
 		71A8FA213B32D6C96B0C846D /* HearItURLResolutionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30013ECC1CB1F68E636157F /* HearItURLResolutionTests.swift */; };
 		948AAB0B070DDE32D4391FB2 /* MiniPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5623BFE57B3A1953B8ED6AD /* MiniPlayerView.swift */; };
 		957C62B7A10BB9666F7B8488 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B5767CE1B8ABDB59615131A4 /* Assets.xcassets */; };
@@ -27,6 +30,7 @@
 		BA5C2E6B0474B8E0175E1E64 /* ServerConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E85C4716C27EF1438132ADF /* ServerConfig.swift */; };
 		C0DB74CA5317D0B74B2BCD33 /* VoiceChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF01D70196232D3C8E081A41 /* VoiceChoice.swift */; };
 		D2B8B002573F34338511AD1B /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA9A9C72C19F9A029933648C /* RootView.swift */; };
+		D52D6281EFC6735761E2D79F /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA58700A64691799E1F44725 /* AuthManager.swift */; };
 		D5A0E21D0A479A633708B8AA /* VoicePreviews in Resources */ = {isa = PBXBuildFile; fileRef = F2994D976ADA2485FA28A023 /* VoicePreviews */; };
 		DA8C3E3FA78FA2185595D523 /* AppModel+Preview.swift in Sources */ = {isa = PBXBuildFile; fileRef = F37D16491E5873EE8439D41E /* AppModel+Preview.swift */; };
 		E5A3862FD204DF644A11F20A /* VoiceSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E93C64E7948C26DC7D501A2 /* VoiceSelectionView.swift */; };
@@ -65,9 +69,11 @@
 		87C8FA41CD6AAEDAB113823F /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		8E493E67BC1B8EECE18403E0 /* RootTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTab.swift; sourceTree = "<group>"; };
 		92F42827EE00E24900D2F408 /* HearIt.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HearIt.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9CE84C38494CC7A2CBA52AFA /* HearIt.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HearIt.entitlements; sourceTree = "<group>"; };
 		9FE5F10C9DACB6182F536801 /* AudioJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioJob.swift; sourceTree = "<group>"; };
 		A068252339B48496D9BBF3FC /* Article.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Article.swift; sourceTree = "<group>"; };
 		A30013ECC1CB1F68E636157F /* HearItURLResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HearItURLResolutionTests.swift; sourceTree = "<group>"; };
+		AA58700A64691799E1F44725 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		B5767CE1B8ABDB59615131A4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D5623BFE57B3A1953B8ED6AD /* MiniPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerView.swift; sourceTree = "<group>"; };
 		DD4E53A003161DCBF0B225C3 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
@@ -78,6 +84,7 @@
 		F3BFBB00D4C28D4380A903C3 /* HearItApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HearItApp.swift; sourceTree = "<group>"; };
 		F87839A6EED42DEF792140EE /* PreviewSamples.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewSamples.swift; sourceTree = "<group>"; };
 		FA9A9C72C19F9A029933648C /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		FC3BB971CB96D85741C9C2D9 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -87,6 +94,8 @@
 			files = (
 				9D22E32298D6890C76A42085 /* PostHog in Frameworks */,
 				3D005C4BBA6025C34B96D861 /* Sentry in Frameworks */,
+				6B7AA6FD7D83E427DA968C8C /* Auth in Frameworks */,
+				220DCDE216188F658A41F038 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -113,6 +122,7 @@
 		3D51E46BC9511C2EA3E9129D /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				D2286E6FFBE72193D8981166 /* Auth */,
 				46813C1506726D060081D23A /* Home */,
 				0C3F26A7DC2E8B6502743CB9 /* Library */,
 				4EAADC40122286F5B30A663C /* Player */,
@@ -194,6 +204,7 @@
 				8AD5373F9A553217F61FC464 /* PreviewSupport */,
 				0A4932905DCEA4EB59A42E54 /* Resources */,
 				B13A1AEC46A4CC242F18A9D1 /* Services */,
+				F086B010FB925112CE011D60 /* Support */,
 			);
 			path = HearIt;
 			sourceTree = "<group>";
@@ -204,6 +215,7 @@
 				54F3560F788EC4A94E9909A0 /* Analytics.swift */,
 				4CABAF07D2D4B8ABE6EE3FCA /* AppSettings.swift */,
 				5A71946812B0A81DA6E70A8E /* AudioPlayerController.swift */,
+				AA58700A64691799E1F44725 /* AuthManager.swift */,
 				3938DD84F481914666EBD96C /* HearItAPIClient.swift */,
 			);
 			path = Services;
@@ -216,6 +228,14 @@
 				08D89A043D4EE39A7D81998B /* Color+Hex.swift */,
 			);
 			path = Design;
+			sourceTree = "<group>";
+		};
+		D2286E6FFBE72193D8981166 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				FC3BB971CB96D85741C9C2D9 /* LoginView.swift */,
+			);
+			path = Auth;
 			sourceTree = "<group>";
 		};
 		D4DDBA4C1AECB58BF044B7B8 /* Products */ = {
@@ -246,6 +266,14 @@
 				EF01D70196232D3C8E081A41 /* VoiceChoice.swift */,
 			);
 			path = Models;
+			sourceTree = "<group>";
+		};
+		F086B010FB925112CE011D60 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				9CE84C38494CC7A2CBA52AFA /* HearIt.entitlements */,
+			);
+			path = Support;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -285,6 +313,8 @@
 			packageProductDependencies = (
 				CE4352C5A050B4DC22E2A42B /* PostHog */,
 				DB17BEC52CCAE6649EE60610 /* Sentry */,
+				4DEFB58CCF8B0C2A4FC1699D /* Auth */,
+				FACB2013E5EA584A7A759AA1 /* Supabase */,
 			);
 			productName = HearIt;
 			productReference = 92F42827EE00E24900D2F408 /* HearIt.app */;
@@ -316,6 +346,7 @@
 			packageReferences = (
 				201AB899CF38260A80567AE1 /* XCRemoteSwiftPackageReference "posthog-ios" */,
 				945C68938987B159D09DAA2A /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+				6A68B70F8D57661C099BDCD6 /* XCRemoteSwiftPackageReference "supabase-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D4DDBA4C1AECB58BF044B7B8 /* Products */;
@@ -361,12 +392,14 @@
 				29A67C704CB9FFF963B147E0 /* Article.swift in Sources */,
 				48BD34433BE16F76DE5EF3BD /* AudioJob.swift in Sources */,
 				EF3CB36F3EA16FD654BC36B5 /* AudioPlayerController.swift in Sources */,
+				D52D6281EFC6735761E2D79F /* AuthManager.swift in Sources */,
 				9EF8DDA3273C4B3E4221FDB1 /* Color+Hex.swift in Sources */,
 				F7570A5EDF47A4AA1C2BD522 /* HearItAPIClient.swift in Sources */,
 				40AFE1923EB3FECB6CCB3AC6 /* HearItApp.swift in Sources */,
 				EAD69B303E3676D9B23762CC /* HomeView.swift in Sources */,
 				A75893BE92390D07225C1BFC /* LibraryFilter.swift in Sources */,
 				26330DCFCBC0E8BB6F2B547D /* LibraryView.swift in Sources */,
+				4AB273D154EFF671DD573076 /* LoginView.swift in Sources */,
 				948AAB0B070DDE32D4391FB2 /* MiniPlayerView.swift in Sources */,
 				A4C78E2338624F2A49A7D632 /* PlayerPresentation.swift in Sources */,
 				17797B4C9DD94CEB12C90801 /* PlayerView.swift in Sources */,
@@ -507,9 +540,14 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				POSTHOG_API_KEY = phc_WoekR63Pb8KvZpmu3nlrCEbfsYZ0ePuFKvsgakj4dym;
+				POSTHOG_HOST = "https://eu.i.posthog.com";
 				PRODUCT_BUNDLE_IDENTIFIER = com.tome.hearit;
 				PRODUCT_NAME = HearIt;
 				SDKROOT = iphoneos;
+				SENTRY_DSN = "https://92e80dd7e7b8779e974032e4af6370ac@o4511049880436736.ingest.de.sentry.io/4511049897803856";
+				SUPABASE_ANON_KEY = sb_publishable_X3hvegdXoNaSIXYZ5L6dSg_FabSgYKd;
+				SUPABASE_URL = "https://qnvsdeshcxjnzlgrrhxd.supabase.co";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -531,9 +569,14 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				POSTHOG_API_KEY = phc_WoekR63Pb8KvZpmu3nlrCEbfsYZ0ePuFKvsgakj4dym;
+				POSTHOG_HOST = "https://eu.i.posthog.com";
 				PRODUCT_BUNDLE_IDENTIFIER = com.tome.hearit;
 				PRODUCT_NAME = HearIt;
 				SDKROOT = iphoneos;
+				SENTRY_DSN = "https://92e80dd7e7b8779e974032e4af6370ac@o4511049880436736.ingest.de.sentry.io/4511049897803856";
+				SUPABASE_ANON_KEY = sb_publishable_X3hvegdXoNaSIXYZ5L6dSg_FabSgYKd;
+				SUPABASE_URL = "https://qnvsdeshcxjnzlgrrhxd.supabase.co";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -639,6 +682,14 @@
 				minimumVersion = 3.0.0;
 			};
 		};
+		6A68B70F8D57661C099BDCD6 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
 		945C68938987B159D09DAA2A /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
@@ -650,6 +701,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		4DEFB58CCF8B0C2A4FC1699D /* Auth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6A68B70F8D57661C099BDCD6 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Auth;
+		};
 		CE4352C5A050B4DC22E2A42B /* PostHog */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 201AB899CF38260A80567AE1 /* XCRemoteSwiftPackageReference "posthog-ios" */;
@@ -659,6 +715,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 945C68938987B159D09DAA2A /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
 			productName = Sentry;
+		};
+		FACB2013E5EA584A7A759AA1 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6A68B70F8D57661C099BDCD6 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

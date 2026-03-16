@@ -50,6 +50,12 @@ extension AppModel {
         previewBase(name: "root")
     }
 
+    static func previewProfile() -> AppModel {
+        let model = previewBase(name: "profile")
+        model.selectedTab = .profile
+        return model
+    }
+
     private static func previewBase(name: String) -> AppModel {
         let suiteName = "HearItPreview.\(name)"
         let defaults = UserDefaults(suiteName: suiteName) ?? .standard

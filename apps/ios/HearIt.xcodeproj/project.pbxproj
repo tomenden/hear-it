@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0B4B4C45E125AC828C6FFE31 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D587510DB7863E42F0D1761 /* SettingsView.swift */; };
+		0FDFA0C2A9917B653738B877 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C1095DCE470707982737C5C /* ProfileView.swift */; };
 		17797B4C9DD94CEB12C90801 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C8FA41CD6AAEDAB113823F /* PlayerView.swift */; };
 		220DCDE216188F658A41F038 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = FACB2013E5EA584A7A759AA1 /* Supabase */; };
 		26330DCFCBC0E8BB6F2B547D /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4E53A003161DCBF0B225C3 /* LibraryView.swift */; };
@@ -57,6 +58,7 @@
 		09DBDC9261CA52AB7D17821D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		0B57E46118380FA6252EEADD /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		17259412496749BEA5AA0621 /* LibraryFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFilter.swift; sourceTree = "<group>"; };
+		2C1095DCE470707982737C5C /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		3938DD84F481914666EBD96C /* HearItAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HearItAPIClient.swift; sourceTree = "<group>"; };
 		3D587510DB7863E42F0D1761 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		45E6F3A4CFD4DE0C1CD922ED /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -69,7 +71,6 @@
 		87C8FA41CD6AAEDAB113823F /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		8E493E67BC1B8EECE18403E0 /* RootTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTab.swift; sourceTree = "<group>"; };
 		92F42827EE00E24900D2F408 /* HearIt.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HearIt.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		9CE84C38494CC7A2CBA52AFA /* HearIt.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HearIt.entitlements; sourceTree = "<group>"; };
 		9FE5F10C9DACB6182F536801 /* AudioJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioJob.swift; sourceTree = "<group>"; };
 		A068252339B48496D9BBF3FC /* Article.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Article.swift; sourceTree = "<group>"; };
 		A30013ECC1CB1F68E636157F /* HearItURLResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HearItURLResolutionTests.swift; sourceTree = "<group>"; };
@@ -126,6 +127,7 @@
 				46813C1506726D060081D23A /* Home */,
 				0C3F26A7DC2E8B6502743CB9 /* Library */,
 				4EAADC40122286F5B30A663C /* Player */,
+				4B2C1E3F8C54D4DB944E6A7C /* Profile */,
 				DEBFC01BFDD71084D5BEED99 /* Settings */,
 				46A6E68C10821A5324E97A74 /* VoiceSelection */,
 			);
@@ -155,6 +157,14 @@
 				4E93C64E7948C26DC7D501A2 /* VoiceSelectionView.swift */,
 			);
 			path = VoiceSelection;
+			sourceTree = "<group>";
+		};
+		4B2C1E3F8C54D4DB944E6A7C /* Profile */ = {
+			isa = PBXGroup;
+			children = (
+				2C1095DCE470707982737C5C /* ProfileView.swift */,
+			);
+			path = Profile;
 			sourceTree = "<group>";
 		};
 		4EAADC40122286F5B30A663C /* Player */ = {
@@ -204,7 +214,6 @@
 				8AD5373F9A553217F61FC464 /* PreviewSupport */,
 				0A4932905DCEA4EB59A42E54 /* Resources */,
 				B13A1AEC46A4CC242F18A9D1 /* Services */,
-				F086B010FB925112CE011D60 /* Support */,
 			);
 			path = HearIt;
 			sourceTree = "<group>";
@@ -266,14 +275,6 @@
 				EF01D70196232D3C8E081A41 /* VoiceChoice.swift */,
 			);
 			path = Models;
-			sourceTree = "<group>";
-		};
-		F086B010FB925112CE011D60 /* Support */ = {
-			isa = PBXGroup;
-			children = (
-				9CE84C38494CC7A2CBA52AFA /* HearIt.entitlements */,
-			);
-			path = Support;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -404,6 +405,7 @@
 				A4C78E2338624F2A49A7D632 /* PlayerPresentation.swift in Sources */,
 				17797B4C9DD94CEB12C90801 /* PlayerView.swift in Sources */,
 				A2368FCADAE6B6DA39ED28B6 /* PreviewSamples.swift in Sources */,
+				0FDFA0C2A9917B653738B877 /* ProfileView.swift in Sources */,
 				F8F56B98749E9FBBEE6561B8 /* RootTab.swift in Sources */,
 				D2B8B002573F34338511AD1B /* RootView.swift in Sources */,
 				BA5C2E6B0474B8E0175E1E64 /* ServerConfig.swift in Sources */,

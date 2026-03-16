@@ -171,7 +171,7 @@ describe("auth middleware", () => {
   }
 
   function callMiddleware(authHeader?: string) {
-    const middleware = createAuthMiddleware(secret);
+    const middleware = createAuthMiddleware({ jwtSecret: secret });
     return new Promise<{ statusCode?: number; userId?: string; nextCalled: boolean }>((resolve) => {
       const req = { headers: { authorization: authHeader } } as any;
       const res = {
@@ -185,7 +185,7 @@ describe("auth middleware", () => {
   }
 
   it("passes through when no secret configured", async () => {
-    const middleware = createAuthMiddleware(undefined);
+    const middleware = createAuthMiddleware({});
     const result = await new Promise<{ nextCalled: boolean }>((resolve) => {
       const req = { headers: {} } as any;
       const next = () => resolve({ nextCalled: true });

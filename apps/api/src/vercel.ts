@@ -13,6 +13,7 @@ const app = createApp({
   jobStore,
   audioStore,
   onBackgroundWork: (promise) => waitUntil(promise),
+  supabaseUrl: process.env.SUPABASE_URL,
   supabaseJwtSecret: process.env.SUPABASE_JWT_SECRET,
 });
 

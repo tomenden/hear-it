@@ -69,6 +69,7 @@
 		87C8FA41CD6AAEDAB113823F /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		8E493E67BC1B8EECE18403E0 /* RootTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTab.swift; sourceTree = "<group>"; };
 		92F42827EE00E24900D2F408 /* HearIt.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HearIt.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9CE84C38494CC7A2CBA52AFA /* HearIt.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HearIt.entitlements; sourceTree = "<group>"; };
 		9FE5F10C9DACB6182F536801 /* AudioJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioJob.swift; sourceTree = "<group>"; };
 		A068252339B48496D9BBF3FC /* Article.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Article.swift; sourceTree = "<group>"; };
 		A30013ECC1CB1F68E636157F /* HearItURLResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HearItURLResolutionTests.swift; sourceTree = "<group>"; };
@@ -203,6 +204,7 @@
 				8AD5373F9A553217F61FC464 /* PreviewSupport */,
 				0A4932905DCEA4EB59A42E54 /* Resources */,
 				B13A1AEC46A4CC242F18A9D1 /* Services */,
+				F086B010FB925112CE011D60 /* Support */,
 			);
 			path = HearIt;
 			sourceTree = "<group>";
@@ -264,6 +266,14 @@
 				EF01D70196232D3C8E081A41 /* VoiceChoice.swift */,
 			);
 			path = Models;
+			sourceTree = "<group>";
+		};
+		F086B010FB925112CE011D60 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				9CE84C38494CC7A2CBA52AFA /* HearIt.entitlements */,
+			);
+			path = Support;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -530,11 +540,14 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				POSTHOG_API_KEY = phc_WoekR63Pb8KvZpmu3nlrCEbfsYZ0ePuFKvsgakj4dym;
+				POSTHOG_HOST = "https://eu.i.posthog.com";
 				PRODUCT_BUNDLE_IDENTIFIER = com.tome.hearit;
 				PRODUCT_NAME = HearIt;
 				SDKROOT = iphoneos;
-				SUPABASE_ANON_KEY = YOUR_ANON_KEY;
-				SUPABASE_URL = "https://YOUR_PROJECT.supabase.co";
+				SENTRY_DSN = "https://92e80dd7e7b8779e974032e4af6370ac@o4511049880436736.ingest.de.sentry.io/4511049897803856";
+				SUPABASE_ANON_KEY = sb_publishable_X3hvegdXoNaSIXYZ5L6dSg_FabSgYKd;
+				SUPABASE_URL = "https://qnvsdeshcxjnzlgrrhxd.supabase.co";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -556,11 +569,14 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				POSTHOG_API_KEY = phc_WoekR63Pb8KvZpmu3nlrCEbfsYZ0ePuFKvsgakj4dym;
+				POSTHOG_HOST = "https://eu.i.posthog.com";
 				PRODUCT_BUNDLE_IDENTIFIER = com.tome.hearit;
 				PRODUCT_NAME = HearIt;
 				SDKROOT = iphoneos;
-				SUPABASE_ANON_KEY = YOUR_ANON_KEY;
-				SUPABASE_URL = "https://YOUR_PROJECT.supabase.co";
+				SENTRY_DSN = "https://92e80dd7e7b8779e974032e4af6370ac@o4511049880436736.ingest.de.sentry.io/4511049897803856";
+				SUPABASE_ANON_KEY = sb_publishable_X3hvegdXoNaSIXYZ5L6dSg_FabSgYKd;
+				SUPABASE_URL = "https://qnvsdeshcxjnzlgrrhxd.supabase.co";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = 1;

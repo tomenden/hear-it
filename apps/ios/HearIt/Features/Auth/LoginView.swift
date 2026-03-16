@@ -1,4 +1,3 @@
-import AuthenticationServices
 import SwiftUI
 
 struct LoginView: View {
@@ -42,7 +41,6 @@ struct LoginView: View {
                             .padding(.bottom, 8)
                     }
 
-                    appleSignInButton
                     googleSignInButton
                 }
                 .padding(.horizontal, AppTheme.Layout.screenPadding)
@@ -50,45 +48,6 @@ struct LoginView: View {
                 .disabled(isLoading)
             }
         }
-    }
-
-    private var appleSignInButton: some View {
-        SignInWithAppleButton(.signIn) { request in
-            request.requestedScopes = [.email, .fullName]
-        } onCompletion: { result in
-            switch result {
-            case let .failure(error):
-                errorMessage = error.localizedDescription
-            case let .success(authorization):
-                guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
-                    errorMessage = "Unexpected credential type."
-                    return
-                }
-                guard let identityToken = credential.identityToken
-                    .flatMap({ String(data: $0, encoding: .utf8) })
-                else {
-                    errorMessage = "Missing identity token from Apple."
-                    return
-                }
-                let fullName = credential.fullName?.formatted()
-                Task {
-                    isLoading = true
-                    errorMessage = nil
-                    do {
-                        try await authManager.signInWithApple(
-                            idToken: identityToken,
-                            fullName: fullName
-                        )
-                    } catch {
-                        errorMessage = error.localizedDescription
-                    }
-                    isLoading = false
-                }
-            }
-        }
-        .signInWithAppleButtonStyle(.black)
-        .frame(height: AppTheme.Layout.controlHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private var googleSignInButton: some View {

@@ -15,6 +15,7 @@ const app = createApp({
   audioStore,
   serveStaticAudio: audioStore.getOutputDir(),
   audioPublicBaseUrl: "/audio",
+  supabaseUrl: process.env.SUPABASE_URL,
   supabaseJwtSecret: process.env.SUPABASE_JWT_SECRET,
 });
 

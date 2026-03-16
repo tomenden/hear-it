@@ -45,7 +45,9 @@ export interface CreateAppOptions {
   serveStaticAudio?: string;
   /** Base URL for audio files — included in /api/config for clients that resolve relative URLs. */
   audioPublicBaseUrl?: string;
-  /** Supabase JWT secret for verifying auth tokens. When omitted, auth is disabled (pass-through). */
+  /** Supabase project URL — used to verify JWTs via JWKS (ECC/RSA). */
+  supabaseUrl?: string;
+  /** Supabase JWT secret for HS256 verification (fallback if supabaseUrl is not set). */
   supabaseJwtSecret?: string;
 }
 
@@ -117,7 +119,10 @@ export function createApp(options: CreateAppOptions) {
 
   // Auth middleware — applied to all /api routes below this point.
   // /health and /api/config above remain public.
-  app.use("/api", createAuthMiddleware(options.supabaseJwtSecret));
+  app.use("/api", createAuthMiddleware({
+    supabaseUrl: options.supabaseUrl,
+    jwtSecret: options.supabaseJwtSecret,
+  }));
 
   app.get("/api/voices", (_req, res) => {
     res.json({

@@ -84,7 +84,7 @@ describe("article extraction", () => {
         url: "https://example.com/very-long",
         html: oversizedHtml,
       }),
-    ).rejects.toMatchObject<ArticleTooLongError>({
+    ).rejects.toMatchObject({
       name: "ArticleTooLongError",
       code: "article_too_long",
       statusCode: 422,

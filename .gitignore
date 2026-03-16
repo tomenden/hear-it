@@ -2,9 +2,8 @@ node_modules/
 dist/
 .DS_Store
 .env
-data/audio/
-apps/api/data/audio/
-apps/api/data/jobs.json
+data/
+apps/api/data/
 
 # Yarn PnP (machine-specific)
 .yarn/install-state.gz
@@ -21,3 +20,6 @@ DerivedData/
 .tmp/
 .vercel
 .env*.local
+
+# dev-3.0 local config
+.dev3/config.local.json

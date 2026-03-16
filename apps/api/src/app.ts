@@ -156,6 +156,14 @@ export function createApp(options: CreateAppOptions) {
     jwtSecret: options.supabaseJwtSecret,
   }));
 
+  // Set Sentry user context after auth so errors are associated with the user.
+  app.use("/api", (req, _res, next) => {
+    if (req.userId) {
+      Sentry.setUser({ id: req.userId });
+    }
+    next();
+  });
+
   app.get("/api/voices", (_req, res) => {
     res.json({
       voices: audioJobService.getAvailableVoices(),

@@ -57,8 +57,16 @@ struct HearItApp: App {
                 await authManager.initialize()
             }
             .onChange(of: authManager.state) { _, newState in
-                if case .signedOut = newState {
+                switch newState {
+                case .signedIn(let user):
+                    let sentryUser = Sentry.User(userId: user.id.uuidString)
+                    sentryUser.email = user.email
+                    SentrySDK.setUser(sentryUser)
+                case .signedOut:
+                    SentrySDK.setUser(nil)
                     model = nil
+                case .loading:
+                    break
                 }
             }
             .onOpenURL { url in

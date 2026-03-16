@@ -142,7 +142,17 @@ export class AudioJobService {
         tags: {
           jobId,
           voice: queuedJob.speechOptions.voice,
-          url: queuedJob.article.url,
+          provider: queuedJob.provider,
+        },
+        contexts: {
+          job: {
+            id: jobId,
+            articleUrl: queuedJob.article.url,
+            articleTitle: queuedJob.article.title,
+            wordCount: queuedJob.article.wordCount,
+            voice: queuedJob.speechOptions.voice,
+            provider: queuedJob.provider,
+          },
         },
       });
       trackEvent("tts_failed", {

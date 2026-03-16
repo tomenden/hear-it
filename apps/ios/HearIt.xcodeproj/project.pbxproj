@@ -15,11 +15,13 @@
 		2C17CB99675410640072EA09 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B57E46118380FA6252EEADD /* AppTheme.swift */; };
 		3D005C4BBA6025C34B96D861 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = DB17BEC52CCAE6649EE60610 /* Sentry */; };
 		40AFE1923EB3FECB6CCB3AC6 /* HearItApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3BFBB00D4C28D4380A903C3 /* HearItApp.swift */; };
+		48328A4E1ADFBABEC20448A8 /* LocalNarrationAudioStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48EA0CD9F21B999B3E03DF8D /* LocalNarrationAudioStoreTests.swift */; };
 		48BD34433BE16F76DE5EF3BD /* AudioJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE5F10C9DACB6182F536801 /* AudioJob.swift */; };
 		4AB273D154EFF671DD573076 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC3BB971CB96D85741C9C2D9 /* LoginView.swift */; };
 		6B58532F5C7E786DA796EE2D /* Analytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F3560F788EC4A94E9909A0 /* Analytics.swift */; };
 		6B7AA6FD7D83E427DA968C8C /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = 4DEFB58CCF8B0C2A4FC1699D /* Auth */; };
 		71A8FA213B32D6C96B0C846D /* HearItURLResolutionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30013ECC1CB1F68E636157F /* HearItURLResolutionTests.swift */; };
+		8BD0F64C3D3818ACD03F83A2 /* LocalNarrationAudioStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC34FDF70E56DF54E6D6F232 /* LocalNarrationAudioStore.swift */; };
 		948AAB0B070DDE32D4391FB2 /* MiniPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5623BFE57B3A1953B8ED6AD /* MiniPlayerView.swift */; };
 		957C62B7A10BB9666F7B8488 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B5767CE1B8ABDB59615131A4 /* Assets.xcassets */; };
 		9D22E32298D6890C76A42085 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = CE4352C5A050B4DC22E2A42B /* PostHog */; };
@@ -60,6 +62,7 @@
 		3938DD84F481914666EBD96C /* HearItAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HearItAPIClient.swift; sourceTree = "<group>"; };
 		3D587510DB7863E42F0D1761 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		45E6F3A4CFD4DE0C1CD922ED /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		48EA0CD9F21B999B3E03DF8D /* LocalNarrationAudioStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNarrationAudioStoreTests.swift; sourceTree = "<group>"; };
 		4CABAF07D2D4B8ABE6EE3FCA /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		4DDA092AA8B8216A274E6BFD /* PlayerPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerPresentation.swift; sourceTree = "<group>"; };
 		4E85C4716C27EF1438132ADF /* ServerConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfig.swift; sourceTree = "<group>"; };
@@ -69,7 +72,6 @@
 		87C8FA41CD6AAEDAB113823F /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		8E493E67BC1B8EECE18403E0 /* RootTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTab.swift; sourceTree = "<group>"; };
 		92F42827EE00E24900D2F408 /* HearIt.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HearIt.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		9CE84C38494CC7A2CBA52AFA /* HearIt.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HearIt.entitlements; sourceTree = "<group>"; };
 		9FE5F10C9DACB6182F536801 /* AudioJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioJob.swift; sourceTree = "<group>"; };
 		A068252339B48496D9BBF3FC /* Article.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Article.swift; sourceTree = "<group>"; };
 		A30013ECC1CB1F68E636157F /* HearItURLResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HearItURLResolutionTests.swift; sourceTree = "<group>"; };
@@ -84,6 +86,7 @@
 		F3BFBB00D4C28D4380A903C3 /* HearItApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HearItApp.swift; sourceTree = "<group>"; };
 		F87839A6EED42DEF792140EE /* PreviewSamples.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewSamples.swift; sourceTree = "<group>"; };
 		FA9A9C72C19F9A029933648C /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		FC34FDF70E56DF54E6D6F232 /* LocalNarrationAudioStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNarrationAudioStore.swift; sourceTree = "<group>"; };
 		FC3BB971CB96D85741C9C2D9 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -170,6 +173,7 @@
 			isa = PBXGroup;
 			children = (
 				A30013ECC1CB1F68E636157F /* HearItURLResolutionTests.swift */,
+				48EA0CD9F21B999B3E03DF8D /* LocalNarrationAudioStoreTests.swift */,
 			);
 			path = HearItTests;
 			sourceTree = "<group>";
@@ -204,7 +208,6 @@
 				8AD5373F9A553217F61FC464 /* PreviewSupport */,
 				0A4932905DCEA4EB59A42E54 /* Resources */,
 				B13A1AEC46A4CC242F18A9D1 /* Services */,
-				F086B010FB925112CE011D60 /* Support */,
 			);
 			path = HearIt;
 			sourceTree = "<group>";
@@ -217,6 +220,7 @@
 				5A71946812B0A81DA6E70A8E /* AudioPlayerController.swift */,
 				AA58700A64691799E1F44725 /* AuthManager.swift */,
 				3938DD84F481914666EBD96C /* HearItAPIClient.swift */,
+				FC34FDF70E56DF54E6D6F232 /* LocalNarrationAudioStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -266,14 +270,6 @@
 				EF01D70196232D3C8E081A41 /* VoiceChoice.swift */,
 			);
 			path = Models;
-			sourceTree = "<group>";
-		};
-		F086B010FB925112CE011D60 /* Support */ = {
-			isa = PBXGroup;
-			children = (
-				9CE84C38494CC7A2CBA52AFA /* HearIt.entitlements */,
-			);
-			path = Support;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -377,6 +373,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				71A8FA213B32D6C96B0C846D /* HearItURLResolutionTests.swift in Sources */,
+				48328A4E1ADFBABEC20448A8 /* LocalNarrationAudioStoreTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -399,6 +396,7 @@
 				EAD69B303E3676D9B23762CC /* HomeView.swift in Sources */,
 				A75893BE92390D07225C1BFC /* LibraryFilter.swift in Sources */,
 				26330DCFCBC0E8BB6F2B547D /* LibraryView.swift in Sources */,
+				8BD0F64C3D3818ACD03F83A2 /* LocalNarrationAudioStore.swift in Sources */,
 				4AB273D154EFF671DD573076 /* LoginView.swift in Sources */,
 				948AAB0B070DDE32D4391FB2 /* MiniPlayerView.swift in Sources */,
 				A4C78E2338624F2A49A7D632 /* PlayerPresentation.swift in Sources */,

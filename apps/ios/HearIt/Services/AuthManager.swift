@@ -124,6 +124,24 @@ final class AuthManager {
         return nil
     }
 
+    var userName: String? {
+        if case let .signedIn(user) = state {
+            if case let .string(name) = user.userMetadata["full_name"] { return name }
+            if case let .string(name) = user.userMetadata["name"] { return name }
+        }
+        return nil
+    }
+
+    var userAvatarURL: URL? {
+        if case let .signedIn(user) = state {
+            if case let .string(urlString) = user.userMetadata["avatar_url"],
+               let url = URL(string: urlString) { return url }
+            if case let .string(urlString) = user.userMetadata["picture"],
+               let url = URL(string: urlString) { return url }
+        }
+        return nil
+    }
+
     deinit {
         authStateTask?.cancel()
     }

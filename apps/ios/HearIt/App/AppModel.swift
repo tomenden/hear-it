@@ -432,9 +432,7 @@ final class AppModel {
             guard let self else { return }
 
             defer {
-                Task { @MainActor [weak self] in
-                    self?.narrationDownloadTasks[job.id] = nil
-                }
+                narrationDownloadTasks[job.id] = nil
             }
 
             do {

@@ -114,16 +114,10 @@ export class AudioJobService {
     await this.updateJob(jobId, { status: "processing", error: null });
 
     try {
-      const fileKey = buildAudioFileKey(
-        queuedJob.article.title ?? queuedJob.article.url,
-        queuedJob.speechOptions.voice,
-        `job-${jobId}`,
-      );
-
       const result = await this.speechProvider.synthesize(
         queuedJob.article,
         queuedJob.speechOptions,
-        { fileKey },
+        {},
       );
 
       if (result.audioData) {

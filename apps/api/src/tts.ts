@@ -110,7 +110,16 @@ export class OpenAISpeechProvider implements SpeechProvider {
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI speech generation failed: ${response.status}`);
+      let detail = "";
+      try {
+        const body = await response.json() as { error?: { message?: string; code?: string; type?: string } };
+        detail = body.error?.message ?? JSON.stringify(body);
+      } catch {
+        detail = await response.text().catch(() => "");
+      }
+      throw new Error(
+        `OpenAI speech generation failed: ${response.status}${detail ? ` — ${detail}` : ""}`,
+      );
     }
 
     const buffer = Buffer.from(await response.arrayBuffer());

@@ -1,4 +1,8 @@
-import "dotenv/config";
+import { config } from "dotenv";
+import { resolve } from "node:path";
+
+// Load .env from the repo root (monorepo convention)
+config({ path: resolve(import.meta.dirname, "../../../.env") });
 
 import { createApp } from "./app.js";
 import { AudioJobService } from "./jobs.js";

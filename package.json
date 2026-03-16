@@ -2,14 +2,15 @@
   "name": "hear-it",
   "private": true,
   "version": "0.1.0",
+  "packageManager": "yarn@4.12.0",
   "workspaces": [
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace @hear-it/api",
-    "dev": "npm run dev:server",
-    "dev:server": "npm run dev --workspace @hear-it/api",
-    "api:dev": "npm run dev --workspace @hear-it/api",
-    "test": "npm run test --workspace @hear-it/api"
+    "build": "yarn workspace @hear-it/api build",
+    "dev": "yarn dev:server",
+    "dev:server": "yarn workspace @hear-it/api dev",
+    "api:dev": "yarn workspace @hear-it/api dev",
+    "test": "yarn workspace @hear-it/api test"
   }
 }

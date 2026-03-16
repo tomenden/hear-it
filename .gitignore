@@ -6,6 +6,7 @@ data/audio/
 apps/api/data/audio/
 
 # Yarn PnP (machine-specific)
+.pnp.*
 .yarn/install-state.gz
 .yarn/unplugged/
 

@@ -508,7 +508,7 @@ __metadata:
   dependencies:
     "@mozilla/readability": "npm:^0.5.0"
     "@sentry/node": "npm:^10.40.0"
-    "@types/express": "npm:^5.0.1"
+    "@types/express": "npm:^4.17.23"
     "@types/node": "npm:^22.13.10"
     "@vercel/blob": "npm:^2.3.0"
     "@vercel/functions": "npm:^3.4.3"
@@ -1065,12 +1065,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@posthog/core@npm:1.23.1":
-  version: 1.23.1
-  resolution: "@posthog/core@npm:1.23.1::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40posthog%2Fcore%2F-%2Fcore-1.23.1.tgz"
+"@posthog/core@npm:1.23.2":
+  version: 1.23.2
+  resolution: "@posthog/core@npm:1.23.2::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40posthog%2Fcore%2F-%2Fcore-1.23.2.tgz"
   dependencies:
     cross-spawn: "npm:^7.0.6"
-  checksum: 10c0/ceca5e0e01ef6902da45bc2f4d1d7b68bda48d575bbb8696014785c45a6db940e2cc6dd09e896a0101e98fe1acefcba71cb89b46e57c4956147799c631ccaace
+  checksum: 10c0/13d86e63e9a74255e33167c266fc10c3f485221093b235239543ebaaa80c07614e4485e02da3b0850281f9341f4c4014fdfa3998ed96fab8f6bf76bd39116c60
   languageName: node
   linkType: hard
 
@@ -1283,19 +1283,19 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@sentry/core@npm:10.40.0":
-  version: 10.40.0
-  resolution: "@sentry/core@npm:10.40.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40sentry%2Fcore%2F-%2Fcore-10.40.0.tgz"
-  checksum: 10c0/76dc283cda98ae854be63a1836ea77abaf2a3db88b592ae086982e89d2a9d163b5e92819cbf3005bffc459a56ca90b0f71cc908cce7c55e147606b111a4dbb8a
+"@sentry/core@npm:10.41.0":
+  version: 10.41.0
+  resolution: "@sentry/core@npm:10.41.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40sentry%2Fcore%2F-%2Fcore-10.41.0.tgz"
+  checksum: 10c0/ec8c357463eeeb7d3afeb1f004ac996e34140b413f8af0aca83a0483a97530153d013e26ad92c3a2b4be36240708a2f315d0ece6b28fe443d11ce684f0a94308
   languageName: node
   linkType: hard
 
-"@sentry/node-core@npm:10.40.0":
-  version: 10.40.0
-  resolution: "@sentry/node-core@npm:10.40.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40sentry%2Fnode-core%2F-%2Fnode-core-10.40.0.tgz"
+"@sentry/node-core@npm:10.41.0":
+  version: 10.41.0
+  resolution: "@sentry/node-core@npm:10.41.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40sentry%2Fnode-core%2F-%2Fnode-core-10.41.0.tgz"
   dependencies:
-    "@sentry/core": "npm:10.40.0"
-    "@sentry/opentelemetry": "npm:10.40.0"
+    "@sentry/core": "npm:10.41.0"
+    "@sentry/opentelemetry": "npm:10.41.0"
     import-in-the-middle: "npm:^2.0.6"
   peerDependencies:
     "@opentelemetry/api": ^1.9.0
@@ -1320,13 +1320,13 @@ __metadata:
       optional: true
     "@opentelemetry/semantic-conventions":
       optional: true
-  checksum: 10c0/c238c6a6170e5be56c6eba06296229d6bfd9da91fb8bfddc056cb5927ca1b7fb2646ca0907f604fdc1c1992bcc304ec17a38d156db890fec7a85439176612dce
+  checksum: 10c0/5ef660ecd951d6d57d0da52a9784600252d6839e13feedd6e265b35cf715b920ad7c400821264951aee0f4f92a2ba54c5a1b9d5d4288a90e03893066df4e275a
   languageName: node
   linkType: hard
 
 "@sentry/node@npm:^10.40.0":
-  version: 10.40.0
-  resolution: "@sentry/node@npm:10.40.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40sentry%2Fnode%2F-%2Fnode-10.40.0.tgz"
+  version: 10.41.0
+  resolution: "@sentry/node@npm:10.41.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40sentry%2Fnode%2F-%2Fnode-10.41.0.tgz"
   dependencies:
     "@fastify/otel": "npm:0.16.0"
     "@opentelemetry/api": "npm:^1.9.0"
@@ -1359,26 +1359,26 @@ __metadata:
     "@opentelemetry/sdk-trace-base": "npm:^2.5.1"
     "@opentelemetry/semantic-conventions": "npm:^1.39.0"
     "@prisma/instrumentation": "npm:7.2.0"
-    "@sentry/core": "npm:10.40.0"
-    "@sentry/node-core": "npm:10.40.0"
-    "@sentry/opentelemetry": "npm:10.40.0"
+    "@sentry/core": "npm:10.41.0"
+    "@sentry/node-core": "npm:10.41.0"
+    "@sentry/opentelemetry": "npm:10.41.0"
     import-in-the-middle: "npm:^2.0.6"
-  checksum: 10c0/5b09244188faa27491e2511b37737fe6bdf349a4c92abf3396b10d3781540cfb4d0f02297884ddd1dd4cbc38708fa25b8262fd1d5b045867ec77082e068719f0
+  checksum: 10c0/8aca754f61191dcea747d5fcb2181042881bf789d4a6f9e734d965f0861853a97f8df4dd396cb5060709aaee452ba5095b5db4d454da8e0aa1faf1dae9d3a346
   languageName: node
   linkType: hard
 
-"@sentry/opentelemetry@npm:10.40.0":
-  version: 10.40.0
-  resolution: "@sentry/opentelemetry@npm:10.40.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40sentry%2Fopentelemetry%2F-%2Fopentelemetry-10.40.0.tgz"
+"@sentry/opentelemetry@npm:10.41.0":
+  version: 10.41.0
+  resolution: "@sentry/opentelemetry@npm:10.41.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40sentry%2Fopentelemetry%2F-%2Fopentelemetry-10.41.0.tgz"
   dependencies:
-    "@sentry/core": "npm:10.40.0"
+    "@sentry/core": "npm:10.41.0"
   peerDependencies:
     "@opentelemetry/api": ^1.9.0
     "@opentelemetry/context-async-hooks": ^1.30.1 || ^2.1.0
     "@opentelemetry/core": ^1.30.1 || ^2.1.0
     "@opentelemetry/sdk-trace-base": ^1.30.1 || ^2.1.0
     "@opentelemetry/semantic-conventions": ^1.39.0
-  checksum: 10c0/a27f4969a43c3fefc87288e6ef3d56154f42161e15cdc11600a9bc3a5ed14c68c0c2efe19273958893db8d0970f8ca6d8676c8526f154c226290e4ba2eb2b0f4
+  checksum: 10c0/ee5468cd217e3577ba1c6442aee7649bf74b8e4a50f6bbd822032d4ffc8b2879fda33362a14a88004a903ab2df79383059f898719591848c4d923d74bf37f2c5
   languageName: node
   linkType: hard
 
@@ -1437,26 +1437,27 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/express-serve-static-core@npm:^5.0.0":
-  version: 5.1.1
-  resolution: "@types/express-serve-static-core@npm:5.1.1::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fexpress-serve-static-core%2F-%2Fexpress-serve-static-core-5.1.1.tgz"
+"@types/express-serve-static-core@npm:^4.17.33":
+  version: 4.19.8
+  resolution: "@types/express-serve-static-core@npm:4.19.8::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fexpress-serve-static-core%2F-%2Fexpress-serve-static-core-4.19.8.tgz"
   dependencies:
     "@types/node": "npm:*"
     "@types/qs": "npm:*"
     "@types/range-parser": "npm:*"
     "@types/send": "npm:*"
-  checksum: 10c0/ee88216e114368ef06bcafeceb74a7e8671b90900fb0ab1d49ff41542c3a344231ef0d922bf63daa79f0585f3eebe2ce5ec7f83facc581eff8bcdb136a225ef3
+  checksum: 10c0/6fb58a85b209e0e421b29c52e0a51dbf7c039b711c604cf45d46470937a5c7c16b30aa5ce9bf7da0bd8a2e9361c95b5055599c0500a96bf4414d26c81f02d7fe
   languageName: node
   linkType: hard
 
-"@types/express@npm:^5.0.1":
-  version: 5.0.6
-  resolution: "@types/express@npm:5.0.6::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fexpress%2F-%2Fexpress-5.0.6.tgz"
+"@types/express@npm:^4.17.23":
+  version: 4.17.25
+  resolution: "@types/express@npm:4.17.25::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fexpress%2F-%2Fexpress-4.17.25.tgz"
   dependencies:
     "@types/body-parser": "npm:*"
-    "@types/express-serve-static-core": "npm:^5.0.0"
-    "@types/serve-static": "npm:^2"
-  checksum: 10c0/f1071e3389a955d4f9a38aae38634121c7cd9b3171ba4201ec9b56bd534aba07866839d278adc0dda05b942b05a901a02fd174201c3b1f70ce22b10b6c68f24b
+    "@types/express-serve-static-core": "npm:^4.17.33"
+    "@types/qs": "npm:*"
+    "@types/serve-static": "npm:^1"
+  checksum: 10c0/f42b616d2c9dbc50352c820db7de182f64ebbfa8dba6fb6c98e5f8f0e2ef3edde0131719d9dc6874803d25ad9ca2d53471d0fec2fbc60a6003a43d015bab72c4
   languageName: node
   linkType: hard
 
@@ -1474,6 +1475,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/mime@npm:^1":
+  version: 1.3.5
+  resolution: "@types/mime@npm:1.3.5::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fmime%2F-%2Fmime-1.3.5.tgz"
+  checksum: 10c0/c2ee31cd9b993804df33a694d5aa3fa536511a49f2e06eeab0b484fef59b4483777dbb9e42a4198a0809ffbf698081fdbca1e5c2218b82b91603dfab10a10fbc
+  languageName: node
+  linkType: hard
+
 "@types/mysql@npm:2.15.27":
   version: 2.15.27
   resolution: "@types/mysql@npm:2.15.27::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fmysql%2F-%2Fmysql-2.15.27.tgz"
@@ -1483,12 +1491,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:*":
-  version: 25.3.3
-  resolution: "@types/node@npm:25.3.3::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fnode%2F-%2Fnode-25.3.3.tgz"
+"@types/node@npm:*, @types/node@npm:^22.13.10":
+  version: 22.19.13
+  resolution: "@types/node@npm:22.19.13::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fnode%2F-%2Fnode-22.19.13.tgz"
   dependencies:
-    undici-types: "npm:~7.18.0"
-  checksum: 10c0/63e1d3816a9f4a706ab5d588d18cb98aa824b97748ff585537d327528e9438f58f69f45c7762e7cd3a1ab32c1619f551aabe8075d13172f9273cf10f6d83ab91
+    undici-types: "npm:~6.21.0"
+  checksum: 10c0/ad8a0b6a69dd8ef663701573eca94ef6d20ce093f54f05bed823c826374eb1ea8b06e6f2c5d7f6cfc203b82dfd60293296bf80ea987ddb77775840bc2ef9f803
   languageName: node
   linkType: hard
 
@@ -1501,15 +1509,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:^22.13.10":
-  version: 22.19.13
-  resolution: "@types/node@npm:22.19.13::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fnode%2F-%2Fnode-22.19.13.tgz"
-  dependencies:
-    undici-types: "npm:~6.21.0"
-  checksum: 10c0/ad8a0b6a69dd8ef663701573eca94ef6d20ce093f54f05bed823c826374eb1ea8b06e6f2c5d7f6cfc203b82dfd60293296bf80ea987ddb77775840bc2ef9f803
-  languageName: node
-  linkType: hard
-
 "@types/pg-pool@npm:2.0.7":
   version: 2.0.7
   resolution: "@types/pg-pool@npm:2.0.7::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fpg-pool%2F-%2Fpg-pool-2.0.7.tgz"
@@ -1519,18 +1518,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/pg@npm:*":
-  version: 8.18.0
-  resolution: "@types/pg@npm:8.18.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fpg%2F-%2Fpg-8.18.0.tgz"
-  dependencies:
-    "@types/node": "npm:*"
-    pg-protocol: "npm:*"
-    pg-types: "npm:^2.2.0"
-  checksum: 10c0/cafece430d8d583a75eb3f7beff7b3e97e05ef0b6326ae5070476bda46ccc42edb72724b9c2bf799cea93a48b1342319bfbbe1217fff5ffa5c322b8d637ea949
-  languageName: node
-  linkType: hard
-
-"@types/pg@npm:8.15.6":
+"@types/pg@npm:*, @types/pg@npm:8.15.6":
   version: 8.15.6
   resolution: "@types/pg@npm:8.15.6::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fpg%2F-%2Fpg-8.15.6.tgz"
   dependencies:
@@ -1564,13 +1552,24 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/serve-static@npm:^2":
-  version: 2.2.0
-  resolution: "@types/serve-static@npm:2.2.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fserve-static%2F-%2Fserve-static-2.2.0.tgz"
+"@types/send@npm:<1":
+  version: 0.17.6
+  resolution: "@types/send@npm:0.17.6::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fsend%2F-%2Fsend-0.17.6.tgz"
+  dependencies:
+    "@types/mime": "npm:^1"
+    "@types/node": "npm:*"
+  checksum: 10c0/a9d76797f0637738062f1b974e0fcf3d396a28c5dc18c3f95ecec5dabda82e223afbc2d56a0bca46b6326fd7bb229979916cea40de2270a98128fd94441b87c2
+  languageName: node
+  linkType: hard
+
+"@types/serve-static@npm:^1":
+  version: 1.15.10
+  resolution: "@types/serve-static@npm:1.15.10::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40types%2Fserve-static%2F-%2Fserve-static-1.15.10.tgz"
   dependencies:
     "@types/http-errors": "npm:*"
     "@types/node": "npm:*"
-  checksum: 10c0/a3c6126bdbf9685e6c7dc03ad34639666eff32754e912adeed9643bf3dd3aa0ff043002a7f69039306e310d233eb8e160c59308f95b0a619f32366bbc48ee094
+    "@types/send": "npm:<1"
+  checksum: 10c0/842fca14c9e80468f89b6cea361773f2dcd685d4616a9f59013b55e1e83f536e4c93d6d8e3ba5072d40c4e7e64085210edd6646b15d538ded94512940a23021f
   languageName: node
   linkType: hard
 
@@ -1596,12 +1595,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@vercel/build-utils@npm:13.6.1":
-  version: 13.6.1
-  resolution: "@vercel/build-utils@npm:13.6.1::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40vercel%2Fbuild-utils%2F-%2Fbuild-utils-13.6.1.tgz"
+"@vercel/build-utils@npm:13.6.2":
+  version: 13.6.2
+  resolution: "@vercel/build-utils@npm:13.6.2::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40vercel%2Fbuild-utils%2F-%2Fbuild-utils-13.6.2.tgz"
   dependencies:
     "@vercel/python-analysis": "npm:0.8.1"
-  checksum: 10c0/79ca101ad1eb736ce9b12ba9c535be01f0255075289e5d3543ce2d4b424761bf144077abd704452f71d7427cc3b05f6db34fb8b658a46b6ea13656ce13288163
+  checksum: 10c0/1505c6e827983af8b25b512f7ff09b16f2bcea590720e0ed94a47903cf337ec0f62efb55789f5c772bba945762a3f9c18fc8d19732d9fd442112ff2607511991
   languageName: node
   linkType: hard
 
@@ -1649,14 +1648,14 @@ __metadata:
   linkType: hard
 
 "@vercel/node@npm:^5.6.9":
-  version: 5.6.9
-  resolution: "@vercel/node@npm:5.6.9::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40vercel%2Fnode%2F-%2Fnode-5.6.9.tgz"
+  version: 5.6.10
+  resolution: "@vercel/node@npm:5.6.10::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2F%40vercel%2Fnode%2F-%2Fnode-5.6.10.tgz"
   dependencies:
     "@edge-runtime/node-utils": "npm:2.3.0"
     "@edge-runtime/primitives": "npm:4.1.0"
     "@edge-runtime/vm": "npm:3.2.0"
     "@types/node": "npm:20.11.0"
-    "@vercel/build-utils": "npm:13.6.1"
+    "@vercel/build-utils": "npm:13.6.2"
     "@vercel/error-utils": "npm:2.0.3"
     "@vercel/nft": "npm:1.1.1"
     "@vercel/static-config": "npm:3.1.2"
@@ -1674,7 +1673,7 @@ __metadata:
     tsx: "npm:4.21.0"
     typescript: "npm:typescript@5.9.3"
     undici: "npm:5.28.4"
-  checksum: 10c0/2701315938d8a375936aa06556d3273d2883b1494a661e288bb8349115c6c3716e17da8f993b2c05645a8e1d47c1e157a3e8696f31a3aa5409d4857a51c8f2d7
+  checksum: 10c0/82086f11541ba6eaa2eee960e64d74e8af6783dbd8b6f4cef9eccad0ddbd8769876ad61a0ae34e7252527e501e15b580ba4a810ebb8166306a24a9a69c4d57da
   languageName: node
   linkType: hard
 
@@ -1874,20 +1873,6 @@ __metadata:
   version: 2.0.1
   resolution: "assertion-error@npm:2.0.1::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2Fassertion-error%2F-%2Fassertion-error-2.0.1.tgz"
   checksum: 10c0/bbbcb117ac6480138f8c93cf7f535614282dea9dc828f540cdece85e3c665e8f78958b96afac52f29ff883c72638e6a87d469ecc9fe5bc902df03ed24a55dba8
-  languageName: node
-  linkType: hard
-
-"async-function@npm:^1.0.0":
-  version: 1.0.0
-  resolution: "async-function@npm:1.0.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2Fasync-function%2F-%2Fasync-function-1.0.0.tgz"
-  checksum: 10c0/669a32c2cb7e45091330c680e92eaeb791bc1d4132d827591e499cd1f776ff5a873e77e5f92d0ce795a8d60f10761dec9ddfe7225a5de680f5d357f67b1aac73
-  languageName: node
-  linkType: hard
-
-"async-generator-function@npm:^1.0.0":
-  version: 1.0.0
-  resolution: "async-generator-function@npm:1.0.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2Fasync-generator-function%2F-%2Fasync-generator-function-1.0.0.tgz"
-  checksum: 10c0/2c50ef856c543ad500d8d8777d347e3c1ba623b93e99c9263ecc5f965c1b12d2a140e2ab6e43c3d0b85366110696f28114649411cbcd10b452a92a2318394186
   languageName: node
   linkType: hard
 
@@ -2744,31 +2729,21 @@ __metadata:
   languageName: node
   linkType: hard
 
-"generator-function@npm:^2.0.0":
-  version: 2.0.1
-  resolution: "generator-function@npm:2.0.1::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2Fgenerator-function%2F-%2Fgenerator-function-2.0.1.tgz"
-  checksum: 10c0/8a9f59df0f01cfefafdb3b451b80555e5cf6d76487095db91ac461a0e682e4ff7a9dbce15f4ecec191e53586d59eece01949e05a4b4492879600bbbe8e28d6b8
-  languageName: node
-  linkType: hard
-
 "get-intrinsic@npm:^1.2.5, get-intrinsic@npm:^1.3.0":
-  version: 1.3.1
-  resolution: "get-intrinsic@npm:1.3.1::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2Fget-intrinsic%2F-%2Fget-intrinsic-1.3.1.tgz"
+  version: 1.3.0
+  resolution: "get-intrinsic@npm:1.3.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2Fget-intrinsic%2F-%2Fget-intrinsic-1.3.0.tgz"
   dependencies:
-    async-function: "npm:^1.0.0"
-    async-generator-function: "npm:^1.0.0"
     call-bind-apply-helpers: "npm:^1.0.2"
     es-define-property: "npm:^1.0.1"
     es-errors: "npm:^1.3.0"
     es-object-atoms: "npm:^1.1.1"
     function-bind: "npm:^1.1.2"
-    generator-function: "npm:^2.0.0"
     get-proto: "npm:^1.0.1"
     gopd: "npm:^1.2.0"
     has-symbols: "npm:^1.1.0"
     hasown: "npm:^2.0.2"
     math-intrinsics: "npm:^1.1.0"
-  checksum: 10c0/9f4ab0cf7efe0fd2c8185f52e6f637e708f3a112610c88869f8f041bb9ecc2ce44bf285dfdbdc6f4f7c277a5b88d8e94a432374d97cca22f3de7fc63795deb5d
+  checksum: 10c0/52c81808af9a8130f581e6a6a83e1ba4a9f703359e7a438d1369a5267a25412322f03dcbd7c549edaef0b6214a0630a28511d7df0130c93cfd380f4fa0b5b66a
   languageName: node
   linkType: hard
 
@@ -3398,7 +3373,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"node-fetch@npm:2.6.9":
+"node-fetch@npm:2.6.9, node-fetch@npm:^2.6.7":
   version: 2.6.9
   resolution: "node-fetch@npm:2.6.9::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2Fnode-fetch%2F-%2Fnode-fetch-2.6.9.tgz"
   dependencies:
@@ -3409,20 +3384,6 @@ __metadata:
     encoding:
       optional: true
   checksum: 10c0/7a4a0e027e509b741bec4172749103f158da23187ff251cb988dd54ea7267519c3fa11838971da0f5f3c54e79da3174e7bd72aa2179c9f69887511ece16c9c0f
-  languageName: node
-  linkType: hard
-
-"node-fetch@npm:^2.6.7":
-  version: 2.7.0
-  resolution: "node-fetch@npm:2.7.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2Fnode-fetch%2F-%2Fnode-fetch-2.7.0.tgz"
-  dependencies:
-    whatwg-url: "npm:^5.0.0"
-  peerDependencies:
-    encoding: ^0.1.0
-  peerDependenciesMeta:
-    encoding:
-      optional: true
-  checksum: 10c0/b55786b6028208e6fbe594ccccc213cab67a72899c9234eb59dba51062a299ea853210fcf526998eaa2867b0963ad72338824450905679ff0fa304b8c5093ae8
   languageName: node
   linkType: hard
 
@@ -3711,11 +3672,11 @@ __metadata:
   linkType: hard
 
 "posthog-node@npm:^5.26.0":
-  version: 5.26.0
-  resolution: "posthog-node@npm:5.26.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2Fposthog-node%2F-%2Fposthog-node-5.26.0.tgz"
+  version: 5.26.2
+  resolution: "posthog-node@npm:5.26.2::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2Fposthog-node%2F-%2Fposthog-node-5.26.2.tgz"
   dependencies:
-    "@posthog/core": "npm:1.23.1"
-  checksum: 10c0/c95e6b17e9138ae046f2219bd2e7770e69b0d2b60c390300acbc36c9eecf14b4cda129570fad9c10ced55f4432361914e20f4c7481eb473610b0c1d897e41680
+    "@posthog/core": "npm:1.23.2"
+  checksum: 10c0/8f9b8844658885a816edcbe1b7b22269b056e12ea88cea67c684b21e3ca6617c457c124afdd465827e9022e06d97d645161f67917b89b68204ab96a407b92fd6
   languageName: node
   linkType: hard
 
@@ -4383,13 +4344,6 @@ __metadata:
   version: 6.21.0
   resolution: "undici-types@npm:6.21.0::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2Fundici-types%2F-%2Fundici-types-6.21.0.tgz"
   checksum: 10c0/c01ed51829b10aa72fc3ce64b747f8e74ae9b60eafa19a7b46ef624403508a54c526ffab06a14a26b3120d055e1104d7abe7c9017e83ced038ea5cf52f8d5e04
-  languageName: node
-  linkType: hard
-
-"undici-types@npm:~7.18.0":
-  version: 7.18.2
-  resolution: "undici-types@npm:7.18.2::__archiveUrl=https%3A%2F%2Fnpm.dev.wixpress.com%2Fapi%2Fnpm%2Fnpm-repos%2Fundici-types%2F-%2Fundici-types-7.18.2.tgz"
-  checksum: 10c0/85a79189113a238959d7a647368e4f7c5559c3a404ebdb8fc4488145ce9426fcd82252a844a302798dfc0e37e6fb178ff481ed03bc4caf634c5757d9ef43521d
   languageName: node
   linkType: hard
 

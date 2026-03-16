@@ -11,23 +11,30 @@ export interface AuthMiddlewareOptions {
 export function createAuthMiddleware(options: AuthMiddlewareOptions) {
   const { supabaseUrl, jwtSecret } = options;
 
-  // Build the key source: prefer JWKS (asymmetric), fall back to HS256 shared secret
-  let keySource: Parameters<typeof jwtVerify>[1] | null = null;
-  let algorithms: string[] | undefined;
+  // Build a verify function: prefer JWKS (asymmetric), fall back to HS256 shared secret.
+  // Using per-strategy closures avoids jose's overload resolution issues with union key types.
+  type VerifyFn = (token: string) => Promise<string>;
+  let doVerify: VerifyFn | null = null;
 
   if (supabaseUrl) {
-    const jwksUrl = new URL("/auth/v1/.well-known/jwks.json", supabaseUrl);
-    keySource = createRemoteJWKSet(jwksUrl);
-    // Let jose auto-detect the algorithm from the JWKS
-    algorithms = undefined;
+    const JWKS = createRemoteJWKSet(new URL("/auth/v1/.well-known/jwks.json", supabaseUrl));
+    doVerify = async (token) => {
+      const { payload } = await jwtVerify(token, JWKS);
+      if (!payload.sub) throw new Error("Token missing subject claim.");
+      return payload.sub;
+    };
   } else if (jwtSecret) {
-    keySource = new TextEncoder().encode(jwtSecret);
-    algorithms = ["HS256"];
+    const secret = new TextEncoder().encode(jwtSecret);
+    doVerify = async (token) => {
+      const { payload } = await jwtVerify(token, secret, { algorithms: ["HS256"] });
+      if (!payload.sub) throw new Error("Token missing subject claim.");
+      return payload.sub;
+    };
   }
 
   return async (req: Request, res: Response, next: NextFunction) => {
     // Pass-through mode when neither secret nor URL is configured (gradual rollout)
-    if (!keySource) {
+    if (!doVerify) {
       next();
       return;
     }
@@ -41,16 +48,7 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions) {
     const token = authHeader.slice(7);
 
     try {
-      const { payload } = await jwtVerify(token, keySource, {
-        ...(algorithms && { algorithms }),
-      });
-
-      if (!payload.sub) {
-        res.status(401).json({ error: "Token missing subject claim." });
-        return;
-      }
-
-      req.userId = payload.sub;
+      req.userId = await doVerify(token);
       next();
     } catch {
       res.status(401).json({ error: "Invalid or expired token." });

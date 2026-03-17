@@ -8,12 +8,28 @@ import type { AudioStore } from "./storage.js";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/audio/speech";
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini-tts";
+const DEFAULT_OPENAI_TTS_TIMEOUT_MS = 30_000;
 const DEFAULT_TTS_INSTRUCTIONS =
   "Read this article aloud in a natural, engaging tone with clear pacing and clean sentence boundaries.";
 
 export const AVAILABLE_VOICES = ["alloy", "ash", "sage", "verse"] as const;
 export const VOICE_PREVIEW_TEXT =
   "This is Hear It. I turn articles into clear, natural audio you can listen to on the move.";
+
+export class OpenAITTSTimeoutError extends Error {
+  readonly code = "tts_timeout";
+
+  constructor(
+    readonly details: {
+      timeoutMs: number;
+      voice: string;
+      textLength: number;
+    },
+  ) {
+    super("OpenAI speech generation timed out.");
+    this.name = "OpenAITTSTimeoutError";
+  }
+}
 
 export interface SpeechSynthesisContext {
   audioStore?: AudioStore;
@@ -94,20 +110,40 @@ export class OpenAISpeechProvider implements SpeechProvider {
     speechOptions: SpeechOptions,
     context: SpeechSynthesisContext,
   ): Promise<AudioRenderResult> {
-    const response = await fetch(OPENAI_API_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: this.model,
-        voice: speechOptions.voice,
-        input: text,
-        instructions: DEFAULT_TTS_INSTRUCTIONS,
-        response_format: "mp3",
-      }),
-    });
+    const timeoutMs = Number(process.env.OPENAI_TTS_TIMEOUT_MS ?? DEFAULT_OPENAI_TTS_TIMEOUT_MS);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort("timeout"), timeoutMs);
+
+    let response: Response;
+    try {
+      response = await fetch(OPENAI_API_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: this.model,
+          voice: speechOptions.voice,
+          input: text,
+          instructions: DEFAULT_TTS_INSTRUCTIONS,
+          response_format: "mp3",
+        }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new OpenAITTSTimeoutError({
+          timeoutMs,
+          voice: speechOptions.voice,
+          textLength: text.length,
+        });
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       let detail = "";

@@ -7,6 +7,7 @@ import type { ExtractArticleInput, ExtractedArticle } from "./types.js";
 
 const WORDS_PER_MINUTE = 160;
 export const MAX_NARRATION_CHARS = 4096;
+const DEFAULT_ARTICLE_FETCH_TIMEOUT_MS = 15_000;
 const MIN_PARAGRAPH_LENGTH = 40;
 const BOILERPLATE_PATTERNS = [
   /subscribe/i,
@@ -67,6 +68,21 @@ export class ArticleTooLongError extends Error {
       `This article is too long to narrate right now (${details.characterCount.toLocaleString()} characters, limit ${details.maxCharacterCount.toLocaleString()}). Try a shorter article.`,
     );
     this.name = "ArticleTooLongError";
+  }
+}
+
+export class ArticleFetchTimeoutError extends Error {
+  readonly code = "article_fetch_timeout";
+  readonly statusCode = 504;
+
+  constructor(
+    readonly details: {
+      url: string;
+      timeoutMs: number;
+    },
+  ) {
+    super(`Timed out fetching article content.`);
+    this.name = "ArticleFetchTimeoutError";
   }
 }
 
@@ -143,13 +159,40 @@ export async function extractArticle(
 }
 
 async function fetchHtml(url: string): Promise<string> {
-  const response = await fetch(url, {
-    headers: {
-      "user-agent":
-        "HearItBot/0.1 (+https://local.dev/hear-it; article extraction prototype)",
-      accept: "text/html,application/xhtml+xml",
-    },
-  });
+  const timeoutMs = Number(process.env.ARTICLE_FETCH_TIMEOUT_MS ?? DEFAULT_ARTICLE_FETCH_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort("timeout"), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        "user-agent":
+          "HearItBot/0.1 (+https://local.dev/hear-it; article extraction prototype)",
+        accept: "text/html,application/xhtml+xml",
+      },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      const timeoutError = new ArticleFetchTimeoutError({ url, timeoutMs });
+      Sentry.captureException(timeoutError, {
+        tags: { url, phase: "fetch_html" },
+        extra: { timeoutMs },
+      });
+      trackEvent("article_fetch_timeout", {
+        url,
+        domain: safeHostname(url),
+        timeout_ms: timeoutMs,
+      });
+      throw timeoutError;
+    }
+
+    Sentry.captureException(error, { tags: { url, phase: "fetch_html" } });
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const err = new Error(`Failed to fetch URL: ${response.status}`);

@@ -197,6 +197,22 @@ class StrictDuplicateKeyAudioStore implements AudioStore {
   }
 }
 
+class FailingHealthAudioStore implements AudioStore {
+  async check(): Promise<void> {
+    throw new Error("blob storage unavailable");
+  }
+
+  async put(): Promise<string> {
+    throw new Error("not implemented");
+  }
+
+  async head(): Promise<string | null> {
+    return null;
+  }
+
+  async delete(): Promise<void> {}
+}
+
 const sampleHtml = `
 <!doctype html>
 <html>
@@ -345,6 +361,42 @@ describe("audio job service", () => {
 
       const audioResponse = await fetch(`http://127.0.0.1:${address.port}/api/jobs/${queuedJob.id}/audio`);
       expect(audioResponse.status).toBe(404);
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
+  });
+
+  it("reports dependency error details from health checks", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const jobStore = new FileJobStore(jobsFilePath);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore: new FailingHealthAudioStore(),
+      speechProvider: new InstantSpeechProvider(),
+    });
+    const app = createApp({
+      audioJobService: service,
+      jobStore,
+      audioStore: new FailingHealthAudioStore(),
+    });
+    const server = createServer(app);
+    server.listen(0);
+    await once(server, "listening");
+
+    try {
+      const address = server.address() as AddressInfo;
+      const response = await fetch(`http://127.0.0.1:${address.port}/health`);
+      const payload = await response.json() as {
+        ok: boolean;
+        dependencies: Record<string, string>;
+        dependencyErrors: Record<string, string | undefined>;
+      };
+
+      expect(payload.ok).toBe(false);
+      expect(payload.dependencies.storage).toBe("error");
+      expect(payload.dependencyErrors.storage).toContain("blob storage unavailable");
     } finally {
       server.close();
       await once(server, "close");

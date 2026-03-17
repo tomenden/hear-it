@@ -4,7 +4,11 @@ import rateLimit from "express-rate-limit";
 import { join } from "node:path";
 import { z } from "zod";
 
-import { ArticleTooLongError, extractArticle } from "./extractor.js";
+import {
+  ArticleFetchTimeoutError,
+  ArticleTooLongError,
+  extractArticle,
+} from "./extractor.js";
 import { createAuthMiddleware } from "./auth.js";
 import { AudioJobService } from "./jobs.js";
 import type { AudioStore, JobStore } from "./storage.js";
@@ -96,6 +100,17 @@ export function createApp(options: CreateAppOptions) {
       };
     }
 
+    if (error instanceof ArticleFetchTimeoutError) {
+      return {
+        status: error.statusCode,
+        body: {
+          error: error.message,
+          code: error.code,
+          details: error.details,
+        },
+      };
+    }
+
     return {
       status: 422,
       body: {
@@ -121,21 +136,27 @@ export function createApp(options: CreateAppOptions) {
       database: "ok",
       storage: "ok",
     };
+    const dependencyErrors: Record<string, string | null> = {
+      database: null,
+      storage: null,
+    };
 
     try {
       await jobStore.check();
-    } catch {
+    } catch (error) {
       dependencies.database = "error";
+      dependencyErrors.database = error instanceof Error ? error.message : String(error);
     }
 
     try {
       await audioStore.check();
-    } catch {
+    } catch (error) {
       dependencies.storage = "error";
+      dependencyErrors.storage = error instanceof Error ? error.message : String(error);
     }
 
     const ok = dependencies.database === "ok" && dependencies.storage === "ok";
-    res.json({ ok, dependencies });
+    res.json({ ok, dependencies, dependencyErrors });
   });
 
   app.get("/api/config", (_req, res) => {

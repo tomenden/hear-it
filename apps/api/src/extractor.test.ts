@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ArticleTooLongError,
@@ -12,6 +12,8 @@ import {
 const simpleArticleHtml = loadFixture("simple-article.html");
 const fallbackArticleHtml = loadFixture("fallback-article.html");
 const wikipediaArticleHtml = loadFixture("wikipedia-article.html");
+const originalFetch = globalThis.fetch;
+const originalFetchTimeout = process.env.ARTICLE_FETCH_TIMEOUT_MS;
 
 describe("article extraction", () => {
   it("extracts article content from supplied HTML", async () => {
@@ -93,6 +95,32 @@ describe("article extraction", () => {
       },
     });
   });
+
+  it("times out external article fetches instead of hanging indefinitely", async () => {
+    process.env.ARTICLE_FETCH_TIMEOUT_MS = "10";
+    globalThis.fetch = vi.fn((_input, init) => new Promise((_, reject) => {
+      const signal = init?.signal;
+      signal?.addEventListener("abort", () => {
+        reject(signal.reason ?? new Error("aborted"));
+      }, { once: true });
+    })) as typeof fetch;
+
+    await expect(
+      extractArticle({
+        url: "https://example.com/slow-article",
+      }),
+    ).rejects.toThrow("Timed out fetching article content.");
+  });
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+
+  if (originalFetchTimeout === undefined) {
+    delete process.env.ARTICLE_FETCH_TIMEOUT_MS;
+  } else {
+    process.env.ARTICLE_FETCH_TIMEOUT_MS = originalFetchTimeout;
+  }
 });
 
 function loadFixture(fileName: string): string {

@@ -1,6 +1,7 @@
 import postgres, { type JSONValue } from "postgres";
 import { put, head, del } from "@vercel/blob";
 import { randomUUID } from "node:crypto";
+import * as Sentry from "@sentry/node";
 
 import type { AudioJob } from "./types.js";
 import type { AudioStore, AudioStorePutOptions, JobStore } from "./storage.js";
@@ -37,38 +38,48 @@ export class VercelJobStore implements JobStore {
   }
 
   async check(): Promise<void> {
-    await this.sql`SELECT 1`;
+    try {
+      await this.sql`SELECT 1`;
+    } catch (error) {
+      captureStorageFailure("db_check", error);
+      throw error;
+    }
   }
 
   async init(): Promise<void> {
-    await this.sql`
-      CREATE TABLE IF NOT EXISTS audio_jobs (
-        id            TEXT PRIMARY KEY,
-        status        TEXT NOT NULL,
-        article       JSONB NOT NULL,
-        speech_options JSONB NOT NULL,
-        provider      TEXT NOT NULL,
-        audio_url     TEXT,
-        playlist_url  TEXT,
-        audio_segments JSONB NOT NULL DEFAULT '[]',
-        duration_seconds DOUBLE PRECISION,
-        error         TEXT,
-        created_at    TEXT NOT NULL,
-        updated_at    TEXT NOT NULL
-      )
-    `;
+    try {
+      await this.sql`
+        CREATE TABLE IF NOT EXISTS audio_jobs (
+          id            TEXT PRIMARY KEY,
+          status        TEXT NOT NULL,
+          article       JSONB NOT NULL,
+          speech_options JSONB NOT NULL,
+          provider      TEXT NOT NULL,
+          audio_url     TEXT,
+          playlist_url  TEXT,
+          audio_segments JSONB NOT NULL DEFAULT '[]',
+          duration_seconds DOUBLE PRECISION,
+          error         TEXT,
+          created_at    TEXT NOT NULL,
+          updated_at    TEXT NOT NULL
+        )
+      `;
 
-    await this.sql`
-      CREATE SEQUENCE IF NOT EXISTS audio_jobs_id_seq
-    `;
+      await this.sql`
+        CREATE SEQUENCE IF NOT EXISTS audio_jobs_id_seq
+      `;
 
-    await this.sql`
-      ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS user_id TEXT
-    `;
+      await this.sql`
+        ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS user_id TEXT
+      `;
 
-    await this.sql`
-      CREATE INDEX IF NOT EXISTS idx_audio_jobs_user_id ON audio_jobs(user_id)
-    `;
+      await this.sql`
+        CREATE INDEX IF NOT EXISTS idx_audio_jobs_user_id ON audio_jobs(user_id)
+      `;
+    } catch (error) {
+      captureStorageFailure("db_init", error);
+      throw error;
+    }
   }
 
   async getAll(): Promise<AudioJob[]> {
@@ -86,39 +97,44 @@ export class VercelJobStore implements JobStore {
   }
 
   async save(job: AudioJob): Promise<void> {
-    await this.sql`
-      INSERT INTO audio_jobs (
-        id, status, article, speech_options, provider,
-        audio_url, playlist_url, audio_segments, duration_seconds,
-        error, created_at, updated_at, user_id
-      ) VALUES (
-        ${job.id},
-        ${job.status},
-        ${this.sql.json(jsonb(job.article))},
-        ${this.sql.json(jsonb(job.speechOptions))},
-        ${job.provider},
-        ${job.audioUrl},
-        ${job.playlistUrl},
-        ${this.sql.json(jsonb(job.audioSegments))},
-        ${job.durationSeconds},
-        ${job.error},
-        ${job.createdAt},
-        ${job.updatedAt},
-        ${job.userId}
-      )
-      ON CONFLICT (id) DO UPDATE SET
-        status = EXCLUDED.status,
-        article = EXCLUDED.article,
-        speech_options = EXCLUDED.speech_options,
-        provider = EXCLUDED.provider,
-        audio_url = EXCLUDED.audio_url,
-        playlist_url = EXCLUDED.playlist_url,
-        audio_segments = EXCLUDED.audio_segments,
-        duration_seconds = EXCLUDED.duration_seconds,
-        error = EXCLUDED.error,
-        updated_at = EXCLUDED.updated_at,
-        user_id = EXCLUDED.user_id
-    `;
+    try {
+      await this.sql`
+        INSERT INTO audio_jobs (
+          id, status, article, speech_options, provider,
+          audio_url, playlist_url, audio_segments, duration_seconds,
+          error, created_at, updated_at, user_id
+        ) VALUES (
+          ${job.id},
+          ${job.status},
+          ${this.sql.json(jsonb(job.article))},
+          ${this.sql.json(jsonb(job.speechOptions))},
+          ${job.provider},
+          ${job.audioUrl},
+          ${job.playlistUrl},
+          ${this.sql.json(jsonb(job.audioSegments))},
+          ${job.durationSeconds},
+          ${job.error},
+          ${job.createdAt},
+          ${job.updatedAt},
+          ${job.userId}
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          status = EXCLUDED.status,
+          article = EXCLUDED.article,
+          speech_options = EXCLUDED.speech_options,
+          provider = EXCLUDED.provider,
+          audio_url = EXCLUDED.audio_url,
+          playlist_url = EXCLUDED.playlist_url,
+          audio_segments = EXCLUDED.audio_segments,
+          duration_seconds = EXCLUDED.duration_seconds,
+          error = EXCLUDED.error,
+          updated_at = EXCLUDED.updated_at,
+          user_id = EXCLUDED.user_id
+      `;
+    } catch (error) {
+      captureStorageFailure("db_save_job", error, { jobId: job.id, status: job.status });
+      throw error;
+    }
   }
 
   async claimQueued(jobId: string): Promise<AudioJob | null> {
@@ -227,7 +243,10 @@ export class VercelAudioStore implements AudioStore {
     } catch (error: unknown) {
       const isBlobNotFound =
         error instanceof Error && error.name === "BlobNotFoundError";
-      if (!isBlobNotFound) throw error;
+      if (!isBlobNotFound) {
+        captureStorageFailure("blob_check", error);
+        throw error;
+      }
     }
   }
 
@@ -237,13 +256,18 @@ export class VercelAudioStore implements AudioStore {
     contentType = "audio/mpeg",
     options?: AudioStorePutOptions,
   ): Promise<string> {
-    const blob = await put(key, data, {
-      access: "public",
-      contentType,
-      addRandomSuffix: false,
-      allowOverwrite: options?.overwrite ?? false,
-    });
-    return blob.url;
+    try {
+      const blob = await put(key, data, {
+        access: "public",
+        contentType,
+        addRandomSuffix: false,
+        allowOverwrite: options?.overwrite ?? false,
+      });
+      return blob.url;
+    } catch (error) {
+      captureStorageFailure("blob_put", error, { key, contentType, overwrite: options?.overwrite ?? false });
+      throw error;
+    }
   }
 
   async head(key: string): Promise<string | null> {
@@ -262,4 +286,18 @@ export class VercelAudioStore implements AudioStore {
       // Ignore — blob may already be gone.
     }
   }
+}
+
+function captureStorageFailure(
+  operation: string,
+  error: unknown,
+  extra?: Record<string, unknown>,
+) {
+  Sentry.captureException(error, {
+    tags: {
+      operation,
+      layer: operation.startsWith("blob_") ? "blob" : "database",
+    },
+    extra,
+  });
 }

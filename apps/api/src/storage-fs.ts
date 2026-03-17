@@ -3,7 +3,7 @@ import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import type { AudioJob } from "./types.js";
-import type { AudioStore, JobStore } from "./storage.js";
+import type { AudioStore, AudioStorePutOptions, JobStore } from "./storage.js";
 
 // ---------------------------------------------------------------------------
 // File-system JobStore  (same behaviour as before — JSON file on disk)
@@ -133,7 +133,12 @@ export class FileAudioStore implements AudioStore {
     await access(this.outputDir);
   }
 
-  async put(key: string, data: Buffer, _contentType?: string): Promise<string> {
+  async put(
+    key: string,
+    data: Buffer,
+    _contentType?: string,
+    _options?: AudioStorePutOptions,
+  ): Promise<string> {
     const filePath = join(this.outputDir, key);
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, data);

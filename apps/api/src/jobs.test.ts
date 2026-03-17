@@ -13,6 +13,7 @@ import { createApp, createAudioJobSchema, extractRequestSchema } from "./app.js"
 import { MAX_NARRATION_CHARS } from "./extractor.js";
 import { AudioJobService } from "./jobs.js";
 import { FileJobStore, FileAudioStore } from "./storage-fs.js";
+import type { AudioStore } from "./storage.js";
 import type {
   AudioRenderResult,
   ExtractedArticle,
@@ -124,7 +125,7 @@ class DelayedSegmentSpeechProvider implements SpeechProvider {
 
 class FailingAfterFirstSegmentSpeechProvider implements SpeechProvider {
   readonly name = "failing-after-first-segment-test";
-  private callCount = 0
+  private callCount = 0;
 
   async synthesize(
     article: ExtractedArticle,
@@ -165,6 +166,34 @@ class FailingAfterFirstSegmentSpeechProvider implements SpeechProvider {
       audioData,
       contentType: "audio/mpeg",
     };
+  }
+}
+
+class StrictDuplicateKeyAudioStore implements AudioStore {
+  private readonly blobs = new Map<string, Buffer>();
+
+  async check(): Promise<void> {}
+
+  async put(
+    key: string,
+    data: Buffer,
+    _contentType?: string,
+    options?: { overwrite?: boolean },
+  ): Promise<string> {
+    if (this.blobs.has(key) && !options?.overwrite) {
+      throw new Error(`Duplicate key write denied for ${key}`);
+    }
+
+    this.blobs.set(key, data);
+    return `/audio/${key}`;
+  }
+
+  async head(key: string): Promise<string | null> {
+    return this.blobs.has(key) ? `/audio/${key}` : null;
+  }
+
+  async delete(key: string): Promise<void> {
+    this.blobs.delete(key);
   }
 }
 
@@ -428,6 +457,45 @@ describe("audio job service", () => {
     expect(failedJob?.audioSegments).toEqual([]);
     expect(failedJob?.durationSeconds).toBeNull();
     expect(failedJob?.error).toContain("failed after the first playable chunk");
+  });
+
+  it("can rewrite the stable playlist key as new segments arrive", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const jobStore = new FileJobStore(jobsFilePath);
+    const audioStore = new StrictDuplicateKeyAudioStore();
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider: new DelayedSegmentSpeechProvider([
+        { audioData: Buffer.from("ID3SEGMENTONE"), durationSeconds: 11, delayMs: 5 },
+        { audioData: Buffer.from("ID3SEGMENTTWO"), durationSeconds: 13, delayMs: 5 },
+      ]),
+    });
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/jobs",
+      html: `
+        <!doctype html>
+        <html>
+          <head><title>Segmented Article</title></head>
+          <body>
+            <article>
+              <h1>Segmented Article</h1>
+              <p>${"First segment content. ".repeat(40)}</p>
+              <p>${"Second segment content. ".repeat(40)}</p>
+            </article>
+          </body>
+        </html>
+      `,
+    });
+
+    await service.processJob(queuedJob.id);
+
+    const completedJob = await service.getJob(queuedJob.id);
+    expect(completedJob?.status).toBe("completed");
+    expect(completedJob?.playlistUrl).toBe(`/audio/narrations/job-${queuedJob.id}/playlist.m3u8`);
+    expect(completedJob?.audioSegments).toHaveLength(2);
   });
 
   it("rejects oversized articles before creating a job", async () => {

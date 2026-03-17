@@ -152,6 +152,7 @@ export class AudioJobService {
           playlistKey,
           Buffer.from(buildPlaylist(audioSegments, false), "utf8"),
           "application/vnd.apple.mpegurl",
+          { overwrite: true },
         );
 
         await this.updateJob(jobId, {
@@ -166,6 +167,7 @@ export class AudioJobService {
         playlistKey,
         Buffer.from(buildPlaylist(audioSegments, true), "utf8"),
         "application/vnd.apple.mpegurl",
+        { overwrite: true },
       );
       const durationSeconds = audioSegments.reduce(
         (total, segment) => total + segment.durationSeconds,

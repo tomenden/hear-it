@@ -3,7 +3,7 @@ import { put, head, del } from "@vercel/blob";
 import { randomUUID } from "node:crypto";
 
 import type { AudioJob } from "./types.js";
-import type { AudioStore, JobStore } from "./storage.js";
+import type { AudioStore, AudioStorePutOptions, JobStore } from "./storage.js";
 
 /** Cast a typed object to JSONValue for postgres.js JSONB parameters. */
 const jsonb = (value: unknown) => value as JSONValue;
@@ -218,11 +218,17 @@ export class VercelAudioStore implements AudioStore {
     }
   }
 
-  async put(key: string, data: Buffer, contentType = "audio/mpeg"): Promise<string> {
+  async put(
+    key: string,
+    data: Buffer,
+    contentType = "audio/mpeg",
+    options?: AudioStorePutOptions,
+  ): Promise<string> {
     const blob = await put(key, data, {
       access: "public",
       contentType,
       addRandomSuffix: false,
+      allowOverwrite: options?.overwrite ?? false,
     });
     return blob.url;
   }

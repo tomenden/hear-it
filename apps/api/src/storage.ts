@@ -1,5 +1,9 @@
 import type { AudioJob } from "./types.js";
 
+export interface AudioStorePutOptions {
+  overwrite?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Job Store — persists AudioJob records
 // ---------------------------------------------------------------------------
@@ -33,7 +37,12 @@ export interface AudioStore {
    * Write an audio buffer and return its public URL.
    * `key` is a path-like identifier, e.g. "previews/voice-preview--alloy.mp3"
    */
-  put(key: string, data: Buffer, contentType?: string): Promise<string>;
+  put(
+    key: string,
+    data: Buffer,
+    contentType?: string,
+    options?: AudioStorePutOptions,
+  ): Promise<string>;
 
   /** Check whether a key already exists and return its public URL, or null. */
   head(key: string): Promise<string | null>;

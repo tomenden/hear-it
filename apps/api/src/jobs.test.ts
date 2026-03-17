@@ -461,6 +461,77 @@ describe("audio job service", () => {
     }
   });
 
+  it("rescues stale processing jobs when polling sees a long narration got stranded", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const audioStore = new FileAudioStore(audioDir, "/audio");
+    const jobStore = new FileJobStore(jobsFilePath);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider: new DelayedSegmentSpeechProvider([
+        { audioData: Buffer.from("ID3SEGMENTTWO"), durationSeconds: 13, delayMs: 5 },
+        { audioData: Buffer.from("ID3SEGMENTTHREE"), durationSeconds: 17, delayMs: 5 },
+      ]),
+    });
+    const app = createApp({
+      audioJobService: service,
+      jobStore,
+      audioStore,
+    });
+    const server = createServer(app);
+    server.listen(0);
+    await once(server, "listening");
+
+    try {
+      const address = server.address() as AddressInfo;
+      const queuedJob = await service.createJob({
+        url: "https://example.com/posts/resume-job",
+        html: `
+          <!doctype html>
+          <html>
+            <head><title>Resume Segmented Article</title></head>
+            <body>
+              <article>
+                <h1>Resume Segmented Article</h1>
+                <p>${"First segment content. ".repeat(40)}</p>
+                <p>${"Second segment content. ".repeat(40)}</p>
+                <p>${"Third segment content. ".repeat(40)}</p>
+              </article>
+            </body>
+          </html>
+        `,
+      });
+
+      await jobStore.save({
+        ...queuedJob,
+        status: "processing",
+        playlistUrl: `/audio/narrations/job-${queuedJob.id}/playlist.m3u8`,
+        audioSegments: [
+          {
+            url: `/audio/narrations/job-${queuedJob.id}/segment-0.mp3`,
+            durationSeconds: 11,
+          },
+        ],
+        updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+      });
+
+      const pollResponse = await fetch(`http://127.0.0.1:${address.port}/api/jobs`);
+      expect(pollResponse.status).toBe(200);
+
+      const completedJob = await waitFor(
+        () => service.getJob(queuedJob.id),
+        (job) => job !== null && job.status === "completed",
+      );
+
+      expect(completedJob?.audioSegments).toHaveLength(3);
+      expect(completedJob?.durationSeconds).toBe(41);
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
+  });
+
   it("makes a job playable before full completion via a growing playlist", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
@@ -529,6 +600,62 @@ describe("audio job service", () => {
 
     const completedPlaylist = await readFile(playlistPath, "utf8");
     expect(completedPlaylist).toContain("#EXT-X-ENDLIST");
+  });
+
+  it("resumes a stale partially processed job from its persisted segments", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const audioStore = new FileAudioStore(audioDir, "/audio");
+    const jobStore = new FileJobStore(jobsFilePath);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider: new DelayedSegmentSpeechProvider([
+        { audioData: Buffer.from("ID3SEGMENTTWO"), durationSeconds: 13, delayMs: 5 },
+        { audioData: Buffer.from("ID3SEGMENTTHREE"), durationSeconds: 17, delayMs: 5 },
+      ]),
+    });
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/resume-job",
+      html: `
+        <!doctype html>
+        <html>
+          <head><title>Resume Segmented Article</title></head>
+          <body>
+            <article>
+              <h1>Resume Segmented Article</h1>
+              <p>${"First segment content. ".repeat(40)}</p>
+              <p>${"Second segment content. ".repeat(40)}</p>
+              <p>${"Third segment content. ".repeat(40)}</p>
+            </article>
+          </body>
+        </html>
+      `,
+    });
+
+    await jobStore.save({
+      ...queuedJob,
+      status: "processing",
+      playlistUrl: `/audio/narrations/job-${queuedJob.id}/playlist.m3u8`,
+      audioSegments: [
+        {
+          url: `/audio/narrations/job-${queuedJob.id}/segment-0.mp3`,
+          durationSeconds: 11,
+        },
+      ],
+      updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    });
+
+    await service.processJob(queuedJob.id);
+
+    const completedJob = await service.getJob(queuedJob.id);
+    expect(completedJob?.status).toBe("completed");
+    expect(completedJob?.audioSegments).toHaveLength(3);
+    expect(completedJob?.audioSegments[0]?.url).toBe(
+      `/audio/narrations/job-${queuedJob.id}/segment-0.mp3`,
+    );
+    expect(completedJob?.durationSeconds).toBe(41);
   });
 
   it("clears partial playback metadata when generation fails mid-run", async () => {

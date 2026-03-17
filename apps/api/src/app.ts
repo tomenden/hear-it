@@ -281,7 +281,7 @@ export function createApp(options: CreateAppOptions) {
       return;
     }
 
-    if (job.status === "queued") {
+    if (audioJobService.shouldKickJob(job)) {
       void audioJobService.processJob(job.id);
     }
 

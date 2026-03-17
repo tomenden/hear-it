@@ -106,32 +106,43 @@ export class AudioJobService {
 
   async processJob(jobId: string): Promise<void> {
     await this.init();
-    const queuedJob = await this.jobStore.claimQueued(jobId);
-    if (!queuedJob) {
+    const claimedJob = await this.jobStore.claimPending(
+      jobId,
+      processingStalledBeforeIso(),
+    );
+    if (!claimedJob) {
       return;
     }
 
-    await this.deleteNarrationArtifacts(jobId, queuedJob.audioSegments.length);
-    await this.updateJob(jobId, {
-      error: null,
-      audioUrl: null,
-      playlistUrl: null,
-      audioSegments: [],
-      durationSeconds: null,
-    });
+    const hadPersistedSegments = claimedJob.audioSegments.length > 0;
+    if (!hadPersistedSegments) {
+      await this.deleteNarrationArtifacts(jobId, 0);
+      await this.updateJob(jobId, {
+        error: null,
+        audioUrl: null,
+        playlistUrl: null,
+        audioSegments: [],
+        durationSeconds: null,
+      });
+    }
 
     try {
       const segmentTexts = chunkNarrationText(
-        queuedJob.article.textContent,
+        claimedJob.article.textContent,
       );
-      const audioSegments: AudioJob["audioSegments"] = [];
+      const audioSegments: AudioJob["audioSegments"] = [...claimedJob.audioSegments];
       const playlistKey = buildNarrationPlaylistKey(jobId);
-      let playlistUrl: string | null = null;
+      let playlistUrl: string | null = claimedJob.playlistUrl;
 
-      for (const [index, textChunk] of segmentTexts.entries()) {
+      for (
+        let index = audioSegments.length;
+        index < segmentTexts.length;
+        index += 1
+      ) {
+        const textChunk = segmentTexts[index]!;
         const result = await this.speechProvider.synthesizeText(
           textChunk,
-          queuedJob.speechOptions,
+          claimedJob.speechOptions,
           {
             audioStore: this.audioStore,
             fileKey: buildNarrationSegmentKey(jobId, index),
@@ -186,23 +197,23 @@ export class AudioJobService {
       Sentry.captureException(error, {
         tags: {
           jobId,
-          voice: queuedJob.speechOptions.voice,
-          provider: queuedJob.provider,
+          voice: claimedJob.speechOptions.voice,
+          provider: claimedJob.provider,
         },
         contexts: {
           job: {
             id: jobId,
-            articleUrl: queuedJob.article.url,
-            articleTitle: queuedJob.article.title,
-            wordCount: queuedJob.article.wordCount,
-            voice: queuedJob.speechOptions.voice,
-            provider: queuedJob.provider,
+            articleUrl: claimedJob.article.url,
+            articleTitle: claimedJob.article.title,
+            wordCount: claimedJob.article.wordCount,
+            voice: claimedJob.speechOptions.voice,
+            provider: claimedJob.provider,
           },
         },
       });
       trackEvent("tts_failed", {
         job_id: jobId,
-        voice: queuedJob.speechOptions.voice,
+        voice: claimedJob.speechOptions.voice,
         error: message,
       });
       await this.updateJob(jobId, {
@@ -271,10 +282,14 @@ export class AudioJobService {
       : await this.jobStore.getAll();
 
     for (const job of jobs) {
-      if (job.status === "queued") {
+      if (this.shouldKickJob(job)) {
         void this.processJob(job.id);
       }
     }
+  }
+
+  shouldKickJob(job: AudioJob): boolean {
+    return job.status === "queued" || isStaleProcessingJob(job);
   }
 
   private async updateJob(jobId: string, patch: Partial<AudioJob>) {
@@ -312,6 +327,20 @@ function safeHostname(url: string): string | null {
 }
 
 const MAX_SEGMENT_CHARS = 1_500;
+const DEFAULT_PROCESSING_STALL_MS = 90_000;
+
+function processingStalledBeforeIso(now = Date.now()): string {
+  return new Date(now - getProcessingStallMs()).toISOString();
+}
+
+function getProcessingStallMs(): number {
+  return Number(process.env.NARRATION_PROCESSING_STALL_MS ?? DEFAULT_PROCESSING_STALL_MS);
+}
+
+function isStaleProcessingJob(job: AudioJob, now = Date.now()): boolean {
+  if (job.status !== "processing") return false;
+  return Date.parse(job.updatedAt) < now - getProcessingStallMs();
+}
 
 function chunkNarrationText(text: string, maxChars = MAX_SEGMENT_CHARS): string[] {
   const trimmed = text.trim();

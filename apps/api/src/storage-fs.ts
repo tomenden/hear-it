@@ -63,8 +63,16 @@ export class FileJobStore implements JobStore {
   }
 
   async claimQueued(jobId: string): Promise<AudioJob | null> {
+    return this.claimPending(jobId, new Date(0).toISOString());
+  }
+
+  async claimPending(jobId: string, stalledBefore: string): Promise<AudioJob | null> {
     const existing = this.jobs.get(jobId);
-    if (!existing || existing.status !== "queued") return null;
+    if (!existing) return null;
+    const isQueued = existing.status === "queued";
+    const isStalledProcessing =
+      existing.status === "processing" && existing.updatedAt < stalledBefore;
+    if (!isQueued && !isStalledProcessing) return null;
 
     const claimed = {
       ...existing,

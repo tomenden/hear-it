@@ -138,13 +138,21 @@ export class VercelJobStore implements JobStore {
   }
 
   async claimQueued(jobId: string): Promise<AudioJob | null> {
+    return this.claimPending(jobId, new Date(0).toISOString());
+  }
+
+  async claimPending(jobId: string, stalledBefore: string): Promise<AudioJob | null> {
     const now = new Date().toISOString();
     const rows = await this.sql`
       UPDATE audio_jobs
       SET
         status = 'processing',
         updated_at = ${now}
-      WHERE id = ${jobId} AND status = 'queued'
+      WHERE id = ${jobId}
+        AND (
+          status = 'queued'
+          OR (status = 'processing' AND updated_at < ${stalledBefore})
+        )
       RETURNING *
     `;
     return rows.length > 0 ? rowToJob(rows[0]) : null;

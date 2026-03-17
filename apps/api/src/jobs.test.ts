@@ -1,6 +1,6 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
@@ -120,6 +120,75 @@ class DelayedSegmentSpeechProvider implements SpeechProvider {
       audioData: segment.audioData,
       contentType: "audio/mpeg",
     };
+  }
+}
+
+class IndexedDelayedSpeechProvider implements SpeechProvider {
+  readonly name = "indexed-delayed-segments-test";
+  private nextIndex = 0;
+  private activeCalls = 0;
+  private maxConcurrentCalls = 0;
+
+  constructor(
+    private readonly segments: Array<{
+      audioData: Buffer;
+      durationSeconds: number;
+      delayMs: number;
+    }>,
+  ) {}
+
+  async synthesize(
+    article: ExtractedArticle,
+    speechOptions: SpeechOptions,
+    context: SpeechSynthesisContext,
+  ): Promise<AudioRenderResult> {
+    return this.synthesizeText(article.textContent, speechOptions, context);
+  }
+
+  async synthesizeText(
+    _text: string,
+    _speechOptions: SpeechOptions,
+    context: SpeechSynthesisContext,
+  ): Promise<AudioRenderResult> {
+    const segmentIndex = this.nextIndex;
+    const segment = this.segments[segmentIndex];
+    this.nextIndex += 1;
+
+    if (!segment) {
+      throw new Error(`Unexpected synthesizeText call #${segmentIndex}`);
+    }
+
+    this.activeCalls += 1;
+    this.maxConcurrentCalls = Math.max(this.maxConcurrentCalls, this.activeCalls);
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, segment.delayMs));
+      const audioUrl =
+        context.audioStore && context.fileKey
+          ? await context.audioStore.put(
+              context.fileKey,
+              segment.audioData,
+              "audio/mpeg",
+            )
+          : null;
+
+      return {
+        audioUrl,
+        playlistUrl: null,
+        audioSegments: audioUrl
+          ? [{ url: audioUrl, durationSeconds: segment.durationSeconds }]
+          : [],
+        durationSeconds: segment.durationSeconds,
+        audioData: segment.audioData,
+        contentType: "audio/mpeg",
+      };
+    } finally {
+      this.activeCalls -= 1;
+    }
+  }
+
+  getMaxConcurrentCalls(): number {
+    return this.maxConcurrentCalls;
   }
 }
 
@@ -257,6 +326,15 @@ async function waitFor<T>(
   }
 
   throw new Error(`waitFor timed out after ${timeoutMs}ms`);
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 describe("audio job service", () => {
@@ -423,7 +501,7 @@ describe("audio job service", () => {
     expect(recoverySpy).not.toHaveBeenCalled();
   });
 
-  it("rescues queued jobs when polling sees background processing was dropped", async () => {
+  it("does not kick queued jobs when listing jobs", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
     const { service, jobStore, audioStore } = createTestContext(audioDir, jobsFilePath);
@@ -447,21 +525,19 @@ describe("audio job service", () => {
 
       const pollResponse = await fetch(`http://127.0.0.1:${address.port}/api/jobs`);
       expect(pollResponse.status).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const completedJob = await waitFor(
-        () => service.getJob(queuedJob.id),
-        (job) => job !== null && job.status === "completed",
-      );
-
-      expect(completedJob?.playlistUrl).toContain("playlist.m3u8");
-      expect(completedJob?.audioSegments.length ?? 0).toBeGreaterThan(0);
+      const stillQueuedJob = await service.getJob(queuedJob.id);
+      expect(stillQueuedJob?.status).toBe("queued");
+      expect(stillQueuedJob?.playlistUrl).toBeNull();
+      expect(stillQueuedJob?.audioSegments).toEqual([]);
     } finally {
       server.close();
       await once(server, "close");
     }
   });
 
-  it("rescues stale processing jobs when polling sees a long narration got stranded", async () => {
+  it("does not resume stale processing jobs directly from processJob", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
     const audioStore = new FileAudioStore(audioDir, "/audio");
@@ -474,62 +550,43 @@ describe("audio job service", () => {
         { audioData: Buffer.from("ID3SEGMENTTHREE"), durationSeconds: 17, delayMs: 5 },
       ]),
     });
-    const app = createApp({
-      audioJobService: service,
-      jobStore,
-      audioStore,
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/resume-job",
+      html: `
+        <!doctype html>
+        <html>
+          <head><title>Resume Segmented Article</title></head>
+          <body>
+            <article>
+              <h1>Resume Segmented Article</h1>
+              <p>${"First segment content. ".repeat(30)}</p>
+              <p>${"Second segment content. ".repeat(30)}</p>
+              <p>${"Third segment content. ".repeat(30)}</p>
+            </article>
+          </body>
+        </html>
+      `,
     });
-    const server = createServer(app);
-    server.listen(0);
-    await once(server, "listening");
 
-    try {
-      const address = server.address() as AddressInfo;
-      const queuedJob = await service.createJob({
-        url: "https://example.com/posts/resume-job",
-        html: `
-          <!doctype html>
-          <html>
-            <head><title>Resume Segmented Article</title></head>
-            <body>
-              <article>
-                <h1>Resume Segmented Article</h1>
-                <p>${"First segment content. ".repeat(30)}</p>
-                <p>${"Second segment content. ".repeat(30)}</p>
-                <p>${"Third segment content. ".repeat(30)}</p>
-              </article>
-            </body>
-          </html>
-        `,
-      });
+    await jobStore.save({
+      ...queuedJob,
+      status: "processing",
+      playlistUrl: `/audio/narrations/job-${queuedJob.id}/playlist.m3u8`,
+      audioSegments: [
+        {
+          url: `/audio/narrations/job-${queuedJob.id}/segment-0.mp3`,
+          durationSeconds: 11,
+        },
+      ],
+      updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    });
 
-      await jobStore.save({
-        ...queuedJob,
-        status: "processing",
-        playlistUrl: `/audio/narrations/job-${queuedJob.id}/playlist.m3u8`,
-        audioSegments: [
-          {
-            url: `/audio/narrations/job-${queuedJob.id}/segment-0.mp3`,
-            durationSeconds: 11,
-          },
-        ],
-        updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
-      });
+    await service.processJob(queuedJob.id);
 
-      const pollResponse = await fetch(`http://127.0.0.1:${address.port}/api/jobs`);
-      expect(pollResponse.status).toBe(200);
-
-      const completedJob = await waitFor(
-        () => service.getJob(queuedJob.id),
-        (job) => job !== null && job.status === "completed",
-      );
-
-      expect(completedJob?.audioSegments).toHaveLength(3);
-      expect(completedJob?.durationSeconds).toBe(41);
-    } finally {
-      server.close();
-      await once(server, "close");
-    }
+    const stillProcessingJob = await service.getJob(queuedJob.id);
+    expect(stillProcessingJob?.status).toBe("processing");
+    expect(stillProcessingJob?.audioSegments).toHaveLength(1);
+    expect(stillProcessingJob?.durationSeconds).toBeNull();
   });
 
   it("makes a job playable before full completion via a growing playlist", async () => {
@@ -602,7 +659,74 @@ describe("audio job service", () => {
     expect(completedPlaylist).toContain("#EXT-X-ENDLIST");
   });
 
-  it("resumes a stale partially processed job from its persisted segments", async () => {
+  it("starts later segments before the first segment finishes, but publishes the playlist in order", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const audioStore = new FileAudioStore(audioDir, "/audio");
+    const jobStore = new FileJobStore(jobsFilePath);
+    const speechProvider = new IndexedDelayedSpeechProvider([
+      { audioData: Buffer.from("ID3SEGMENTONE"), durationSeconds: 11, delayMs: 200 },
+      { audioData: Buffer.from("ID3SEGMENTTWO"), durationSeconds: 13, delayMs: 20 },
+      { audioData: Buffer.from("ID3SEGMENTTHREE"), durationSeconds: 17, delayMs: 20 },
+    ]);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider,
+    });
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/parallel-job",
+      html: `
+        <!doctype html>
+        <html>
+          <head><title>Parallel Segmented Article</title></head>
+          <body>
+            <article>
+              <h1>Parallel Segmented Article</h1>
+              <p>${"First segment content. ".repeat(30)}</p>
+              <p>${"Second segment content. ".repeat(30)}</p>
+              <p>${"Third segment content. ".repeat(30)}</p>
+            </article>
+          </body>
+        </html>
+      `,
+    });
+
+    const processingPromise = service.processJob(queuedJob.id);
+    const secondSegmentPath = join(
+      audioDir,
+      "narrations",
+      `job-${queuedJob.id}`,
+      "segment-1.mp3",
+    );
+    const firstSegmentPath = join(
+      audioDir,
+      "narrations",
+      `job-${queuedJob.id}`,
+      "segment-0.mp3",
+    );
+    const playlistPath = join(audioDir, "narrations", `job-${queuedJob.id}`, "playlist.m3u8");
+
+    await waitFor(() => exists(secondSegmentPath), Boolean);
+    expect(await exists(firstSegmentPath)).toBe(false);
+    expect(await exists(playlistPath)).toBe(false);
+    expect(speechProvider.getMaxConcurrentCalls()).toBeGreaterThan(1);
+
+    await processingPromise;
+
+    const completedPlaylist = await readFile(playlistPath, "utf8");
+    expect(completedPlaylist).toContain(`/audio/narrations/job-${queuedJob.id}/segment-0.mp3`);
+    expect(completedPlaylist).toContain(`/audio/narrations/job-${queuedJob.id}/segment-1.mp3`);
+    expect(completedPlaylist).toContain(`/audio/narrations/job-${queuedJob.id}/segment-2.mp3`);
+    expect(
+      completedPlaylist.indexOf(`/audio/narrations/job-${queuedJob.id}/segment-0.mp3`),
+    ).toBeLessThan(
+      completedPlaylist.indexOf(`/audio/narrations/job-${queuedJob.id}/segment-1.mp3`),
+    );
+  });
+
+  it("requeues interrupted processing jobs and resumes them from persisted segments", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
     const audioStore = new FileAudioStore(audioDir, "/audio");
@@ -647,9 +771,12 @@ describe("audio job service", () => {
       updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
     });
 
-    await service.processJob(queuedJob.id);
+    await service.requeueInterruptedJobs();
+    const completedJob = await waitFor(
+      () => service.getJob(queuedJob.id),
+      (job) => job !== null && job.status === "completed",
+    );
 
-    const completedJob = await service.getJob(queuedJob.id);
     expect(completedJob?.status).toBe("completed");
     expect(completedJob?.audioSegments).toHaveLength(3);
     expect(completedJob?.audioSegments[0]?.url).toBe(

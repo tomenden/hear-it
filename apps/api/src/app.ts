@@ -45,8 +45,6 @@ export interface CreateAppOptions {
   audioStore: AudioStore;
   /** Whether to run interrupted-job recovery when the process starts. */
   recoverInterruptedJobsOnStartup?: boolean;
-  /** Called with a promise that should keep running after the response is sent. */
-  onBackgroundWork?: (promise: Promise<void>) => void;
   /** Whether to serve the local /audio directory (local dev only). */
   serveStaticAudio?: string;
   /** Base URL for audio files — included in /api/config for clients that resolve relative URLs. */
@@ -80,7 +78,7 @@ const writeEndpointLimiter = rateLimit({
 });
 
 export function createApp(options: CreateAppOptions) {
-  const { audioJobService, jobStore, audioStore, onBackgroundWork } = options;
+  const { audioJobService, jobStore, audioStore } = options;
   const app = express();
   const serializeJob = (job: AudioJob) => ({
     ...job,
@@ -254,14 +252,7 @@ export function createApp(options: CreateAppOptions) {
       );
       res.status(202).json({ job: serializeJob(job) });
 
-      // Process the job in the background — on Vercel this uses waitUntil,
-      // in local dev the promise just runs detached.
-      const work = audioJobService.processJob(job.id);
-      if (onBackgroundWork) {
-        onBackgroundWork(work);
-      } else {
-        void work;
-      }
+      void audioJobService.processJob(job.id);
     } catch (error) {
       const response = errorResponse(error, "Failed to create audio job.");
       res.status(response.status).json(response.body);
@@ -269,7 +260,6 @@ export function createApp(options: CreateAppOptions) {
   });
 
   app.get("/api/jobs", async (req, res) => {
-    await audioJobService.kickQueuedJobs(req.userId);
     res.json({ jobs: (await audioJobService.listJobs(req.userId)).map(serializeJob) });
   });
 
@@ -279,10 +269,6 @@ export function createApp(options: CreateAppOptions) {
     if (!job) {
       res.status(404).json({ error: "Job not found." });
       return;
-    }
-
-    if (audioJobService.shouldKickJob(job)) {
-      void audioJobService.processJob(job.id);
     }
 
     res.json({ job: serializeJob(job) });

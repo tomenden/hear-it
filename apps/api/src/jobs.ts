@@ -106,10 +106,7 @@ export class AudioJobService {
 
   async processJob(jobId: string): Promise<void> {
     await this.init();
-    const claimedJob = await this.jobStore.claimPending(
-      jobId,
-      processingStalledBeforeIso(),
-    );
+    const claimedJob = await this.jobStore.claimQueued(jobId);
     if (!claimedJob) {
       return;
     }
@@ -133,44 +130,86 @@ export class AudioJobService {
       const audioSegments: AudioJob["audioSegments"] = [...claimedJob.audioSegments];
       const playlistKey = buildNarrationPlaylistKey(jobId);
       let playlistUrl: string | null = claimedJob.playlistUrl;
+      const nextSegmentIndex = { value: audioSegments.length };
+      const pendingSegments = new Map<number, AudioJob["audioSegments"][number]>();
+      let nextPlaylistIndex = audioSegments.length;
+      let playlistWrite = Promise.resolve();
+      let workerError: unknown = null;
+      const queuePlaylistFlush = () => {
+        playlistWrite = playlistWrite.then(async () => {
+          let didAdvance = false;
+          while (pendingSegments.has(nextPlaylistIndex)) {
+            audioSegments.push(pendingSegments.get(nextPlaylistIndex)!);
+            pendingSegments.delete(nextPlaylistIndex);
+            nextPlaylistIndex += 1;
+            didAdvance = true;
+          }
 
-      for (
-        let index = audioSegments.length;
-        index < segmentTexts.length;
-        index += 1
-      ) {
-        const textChunk = segmentTexts[index]!;
-        const result = await this.speechProvider.synthesizeText(
-          textChunk,
-          claimedJob.speechOptions,
-          {
-            audioStore: this.audioStore,
-            fileKey: buildNarrationSegmentKey(jobId, index),
-          },
-        );
+          if (!didAdvance) {
+            return;
+          }
 
-        if (!result.audioUrl || !result.audioData) {
-          throw new Error("Segment generation did not return playable audio.");
+          playlistUrl = await this.audioStore.put(
+            playlistKey,
+            Buffer.from(buildPlaylist(audioSegments, false), "utf8"),
+            "application/vnd.apple.mpegurl",
+            { overwrite: true },
+          );
+
+          await this.updateJob(jobId, {
+            status: "processing",
+            playlistUrl,
+            audioSegments: [...audioSegments],
+            durationSeconds: null,
+          });
+        });
+
+        return playlistWrite;
+      };
+      const runWorker = async () => {
+        while (workerError === null) {
+          const index = nextSegmentIndex.value;
+          nextSegmentIndex.value += 1;
+          if (index >= segmentTexts.length) {
+            return;
+          }
+
+          try {
+            const textChunk = segmentTexts[index]!;
+            const result = await this.speechProvider.synthesizeText(
+              textChunk,
+              claimedJob.speechOptions,
+              {
+                audioStore: this.audioStore,
+                fileKey: buildNarrationSegmentKey(jobId, index),
+              },
+            );
+
+            if (!result.audioUrl || !result.audioData) {
+              throw new Error("Segment generation did not return playable audio.");
+            }
+
+            pendingSegments.set(index, {
+              url: result.audioUrl,
+              durationSeconds: result.durationSeconds,
+            });
+            await queuePlaylistFlush();
+          } catch (error) {
+            workerError ??= error;
+            return;
+          }
         }
+      };
+      const workerCount = Math.min(
+        getTtsConcurrency(),
+        Math.max(segmentTexts.length - audioSegments.length, 1),
+      );
 
-        audioSegments.push({
-          url: result.audioUrl,
-          durationSeconds: result.durationSeconds,
-        });
+      await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+      await playlistWrite;
 
-        playlistUrl = await this.audioStore.put(
-          playlistKey,
-          Buffer.from(buildPlaylist(audioSegments, false), "utf8"),
-          "application/vnd.apple.mpegurl",
-          { overwrite: true },
-        );
-
-        await this.updateJob(jobId, {
-          status: "processing",
-          playlistUrl,
-          audioSegments: [...audioSegments],
-          durationSeconds: null,
-        });
+      if (workerError) {
+        throw workerError;
       }
 
       playlistUrl = await this.audioStore.put(
@@ -275,23 +314,6 @@ export class AudioJobService {
     }
   }
 
-  async kickQueuedJobs(userId?: string): Promise<void> {
-    await this.init();
-    const jobs = userId
-      ? await this.jobStore.getAllForUser(userId)
-      : await this.jobStore.getAll();
-
-    for (const job of jobs) {
-      if (this.shouldKickJob(job)) {
-        void this.processJob(job.id);
-      }
-    }
-  }
-
-  shouldKickJob(job: AudioJob): boolean {
-    return job.status === "queued" || isStaleProcessingJob(job);
-  }
-
   private async updateJob(jobId: string, patch: Partial<AudioJob>) {
     await this.jobStore.update(jobId, patch);
   }
@@ -327,19 +349,11 @@ function safeHostname(url: string): string | null {
 }
 
 const MAX_SEGMENT_CHARS = 800;
-const DEFAULT_PROCESSING_STALL_MS = 90_000;
+const DEFAULT_TTS_CONCURRENCY = 5;
 
-function processingStalledBeforeIso(now = Date.now()): string {
-  return new Date(now - getProcessingStallMs()).toISOString();
-}
-
-function getProcessingStallMs(): number {
-  return Number(process.env.NARRATION_PROCESSING_STALL_MS ?? DEFAULT_PROCESSING_STALL_MS);
-}
-
-function isStaleProcessingJob(job: AudioJob, now = Date.now()): boolean {
-  if (job.status !== "processing") return false;
-  return Date.parse(job.updatedAt) < now - getProcessingStallMs();
+function getTtsConcurrency(): number {
+  const parsed = Number(process.env.TTS_CONCURRENCY ?? DEFAULT_TTS_CONCURRENCY);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_TTS_CONCURRENCY;
 }
 
 export function chunkNarrationText(text: string, maxChars = MAX_SEGMENT_CHARS): string[] {

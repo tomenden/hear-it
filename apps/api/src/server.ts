@@ -17,6 +17,7 @@ const app = createApp({
   audioJobService,
   jobStore,
   audioStore,
+  recoverInterruptedJobsOnStartup: true,
   serveStaticAudio: audioStore.getOutputDir(),
   audioPublicBaseUrl: "/audio",
   supabaseUrl: process.env.SUPABASE_URL,

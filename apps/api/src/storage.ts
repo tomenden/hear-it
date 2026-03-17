@@ -1,5 +1,9 @@
 import type { AudioJob } from "./types.js";
 
+export interface AudioStorePutOptions {
+  overwrite?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Job Store — persists AudioJob records
 // ---------------------------------------------------------------------------
@@ -11,6 +15,13 @@ export interface JobStore {
   getAll(): Promise<AudioJob[]>;
   get(jobId: string): Promise<AudioJob | null>;
   save(job: AudioJob): Promise<void>;
+  /** Atomically move a queued job into processing. Returns null if it was already claimed. */
+  claimQueued(jobId: string): Promise<AudioJob | null>;
+  /**
+   * Atomically claim a queued job, or a stalled processing job, for continued work.
+   * `stalledBefore` should be an ISO timestamp; processing jobs older than it are resumable.
+   */
+  claimPending(jobId: string, stalledBefore: string): Promise<AudioJob | null>;
   /** Update specific fields on an existing job. Returns false if the job doesn't exist. */
   update(jobId: string, patch: Partial<AudioJob>): Promise<boolean>;
   /** Delete a job by ID. Returns false if the job doesn't exist. */
@@ -33,7 +44,12 @@ export interface AudioStore {
    * Write an audio buffer and return its public URL.
    * `key` is a path-like identifier, e.g. "previews/voice-preview--alloy.mp3"
    */
-  put(key: string, data: Buffer, contentType?: string): Promise<string>;
+  put(
+    key: string,
+    data: Buffer,
+    contentType?: string,
+    options?: AudioStorePutOptions,
+  ): Promise<string>;
 
   /** Check whether a key already exists and return its public URL, or null. */
   head(key: string): Promise<string | null>;

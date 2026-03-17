@@ -51,6 +51,13 @@ enum PreviewSamples {
         estimatedMinutes: 8,
         status: .processing,
         voice: "sage",
+        playlistURL: "http://127.0.0.1:3000/audio/job-preview-processing/playlist.m3u8",
+        audioSegments: [
+            AudioJob.Segment(
+                url: "http://127.0.0.1:3000/audio/job-preview-processing/segment-0.mp3",
+                durationSeconds: 24
+            )
+        ],
         createdAtOffset: -3_600,
         updatedAtOffset: -240
     )
@@ -65,7 +72,17 @@ enum PreviewSamples {
         estimatedMinutes: 10,
         status: .completed,
         voice: "sage",
-        audioURL: "http://127.0.0.1:3000/audio/preview-ready.mp3",
+        playlistURL: "http://127.0.0.1:3000/audio/job-preview-ready/playlist.m3u8",
+        audioSegments: [
+            AudioJob.Segment(
+                url: "http://127.0.0.1:3000/audio/job-preview-ready/segment-0.mp3",
+                durationSeconds: 301
+            ),
+            AudioJob.Segment(
+                url: "http://127.0.0.1:3000/audio/job-preview-ready/segment-1.mp3",
+                durationSeconds: 302
+            )
+        ],
         durationSeconds: 603,
         createdAtOffset: -7_200,
         updatedAtOffset: -6_900
@@ -104,6 +121,8 @@ enum PreviewSamples {
         status: AudioJob.Status,
         voice: String,
         audioURL: String? = nil,
+        playlistURL: String? = nil,
+        audioSegments: [AudioJob.Segment] = [],
         durationSeconds: Double? = nil,
         error: String? = nil,
         createdAtOffset: TimeInterval,
@@ -127,9 +146,9 @@ enum PreviewSamples {
             speechOptions: AudioJob.SpeechOptions(voice: voice),
             provider: "openai",
             audioUrl: audioURL,
-            audioDownloadPath: audioURL,
-            playlistUrl: nil,
-            audioSegments: [],
+            audioDownloadPath: nil,
+            playlistUrl: playlistURL,
+            audioSegments: audioSegments,
             durationSeconds: durationSeconds,
             error: error,
             createdAt: .now.addingTimeInterval(createdAtOffset),

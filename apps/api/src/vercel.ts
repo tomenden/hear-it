@@ -15,6 +15,7 @@ const app = createApp({
   onBackgroundWork: (promise) => waitUntil(promise),
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseJwtSecret: process.env.SUPABASE_JWT_SECRET,
+  allowJwtSecretFallback: process.env.VERCEL_ENV === "preview",
 });
 
 export default app;

@@ -58,7 +58,7 @@ struct HearItAPIClient {
         return response.job
     }
 
-    func downloadNarrationAudio(from url: URL) async throws -> Data {
+    func downloadAudioData(from url: URL) async throws -> Data {
         var request = URLRequest(url: url)
         request.httpMethod = HTTPMethod.get.rawValue
         request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
@@ -105,6 +105,10 @@ struct HearItAPIClient {
         }
 
         return data
+    }
+
+    func downloadNarrationAudio(from url: URL) async throws -> Data {
+        try await downloadAudioData(from: url)
     }
 
     static func resolveURL(_ rawValue: String?, relativeTo baseURL: URL) -> URL? {

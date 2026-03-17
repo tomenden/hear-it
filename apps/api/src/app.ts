@@ -4,7 +4,11 @@ import rateLimit from "express-rate-limit";
 import { join } from "node:path";
 import { z } from "zod";
 
-import { ArticleTooLongError, extractArticle } from "./extractor.js";
+import {
+  ArticleFetchTimeoutError,
+  ArticleTooLongError,
+  extractArticle,
+} from "./extractor.js";
 import { createAuthMiddleware } from "./auth.js";
 import { AudioJobService } from "./jobs.js";
 import type { AudioStore, JobStore } from "./storage.js";
@@ -39,6 +43,8 @@ export interface CreateAppOptions {
   audioJobService: AudioJobService;
   jobStore: JobStore;
   audioStore: AudioStore;
+  /** Whether to run interrupted-job recovery when the process starts. */
+  recoverInterruptedJobsOnStartup?: boolean;
   /** Called with a promise that should keep running after the response is sent. */
   onBackgroundWork?: (promise: Promise<void>) => void;
   /** Whether to serve the local /audio directory (local dev only). */
@@ -49,6 +55,8 @@ export interface CreateAppOptions {
   supabaseUrl?: string;
   /** Supabase JWT secret for HS256 verification (fallback if supabaseUrl is not set). */
   supabaseJwtSecret?: string;
+  /** Preview-only auth escape hatch for direct API debugging with locally minted test JWTs. */
+  allowJwtSecretFallback?: boolean;
 }
 
 // Rate limiting uses the default in-memory store. On Vercel serverless, the
@@ -76,10 +84,7 @@ export function createApp(options: CreateAppOptions) {
   const app = express();
   const serializeJob = (job: AudioJob) => ({
     ...job,
-    audioDownloadPath:
-      job.status === "completed"
-        ? audioJobService.buildNarrationDownloadPath(job.id)
-        : null,
+    audioDownloadPath: null,
   });
   const errorResponse = (
     error: unknown,
@@ -99,6 +104,17 @@ export function createApp(options: CreateAppOptions) {
       };
     }
 
+    if (error instanceof ArticleFetchTimeoutError) {
+      return {
+        status: error.statusCode,
+        body: {
+          error: error.message,
+          code: error.code,
+          details: error.details,
+        },
+      };
+    }
+
     return {
       status: 422,
       body: {
@@ -107,7 +123,9 @@ export function createApp(options: CreateAppOptions) {
     };
   };
 
-  void audioJobService.init().then(() => audioJobService.requeueInterruptedJobs());
+  if (options.recoverInterruptedJobsOnStartup ?? false) {
+    void audioJobService.init().then(() => audioJobService.requeueInterruptedJobs());
+  }
 
   app.use(express.json({ limit: "1mb" }));
 
@@ -124,21 +142,27 @@ export function createApp(options: CreateAppOptions) {
       database: "ok",
       storage: "ok",
     };
+    const dependencyErrors: Record<string, string | null> = {
+      database: null,
+      storage: null,
+    };
 
     try {
       await jobStore.check();
-    } catch {
+    } catch (error) {
       dependencies.database = "error";
+      dependencyErrors.database = error instanceof Error ? error.message : String(error);
     }
 
     try {
       await audioStore.check();
-    } catch {
+    } catch (error) {
       dependencies.storage = "error";
+      dependencyErrors.storage = error instanceof Error ? error.message : String(error);
     }
 
     const ok = dependencies.database === "ok" && dependencies.storage === "ok";
-    res.json({ ok, dependencies });
+    res.json({ ok, dependencies, dependencyErrors });
   });
 
   app.get("/api/config", (_req, res) => {
@@ -154,6 +178,7 @@ export function createApp(options: CreateAppOptions) {
   app.use("/api", createAuthMiddleware({
     supabaseUrl: options.supabaseUrl,
     jwtSecret: options.supabaseJwtSecret,
+    allowJwtSecretFallback: options.allowJwtSecretFallback,
   }));
 
   // Set Sentry user context after auth so errors are associated with the user.
@@ -244,6 +269,7 @@ export function createApp(options: CreateAppOptions) {
   });
 
   app.get("/api/jobs", async (req, res) => {
+    await audioJobService.kickQueuedJobs(req.userId);
     res.json({ jobs: (await audioJobService.listJobs(req.userId)).map(serializeJob) });
   });
 
@@ -255,64 +281,11 @@ export function createApp(options: CreateAppOptions) {
       return;
     }
 
+    if (audioJobService.shouldKickJob(job)) {
+      void audioJobService.processJob(job.id);
+    }
+
     res.json({ job: serializeJob(job) });
-  });
-
-  app.get("/api/jobs/:jobId/audio", async (req, res) => {
-    const job = await audioJobService.getJob(req.params.jobId, req.userId);
-
-    if (!job) {
-      res.status(404).json({ error: "Job not found." });
-      return;
-    }
-
-    if (job.status !== "completed") {
-      res.status(409).json({ error: "Narration audio is not ready yet." });
-      return;
-    }
-
-    const audioUrl = await audioJobService.getNarrationAudioUrl(job.id);
-    if (!audioUrl) {
-      res.status(404).json({
-        error: "Narration audio is no longer available for download. Re-create the narration to fetch it again.",
-      });
-      return;
-    }
-
-    // Fetch from blob and stream to the client.
-    const upstream = await fetch(audioUrl);
-    if (!upstream.ok || !upstream.body) {
-      res.status(502).json({ error: "Failed to retrieve audio from storage." });
-      return;
-    }
-
-    res.setHeader("Content-Type", upstream.headers.get("content-type") ?? "audio/mpeg");
-    res.setHeader("Cache-Control", "private, no-store, max-age=0");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="narration-${job.id}.mp3"`,
-    );
-
-    const reader = upstream.body.getReader();
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        res.write(value);
-      }
-      res.end();
-    } catch {
-      res.destroy();
-      return;
-    }
-
-    // Clean up the blob after successful download.
-    const cleanup = audioJobService.deleteNarrationAudio(job.id);
-    if (onBackgroundWork) {
-      onBackgroundWork(cleanup);
-    } else {
-      void cleanup;
-    }
   });
 
   app.delete("/api/jobs/:jobId", writeEndpointLimiter, async (req, res) => {

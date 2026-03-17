@@ -1,8 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import type { AudioJob } from "./types.js";
-import type { AudioStore, JobStore } from "./storage.js";
+import type { AudioStore, AudioStorePutOptions, JobStore } from "./storage.js";
 
 // ---------------------------------------------------------------------------
 // File-system JobStore  (same behaviour as before — JSON file on disk)
@@ -10,7 +11,6 @@ import type { AudioStore, JobStore } from "./storage.js";
 
 export class FileJobStore implements JobStore {
   private readonly jobs = new Map<string, AudioJob>();
-  private _nextId = 1;
   private readonly filePath: string;
 
   constructor(filePath?: string) {
@@ -36,12 +36,6 @@ export class FileJobStore implements JobStore {
         this.jobs.set(job.id, job);
       }
 
-      this._nextId = jobs.reduce((maxId, job) => {
-        const numericId = Number(job.id);
-        return Number.isFinite(numericId)
-          ? Math.max(maxId, numericId + 1)
-          : maxId;
-      }, 1);
     } catch (error) {
       const code =
         error instanceof Error && "code" in error
@@ -68,6 +62,28 @@ export class FileJobStore implements JobStore {
     await this.persist();
   }
 
+  async claimQueued(jobId: string): Promise<AudioJob | null> {
+    return this.claimPending(jobId, new Date(0).toISOString());
+  }
+
+  async claimPending(jobId: string, stalledBefore: string): Promise<AudioJob | null> {
+    const existing = this.jobs.get(jobId);
+    if (!existing) return null;
+    const isQueued = existing.status === "queued";
+    const isStalledProcessing =
+      existing.status === "processing" && existing.updatedAt < stalledBefore;
+    if (!isQueued && !isStalledProcessing) return null;
+
+    const claimed = {
+      ...existing,
+      status: "processing" as const,
+      updatedAt: new Date().toISOString(),
+    };
+    this.jobs.set(jobId, claimed);
+    await this.persist();
+    return claimed;
+  }
+
   async update(jobId: string, patch: Partial<AudioJob>): Promise<boolean> {
     const existing = this.jobs.get(jobId);
     if (!existing) return false;
@@ -84,7 +100,7 @@ export class FileJobStore implements JobStore {
   }
 
   async nextId(): Promise<string> {
-    return String(this._nextId++);
+    return randomUUID();
   }
 
   async getAllForUser(userId: string): Promise<AudioJob[]> {
@@ -139,7 +155,12 @@ export class FileAudioStore implements AudioStore {
     await access(this.outputDir);
   }
 
-  async put(key: string, data: Buffer, _contentType?: string): Promise<string> {
+  async put(
+    key: string,
+    data: Buffer,
+    _contentType?: string,
+    _options?: AudioStorePutOptions,
+  ): Promise<string> {
     const filePath = join(this.outputDir, key);
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, data);

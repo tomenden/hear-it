@@ -94,43 +94,102 @@ export class AudioJobService {
 
   async deleteJob(jobId: string, userId?: string): Promise<boolean> {
     await this.init();
-    await this.audioStore.delete(`narrations/narration-${jobId}.mp3`);
+    const existingJob = userId
+      ? await this.jobStore.getForUser(jobId, userId)
+      : await this.jobStore.get(jobId);
+    if (existingJob) {
+      await this.deleteNarrationArtifacts(jobId, existingJob.audioSegments.length);
+    }
     if (userId) return this.jobStore.deleteForUser(jobId, userId);
     return this.jobStore.delete(jobId);
   }
 
   async processJob(jobId: string): Promise<void> {
     await this.init();
-    const queuedJob = await this.jobStore.get(jobId);
-    if (!queuedJob || queuedJob.status !== "queued") {
+    const claimedJob = await this.jobStore.claimPending(
+      jobId,
+      processingStalledBeforeIso(),
+    );
+    if (!claimedJob) {
       return;
     }
 
-    await this.updateJob(jobId, { status: "processing", error: null });
+    const hadPersistedSegments = claimedJob.audioSegments.length > 0;
+    if (!hadPersistedSegments) {
+      await this.deleteNarrationArtifacts(jobId, 0);
+      await this.updateJob(jobId, {
+        error: null,
+        audioUrl: null,
+        playlistUrl: null,
+        audioSegments: [],
+        durationSeconds: null,
+      });
+    }
 
     try {
-      const result = await this.speechProvider.synthesize(
-        queuedJob.article,
-        queuedJob.speechOptions,
-        {},
+      const segmentTexts = chunkNarrationText(
+        claimedJob.article.textContent,
       );
+      const audioSegments: AudioJob["audioSegments"] = [...claimedJob.audioSegments];
+      const playlistKey = buildNarrationPlaylistKey(jobId);
+      let playlistUrl: string | null = claimedJob.playlistUrl;
 
-      let audioUrl: string | null = null;
-      if (result.audioData) {
-        const key = `narrations/narration-${jobId}.mp3`;
-        audioUrl = await this.audioStore.put(
-          key,
-          result.audioData,
-          result.contentType ?? "audio/mpeg",
+      for (
+        let index = audioSegments.length;
+        index < segmentTexts.length;
+        index += 1
+      ) {
+        const textChunk = segmentTexts[index]!;
+        const result = await this.speechProvider.synthesizeText(
+          textChunk,
+          claimedJob.speechOptions,
+          {
+            audioStore: this.audioStore,
+            fileKey: buildNarrationSegmentKey(jobId, index),
+          },
         );
+
+        if (!result.audioUrl || !result.audioData) {
+          throw new Error("Segment generation did not return playable audio.");
+        }
+
+        audioSegments.push({
+          url: result.audioUrl,
+          durationSeconds: result.durationSeconds,
+        });
+
+        playlistUrl = await this.audioStore.put(
+          playlistKey,
+          Buffer.from(buildPlaylist(audioSegments, false), "utf8"),
+          "application/vnd.apple.mpegurl",
+          { overwrite: true },
+        );
+
+        await this.updateJob(jobId, {
+          status: "processing",
+          playlistUrl,
+          audioSegments: [...audioSegments],
+          durationSeconds: null,
+        });
       }
+
+      playlistUrl = await this.audioStore.put(
+        playlistKey,
+        Buffer.from(buildPlaylist(audioSegments, true), "utf8"),
+        "application/vnd.apple.mpegurl",
+        { overwrite: true },
+      );
+      const durationSeconds = audioSegments.reduce(
+        (total, segment) => total + segment.durationSeconds,
+        0,
+      );
 
       await this.updateJob(jobId, {
         status: "completed",
-        audioUrl,
-        playlistUrl: result.playlistUrl,
-        audioSegments: result.audioSegments,
-        durationSeconds: result.durationSeconds,
+        audioUrl: null,
+        playlistUrl,
+        audioSegments,
+        durationSeconds,
       });
     } catch (error) {
       const message =
@@ -138,27 +197,30 @@ export class AudioJobService {
       Sentry.captureException(error, {
         tags: {
           jobId,
-          voice: queuedJob.speechOptions.voice,
-          provider: queuedJob.provider,
+          voice: claimedJob.speechOptions.voice,
+          provider: claimedJob.provider,
         },
         contexts: {
           job: {
             id: jobId,
-            articleUrl: queuedJob.article.url,
-            articleTitle: queuedJob.article.title,
-            wordCount: queuedJob.article.wordCount,
-            voice: queuedJob.speechOptions.voice,
-            provider: queuedJob.provider,
+            articleUrl: claimedJob.article.url,
+            articleTitle: claimedJob.article.title,
+            wordCount: claimedJob.article.wordCount,
+            voice: claimedJob.speechOptions.voice,
+            provider: claimedJob.provider,
           },
         },
       });
       trackEvent("tts_failed", {
         job_id: jobId,
-        voice: queuedJob.speechOptions.voice,
+        voice: claimedJob.speechOptions.voice,
         error: message,
       });
       await this.updateJob(jobId, {
         status: "failed",
+        playlistUrl: null,
+        audioSegments: [],
+        durationSeconds: null,
         error: message,
       });
     }
@@ -213,22 +275,36 @@ export class AudioJobService {
     }
   }
 
-  /** Returns the blob URL for the narration audio, or null if not yet stored. */
-  async getNarrationAudioUrl(jobId: string): Promise<string | null> {
-    return this.audioStore.head(`narrations/narration-${jobId}.mp3`);
+  async kickQueuedJobs(userId?: string): Promise<void> {
+    await this.init();
+    const jobs = userId
+      ? await this.jobStore.getAllForUser(userId)
+      : await this.jobStore.getAll();
+
+    for (const job of jobs) {
+      if (this.shouldKickJob(job)) {
+        void this.processJob(job.id);
+      }
+    }
   }
 
-  /** Delete the narration audio blob (cleanup after client download). */
-  async deleteNarrationAudio(jobId: string): Promise<void> {
-    await this.audioStore.delete(`narrations/narration-${jobId}.mp3`);
-  }
-
-  buildNarrationDownloadPath(jobId: string): string {
-    return `/api/jobs/${jobId}/audio`;
+  shouldKickJob(job: AudioJob): boolean {
+    return job.status === "queued" || isStaleProcessingJob(job);
   }
 
   private async updateJob(jobId: string, patch: Partial<AudioJob>) {
     await this.jobStore.update(jobId, patch);
+  }
+
+  private async deleteNarrationArtifacts(
+    jobId: string,
+    segmentCount: number,
+  ): Promise<void> {
+    await this.audioStore.delete(buildNarrationPlaylistKey(jobId));
+
+    for (let index = 0; index < segmentCount; index += 1) {
+      await this.audioStore.delete(buildNarrationSegmentKey(jobId, index));
+    }
   }
 }
 
@@ -248,4 +324,115 @@ function safeHostname(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+const MAX_SEGMENT_CHARS = 1_500;
+const DEFAULT_PROCESSING_STALL_MS = 90_000;
+
+function processingStalledBeforeIso(now = Date.now()): string {
+  return new Date(now - getProcessingStallMs()).toISOString();
+}
+
+function getProcessingStallMs(): number {
+  return Number(process.env.NARRATION_PROCESSING_STALL_MS ?? DEFAULT_PROCESSING_STALL_MS);
+}
+
+function isStaleProcessingJob(job: AudioJob, now = Date.now()): boolean {
+  if (job.status !== "processing") return false;
+  return Date.parse(job.updatedAt) < now - getProcessingStallMs();
+}
+
+function chunkNarrationText(text: string, maxChars = MAX_SEGMENT_CHARS): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  const blocks = trimmed
+    .split(/\n+/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  const chunks: string[] = [];
+  let currentChunk = "";
+
+  const pushPiece = (piece: string) => {
+    if (!piece) return;
+
+    if (!currentChunk) {
+      currentChunk = piece;
+      return;
+    }
+
+    if (currentChunk.length + 2 + piece.length <= maxChars) {
+      currentChunk = `${currentChunk}\n\n${piece}`;
+      return;
+    }
+
+    chunks.push(currentChunk);
+    currentChunk = piece;
+  };
+
+  const splitLongBlock = (block: string) =>
+    block.split(/(?<=[.!?])\s+/).map((piece) => piece.trim()).filter(Boolean);
+
+  for (const block of blocks.length > 0 ? blocks : [trimmed]) {
+    if (block.length <= maxChars) {
+      pushPiece(block);
+      continue;
+    }
+
+    for (const sentence of splitLongBlock(block)) {
+      if (sentence.length <= maxChars) {
+        pushPiece(sentence);
+        continue;
+      }
+
+      let startIndex = 0;
+      while (startIndex < sentence.length) {
+        pushPiece(sentence.slice(startIndex, startIndex + maxChars).trim());
+        startIndex += maxChars;
+      }
+    }
+  }
+
+  if (currentChunk) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks.length > 0 ? chunks : [trimmed];
+}
+
+function buildNarrationPlaylistKey(jobId: string): string {
+  return `narrations/job-${jobId}/playlist.m3u8`;
+}
+
+function buildNarrationSegmentKey(jobId: string, index: number): string {
+  return `narrations/job-${jobId}/segment-${index}.mp3`;
+}
+
+function buildPlaylist(
+  audioSegments: AudioJob["audioSegments"],
+  isComplete: boolean,
+): string {
+  const targetDuration = Math.max(
+    1,
+    ...audioSegments.map((segment) => Math.ceil(segment.durationSeconds)),
+  );
+  const lines = [
+    "#EXTM3U",
+    "#EXT-X-VERSION:3",
+    "#EXT-X-TARGETDURATION:" + targetDuration,
+    "#EXT-X-MEDIA-SEQUENCE:0",
+    "#EXT-X-PLAYLIST-TYPE:EVENT",
+  ];
+
+  for (const segment of audioSegments) {
+    lines.push(`#EXTINF:${segment.durationSeconds.toFixed(3)},`);
+    lines.push(segment.url);
+  }
+
+  if (isComplete) {
+    lines.push("#EXT-X-ENDLIST");
+  }
+
+  return lines.join("\n") + "\n";
 }

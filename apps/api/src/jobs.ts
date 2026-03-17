@@ -326,7 +326,7 @@ function safeHostname(url: string): string | null {
   }
 }
 
-const MAX_SEGMENT_CHARS = 1_500;
+const MAX_SEGMENT_CHARS = 800;
 const DEFAULT_PROCESSING_STALL_MS = 90_000;
 
 function processingStalledBeforeIso(now = Date.now()): string {
@@ -342,7 +342,7 @@ function isStaleProcessingJob(job: AudioJob, now = Date.now()): boolean {
   return Date.parse(job.updatedAt) < now - getProcessingStallMs();
 }
 
-function chunkNarrationText(text: string, maxChars = MAX_SEGMENT_CHARS): string[] {
+export function chunkNarrationText(text: string, maxChars = MAX_SEGMENT_CHARS): string[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
 

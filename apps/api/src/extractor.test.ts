@@ -68,6 +68,8 @@ describe("article extraction", () => {
   });
 
   it("rejects articles that exceed narration limits", async () => {
+    const filler = "A".repeat(1_000);
+    const paragraphs = Array.from({ length: Math.ceil((MAX_NARRATION_CHARS + 500) / 1_000) }, () => `<p>${filler}</p>`).join("\n");
     const oversizedHtml = `
       <!doctype html>
       <html>
@@ -75,7 +77,7 @@ describe("article extraction", () => {
         <body>
           <article>
             <h1>Very Long Article</h1>
-            <p>${"A".repeat(MAX_NARRATION_CHARS + 500)}</p>
+            ${paragraphs}
           </article>
         </body>
       </html>

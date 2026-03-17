@@ -6,7 +6,7 @@ import { trackEvent } from "./analytics.js";
 import type { ExtractArticleInput, ExtractedArticle } from "./types.js";
 
 const WORDS_PER_MINUTE = 160;
-export const MAX_NARRATION_CHARS = 4096;
+export const MAX_NARRATION_CHARS = 100_000;
 const DEFAULT_ARTICLE_FETCH_TIMEOUT_MS = 15_000;
 const MIN_PARAGRAPH_LENGTH = 40;
 const BOILERPLATE_PATTERNS = [

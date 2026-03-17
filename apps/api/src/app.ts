@@ -55,6 +55,8 @@ export interface CreateAppOptions {
   supabaseUrl?: string;
   /** Supabase JWT secret for HS256 verification (fallback if supabaseUrl is not set). */
   supabaseJwtSecret?: string;
+  /** Preview-only auth escape hatch for direct API debugging with locally minted test JWTs. */
+  allowJwtSecretFallback?: boolean;
 }
 
 // Rate limiting uses the default in-memory store. On Vercel serverless, the
@@ -176,6 +178,7 @@ export function createApp(options: CreateAppOptions) {
   app.use("/api", createAuthMiddleware({
     supabaseUrl: options.supabaseUrl,
     jwtSecret: options.supabaseJwtSecret,
+    allowJwtSecretFallback: options.allowJwtSecretFallback,
   }));
 
   // Set Sentry user context after auth so errors are associated with the user.

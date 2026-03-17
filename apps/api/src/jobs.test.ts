@@ -683,8 +683,11 @@ describe("auth middleware", () => {
       .sign(new TextEncoder().encode(secret));
   }
 
-  function callMiddleware(authHeader?: string) {
-    const middleware = createAuthMiddleware({ jwtSecret: secret });
+  function callMiddleware(
+    authHeader?: string,
+    options?: Partial<Parameters<typeof createAuthMiddleware>[0]>,
+  ) {
+    const middleware = createAuthMiddleware({ jwtSecret: secret, ...options });
     return new Promise<{ statusCode?: number; userId?: string; nextCalled: boolean }>((resolve) => {
       const req = { headers: { authorization: authHeader } } as any;
       const res = {
@@ -722,5 +725,16 @@ describe("auth middleware", () => {
     const result = await callMiddleware(`Bearer ${token}`);
     expect(result.nextCalled).toBe(true);
     expect(result.userId).toBe("user-abc");
+  });
+
+  it("can accept shared-secret debug tokens alongside Supabase JWKS in preview mode", async () => {
+    const token = await makeTestJWT("preview-debug-user");
+    const result = await callMiddleware(`Bearer ${token}`, {
+      supabaseUrl: "https://example.supabase.co",
+      allowJwtSecretFallback: true,
+    });
+
+    expect(result.nextCalled).toBe(true);
+    expect(result.userId).toBe("preview-debug-user");
   });
 });

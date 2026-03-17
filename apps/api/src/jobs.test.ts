@@ -11,7 +11,7 @@ import * as jose from "jose";
 import { createAuthMiddleware } from "./auth.js";
 import { createApp, createAudioJobSchema, extractRequestSchema } from "./app.js";
 import { MAX_NARRATION_CHARS } from "./extractor.js";
-import { AudioJobService } from "./jobs.js";
+import { AudioJobService, chunkNarrationText } from "./jobs.js";
 import { FileJobStore, FileAudioStore } from "./storage-fs.js";
 import type { AudioStore } from "./storage.js";
 import type {
@@ -494,9 +494,9 @@ describe("audio job service", () => {
             <body>
               <article>
                 <h1>Resume Segmented Article</h1>
-                <p>${"First segment content. ".repeat(40)}</p>
-                <p>${"Second segment content. ".repeat(40)}</p>
-                <p>${"Third segment content. ".repeat(40)}</p>
+                <p>${"First segment content. ".repeat(30)}</p>
+                <p>${"Second segment content. ".repeat(30)}</p>
+                <p>${"Third segment content. ".repeat(30)}</p>
               </article>
             </body>
           </html>
@@ -557,9 +557,9 @@ describe("audio job service", () => {
           <body>
             <article>
               <h1>Segmented Article</h1>
-              <p>${"First segment content. ".repeat(40)}</p>
-              <p>${"Second segment content. ".repeat(40)}</p>
-              <p>${"Third segment content. ".repeat(40)}</p>
+              <p>${"First segment content. ".repeat(30)}</p>
+              <p>${"Second segment content. ".repeat(30)}</p>
+              <p>${"Third segment content. ".repeat(30)}</p>
             </article>
           </body>
         </html>
@@ -625,9 +625,9 @@ describe("audio job service", () => {
           <body>
             <article>
               <h1>Resume Segmented Article</h1>
-              <p>${"First segment content. ".repeat(40)}</p>
-              <p>${"Second segment content. ".repeat(40)}</p>
-              <p>${"Third segment content. ".repeat(40)}</p>
+              <p>${"First segment content. ".repeat(30)}</p>
+              <p>${"Second segment content. ".repeat(30)}</p>
+              <p>${"Third segment content. ".repeat(30)}</p>
             </article>
           </body>
         </html>
@@ -678,8 +678,8 @@ describe("audio job service", () => {
           <body>
             <article>
               <h1>Segment failure article</h1>
-              <p>${"First segment content. ".repeat(40)}</p>
-              <p>${"Second segment content. ".repeat(40)}</p>
+              <p>${"First segment content. ".repeat(30)}</p>
+              <p>${"Second segment content. ".repeat(30)}</p>
             </article>
           </body>
         </html>
@@ -719,8 +719,8 @@ describe("audio job service", () => {
           <body>
             <article>
               <h1>Segmented Article</h1>
-              <p>${"First segment content. ".repeat(40)}</p>
-              <p>${"Second segment content. ".repeat(40)}</p>
+              <p>${"First segment content. ".repeat(30)}</p>
+              <p>${"Second segment content. ".repeat(30)}</p>
             </article>
           </body>
         </html>
@@ -795,6 +795,56 @@ describe("audio job service", () => {
 
     expect(validRequest.success).toBe(true);
     expect(invalidExtractRequest.success).toBe(false);
+  });
+});
+
+describe("chunkNarrationText", () => {
+  it("returns a single chunk for short text", () => {
+    const chunks = chunkNarrationText("Hello world.");
+    expect(chunks).toEqual(["Hello world."]);
+  });
+
+  it("splits multiple paragraphs into separate chunks when they exceed maxChars", () => {
+    const paragraph = "A".repeat(500);
+    const text = `${paragraph}\n\n${paragraph}\n\n${paragraph}`;
+    const chunks = chunkNarrationText(text, 800);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(800);
+    }
+  });
+
+  it("splits long paragraphs on sentence boundaries", () => {
+    const sentences = Array.from({ length: 20 }, (_, i) => `Sentence number ${i + 1} is here.`);
+    const text = sentences.join(" ");
+    const chunks = chunkNarrationText(text, 200);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(200);
+    }
+  });
+
+  it("force-splits very long sentences that exceed maxChars", () => {
+    const longSentence = "B".repeat(2000);
+    const chunks = chunkNarrationText(longSentence, 800);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(800);
+    }
+  });
+
+  it("returns empty array for empty input", () => {
+    expect(chunkNarrationText("")).toEqual([]);
+    expect(chunkNarrationText("   ")).toEqual([]);
+  });
+
+  it("respects the default 800-char limit", () => {
+    const sentences = Array.from({ length: 30 }, (_, i) => `This is test sentence number ${i + 1} with some extra words to fill space.`);
+    const text = sentences.join(" ");
+    const chunks = chunkNarrationText(text);
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(800);
+    }
   });
 });
 

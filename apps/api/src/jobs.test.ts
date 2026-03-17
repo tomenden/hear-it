@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as jose from "jose";
 
 import { createAuthMiddleware } from "./auth.js";
@@ -401,6 +401,26 @@ describe("audio job service", () => {
       server.close();
       await once(server, "close");
     }
+  });
+
+  it("can disable startup recovery work for serverless entrypoints", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const { service, jobStore, audioStore } = createTestContext(audioDir, jobsFilePath);
+    const initSpy = vi.spyOn(service, "init");
+    const recoverySpy = vi.spyOn(service, "requeueInterruptedJobs");
+
+    createApp({
+      audioJobService: service,
+      jobStore,
+      audioStore,
+      recoverInterruptedJobsOnStartup: false,
+    });
+
+    await Promise.resolve();
+
+    expect(initSpy).not.toHaveBeenCalled();
+    expect(recoverySpy).not.toHaveBeenCalled();
   });
 
   it("rescues queued jobs when polling sees background processing was dropped", async () => {

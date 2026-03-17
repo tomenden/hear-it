@@ -241,8 +241,7 @@ export class VercelAudioStore implements AudioStore {
     try {
       await head("__health_check__");
     } catch (error: unknown) {
-      const isBlobNotFound =
-        error instanceof Error && error.name === "BlobNotFoundError";
+      const isBlobNotFound = isBlobMissingError(error);
       if (!isBlobNotFound) {
         captureStorageFailure("blob_check", error);
         throw error;
@@ -286,6 +285,12 @@ export class VercelAudioStore implements AudioStore {
       // Ignore — blob may already be gone.
     }
   }
+}
+
+export function isBlobMissingError(error: unknown): boolean {
+  return error instanceof Error
+    && (error.name === "BlobNotFoundError"
+      || error.message.includes("does not exist"));
 }
 
 function captureStorageFailure(

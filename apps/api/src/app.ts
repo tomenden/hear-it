@@ -43,6 +43,8 @@ export interface CreateAppOptions {
   audioJobService: AudioJobService;
   jobStore: JobStore;
   audioStore: AudioStore;
+  /** Whether to run interrupted-job recovery when the process starts. */
+  recoverInterruptedJobsOnStartup?: boolean;
   /** Called with a promise that should keep running after the response is sent. */
   onBackgroundWork?: (promise: Promise<void>) => void;
   /** Whether to serve the local /audio directory (local dev only). */
@@ -119,7 +121,9 @@ export function createApp(options: CreateAppOptions) {
     };
   };
 
-  void audioJobService.init().then(() => audioJobService.requeueInterruptedJobs());
+  if (options.recoverInterruptedJobsOnStartup ?? false) {
+    void audioJobService.init().then(() => audioJobService.requeueInterruptedJobs());
+  }
 
   app.use(express.json({ limit: "1mb" }));
 

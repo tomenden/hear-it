@@ -84,6 +84,11 @@ final class AudioPlayerController {
         duration = knownDuration
     }
 
+    func updateObservedDuration(_ observedDuration: Double) {
+        guard observedDuration.isFinite, observedDuration > 0 else { return }
+        duration = observedDuration
+    }
+
     func togglePlayback() {
         if previewMode {
             isPlaying.toggle()
@@ -189,7 +194,7 @@ final class AudioPlayerController {
 
                 currentTime = player.currentTime().seconds.isFinite ? player.currentTime().seconds : 0
                 let itemDuration = player.currentItem?.duration.seconds ?? 0
-                duration = itemDuration.isFinite && itemDuration > 0 ? itemDuration : nil
+                updateObservedDuration(itemDuration)
                 isPlaying = player.timeControlStatus == .playing
             }
         }

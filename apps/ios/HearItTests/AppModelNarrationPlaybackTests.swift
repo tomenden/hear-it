@@ -170,4 +170,19 @@ struct AppModelNarrationPlaybackTests {
         #expect(model.player.loadedJobID == nil)
         #expect(model.player.loadedSourceURL == nil)
     }
+
+    @Test
+    func knownDurationSurvivesIndefiniteObservedUpdates() {
+        let player = AudioPlayerController(previewMode: true)
+
+        player.updateKnownDuration(30)
+        player.updateObservedDuration(.infinity)
+        #expect(player.duration == 30)
+
+        player.updateObservedDuration(33)
+        #expect(player.duration == 33)
+
+        player.updateObservedDuration(0)
+        #expect(player.duration == 33)
+    }
 }

@@ -206,6 +206,9 @@ export class AudioJobService {
       });
       await this.updateJob(jobId, {
         status: "failed",
+        playlistUrl: null,
+        audioSegments: [],
+        durationSeconds: null,
         error: message,
       });
     }

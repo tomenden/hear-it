@@ -122,6 +122,52 @@ class DelayedSegmentSpeechProvider implements SpeechProvider {
   }
 }
 
+class FailingAfterFirstSegmentSpeechProvider implements SpeechProvider {
+  readonly name = "failing-after-first-segment-test";
+  private callCount = 0
+
+  async synthesize(
+    article: ExtractedArticle,
+    speechOptions: SpeechOptions,
+    context: SpeechSynthesisContext,
+  ): Promise<AudioRenderResult> {
+    return this.synthesizeText(article.textContent, speechOptions, context);
+  }
+
+  async synthesizeText(
+    _text: string,
+    _speechOptions: SpeechOptions,
+    context: SpeechSynthesisContext,
+  ): Promise<AudioRenderResult> {
+    this.callCount += 1;
+
+    if (this.callCount > 1) {
+      throw new Error("Segment generation failed after the first playable chunk.");
+    }
+
+    const audioData = Buffer.from("ID3SEGMENTONE");
+    const audioUrl =
+      context.audioStore && context.fileKey
+        ? await context.audioStore.put(
+            context.fileKey,
+            audioData,
+            "audio/mpeg",
+          )
+        : null;
+
+    return {
+      audioUrl,
+      playlistUrl: null,
+      audioSegments: audioUrl
+        ? [{ url: audioUrl, durationSeconds: 11 }]
+        : [],
+      durationSeconds: 11,
+      audioData,
+      contentType: "audio/mpeg",
+    };
+  }
+}
+
 const sampleHtml = `
 <!doctype html>
 <html>
@@ -320,6 +366,44 @@ describe("audio job service", () => {
 
     const completedPlaylist = await readFile(playlistPath, "utf8");
     expect(completedPlaylist).toContain("#EXT-X-ENDLIST");
+  });
+
+  it("clears partial playback metadata when generation fails mid-run", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const audioStore = new FileAudioStore(audioDir, "/audio");
+    const jobStore = new FileJobStore(jobsFilePath);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider: new FailingAfterFirstSegmentSpeechProvider(),
+    });
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/jobs",
+      html: `
+        <!doctype html>
+        <html>
+          <head><title>Segment failure article</title></head>
+          <body>
+            <article>
+              <h1>Segment failure article</h1>
+              <p>${"First segment content. ".repeat(40)}</p>
+              <p>${"Second segment content. ".repeat(40)}</p>
+            </article>
+          </body>
+        </html>
+      `,
+    });
+
+    await service.processJob(queuedJob.id);
+
+    const failedJob = await service.getJob(queuedJob.id);
+    expect(failedJob?.status).toBe("failed");
+    expect(failedJob?.playlistUrl).toBeNull();
+    expect(failedJob?.audioSegments).toEqual([]);
+    expect(failedJob?.durationSeconds).toBeNull();
+    expect(failedJob?.error).toContain("failed after the first playable chunk");
   });
 
   it("rejects oversized articles before creating a job", async () => {

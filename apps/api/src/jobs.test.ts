@@ -241,6 +241,30 @@ describe("audio job service", () => {
     expect(completedJob?.durationSeconds).toBeGreaterThan(0);
   });
 
+  it("generates globally unique job ids across isolated stores", async () => {
+    const firstAudioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const secondAudioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const first = createTestContext(firstAudioDir, join(firstAudioDir, "jobs.json"));
+    const second = createTestContext(secondAudioDir, join(secondAudioDir, "jobs.json"));
+
+    const firstJob = await first.service.createJob({
+      url: "https://example.com/posts/jobs-1",
+      html: sampleHtml,
+    });
+    const secondJob = await second.service.createJob({
+      url: "https://example.com/posts/jobs-2",
+      html: sampleHtml,
+    });
+
+    expect(firstJob.id).not.toBe(secondJob.id);
+    expect(firstJob.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+    expect(secondJob.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+  });
+
   it("reloads persisted jobs from disk", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");

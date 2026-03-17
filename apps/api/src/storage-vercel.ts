@@ -1,5 +1,6 @@
 import postgres, { type JSONValue } from "postgres";
 import { put, head, del } from "@vercel/blob";
+import { randomUUID } from "node:crypto";
 
 import type { AudioJob } from "./types.js";
 import type { AudioStore, JobStore } from "./storage.js";
@@ -157,8 +158,7 @@ export class VercelJobStore implements JobStore {
   }
 
   async nextId(): Promise<string> {
-    const rows = await this.sql`SELECT nextval('audio_jobs_id_seq') AS id`;
-    return String(rows[0].id);
+    return randomUUID();
   }
 
   async getAllForUser(userId: string): Promise<AudioJob[]> {

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
@@ -10,7 +11,6 @@ import type { AudioStore, JobStore } from "./storage.js";
 
 export class FileJobStore implements JobStore {
   private readonly jobs = new Map<string, AudioJob>();
-  private _nextId = 1;
   private readonly filePath: string;
 
   constructor(filePath?: string) {
@@ -36,12 +36,6 @@ export class FileJobStore implements JobStore {
         this.jobs.set(job.id, job);
       }
 
-      this._nextId = jobs.reduce((maxId, job) => {
-        const numericId = Number(job.id);
-        return Number.isFinite(numericId)
-          ? Math.max(maxId, numericId + 1)
-          : maxId;
-      }, 1);
     } catch (error) {
       const code =
         error instanceof Error && "code" in error
@@ -84,7 +78,7 @@ export class FileJobStore implements JobStore {
   }
 
   async nextId(): Promise<string> {
-    return String(this._nextId++);
+    return randomUUID();
   }
 
   async getAllForUser(userId: string): Promise<AudioJob[]> {

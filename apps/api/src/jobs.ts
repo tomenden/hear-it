@@ -125,7 +125,6 @@ export class AudioJobService {
       const segmentTexts = chunkNarrationText(
         queuedJob.article.textContent,
       );
-      const segmentBuffers: Buffer[] = [];
       const audioSegments: AudioJob["audioSegments"] = [];
       const playlistKey = buildNarrationPlaylistKey(jobId);
       let playlistUrl: string | null = null;
@@ -144,7 +143,6 @@ export class AudioJobService {
           throw new Error("Segment generation did not return playable audio.");
         }
 
-        segmentBuffers.push(result.audioData);
         audioSegments.push({
           url: result.audioUrl,
           durationSeconds: result.durationSeconds,
@@ -164,11 +162,6 @@ export class AudioJobService {
         });
       }
 
-      const audioUrl = await this.audioStore.put(
-        buildNarrationAudioKey(jobId),
-        Buffer.concat(segmentBuffers),
-        "audio/mpeg",
-      );
       playlistUrl = await this.audioStore.put(
         playlistKey,
         Buffer.from(buildPlaylist(audioSegments, true), "utf8"),
@@ -181,7 +174,7 @@ export class AudioJobService {
 
       await this.updateJob(jobId, {
         status: "completed",
-        audioUrl,
+        audioUrl: null,
         playlistUrl,
         audioSegments,
         durationSeconds,
@@ -267,20 +260,6 @@ export class AudioJobService {
     }
   }
 
-  /** Returns the blob URL for the narration audio, or null if not yet stored. */
-  async getNarrationAudioUrl(jobId: string): Promise<string | null> {
-    return this.audioStore.head(buildNarrationAudioKey(jobId));
-  }
-
-  /** Delete the narration audio blob (cleanup after client download). */
-  async deleteNarrationAudio(jobId: string): Promise<void> {
-    await this.audioStore.delete(buildNarrationAudioKey(jobId));
-  }
-
-  buildNarrationDownloadPath(jobId: string): string {
-    return `/api/jobs/${jobId}/audio`;
-  }
-
   private async updateJob(jobId: string, patch: Partial<AudioJob>) {
     await this.jobStore.update(jobId, patch);
   }
@@ -289,7 +268,6 @@ export class AudioJobService {
     jobId: string,
     segmentCount: number,
   ): Promise<void> {
-    await this.audioStore.delete(buildNarrationAudioKey(jobId));
     await this.audioStore.delete(buildNarrationPlaylistKey(jobId));
 
     for (let index = 0; index < segmentCount; index += 1) {
@@ -375,10 +353,6 @@ function chunkNarrationText(text: string, maxChars = MAX_SEGMENT_CHARS): string[
   }
 
   return chunks.length > 0 ? chunks : [trimmed];
-}
-
-function buildNarrationAudioKey(jobId: string): string {
-  return `narrations/narration-${jobId}.mp3`;
 }
 
 function buildNarrationPlaylistKey(jobId: string): string {

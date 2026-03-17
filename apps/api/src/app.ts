@@ -76,10 +76,7 @@ export function createApp(options: CreateAppOptions) {
   const app = express();
   const serializeJob = (job: AudioJob) => ({
     ...job,
-    audioDownloadPath:
-      job.status === "completed"
-        ? audioJobService.buildNarrationDownloadPath(job.id)
-        : null,
+    audioDownloadPath: null,
   });
   const errorResponse = (
     error: unknown,
@@ -258,57 +255,6 @@ export function createApp(options: CreateAppOptions) {
     res.json({ job: serializeJob(job) });
   });
 
-  app.get("/api/jobs/:jobId/audio", async (req, res) => {
-    const job = await audioJobService.getJob(req.params.jobId, req.userId);
-
-    if (!job) {
-      res.status(404).json({ error: "Job not found." });
-      return;
-    }
-
-    if (job.status !== "completed") {
-      res.status(409).json({ error: "Narration audio is not ready yet." });
-      return;
-    }
-
-    const audioUrl = await audioJobService.getNarrationAudioUrl(job.id);
-    if (!audioUrl) {
-      res.status(404).json({
-        error: "Narration audio is no longer available for download. Re-create the narration to fetch it again.",
-      });
-      return;
-    }
-
-    const storageUrl = resolveStorageUrl(audioUrl, req, options.audioPublicBaseUrl);
-
-    // Fetch from blob and stream to the client.
-    const upstream = await fetch(storageUrl);
-    if (!upstream.ok || !upstream.body) {
-      res.status(502).json({ error: "Failed to retrieve audio from storage." });
-      return;
-    }
-
-    res.setHeader("Content-Type", upstream.headers.get("content-type") ?? "audio/mpeg");
-    res.setHeader("Cache-Control", "private, no-store, max-age=0");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="narration-${job.id}.mp3"`,
-    );
-
-    const reader = upstream.body.getReader();
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        res.write(value);
-      }
-      res.end();
-    } catch {
-      res.destroy();
-      return;
-    }
-  });
-
   app.delete("/api/jobs/:jobId", writeEndpointLimiter, async (req, res) => {
     const deleted = await audioJobService.deleteJob(req.params.jobId as string, req.userId);
 
@@ -323,14 +269,4 @@ export function createApp(options: CreateAppOptions) {
   Sentry.setupExpressErrorHandler(app);
 
   return app;
-}
-
-function resolveStorageUrl(rawValue: string, req: express.Request, publicBaseUrl?: string): URL {
-  if (/^https?:\/\//i.test(rawValue)) {
-    return new URL(rawValue);
-  }
-
-  // Use the configured public base URL rather than trusting the Host header.
-  const base = publicBaseUrl ?? `${req.protocol}://${req.hostname}`;
-  return new URL(rawValue, base);
 }

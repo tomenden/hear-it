@@ -1,6 +1,12 @@
 import Foundation
 
 struct LocalNarrationAudioStore: Sendable {
+    struct StoredSegment: Sendable {
+        let fileName: String
+        let durationSeconds: Double
+        let audioData: Data
+    }
+
     private let baseDirectory: URL
 
     init(fileManager: FileManager = .default, baseDirectory: URL? = nil) {
@@ -11,19 +17,22 @@ struct LocalNarrationAudioStore: Sendable {
         }
     }
 
-    func audioFileURL(forJobID jobID: String) -> URL {
-        narrationsDirectory.appendingPathComponent("narration-\(sanitize(jobID)).mp3")
+    func playbackURLIfExists(forJobID jobID: String) -> URL? {
+        let playlistURL = playlistFileURL(forJobID: jobID)
+        if FileManager.default.fileExists(atPath: playlistURL.path) {
+            return playlistURL
+        }
+
+        let legacyFileURL = legacyAudioFileURL(forJobID: jobID)
+        return FileManager.default.fileExists(atPath: legacyFileURL.path) ? legacyFileURL : nil
     }
 
-    func audioFileURLIfExists(forJobID jobID: String) -> URL? {
-        let fileURL = audioFileURL(forJobID: jobID)
-        return FileManager.default.fileExists(atPath: fileURL.path) ? fileURL : nil
-    }
-
-    func save(_ audioData: Data, forJobID jobID: String) async throws -> URL {
-        let fileURL = audioFileURL(forJobID: jobID)
-        let directoryURL = narrationsDirectory
-
+    func savePlaylistBundle(
+        forJobID jobID: String,
+        segments: [StoredSegment]
+    ) async throws -> URL {
+        let directoryURL = jobDirectoryURL(forJobID: jobID)
+        let playlistURL = playlistFileURL(forJobID: jobID)
         return try await Task.detached(priority: .utility) {
             let fileManager = FileManager.default
             try fileManager.createDirectory(
@@ -31,23 +40,49 @@ struct LocalNarrationAudioStore: Sendable {
                 withIntermediateDirectories: true,
                 attributes: nil
             )
-            try audioData.write(to: fileURL, options: .atomic)
-            return fileURL
+
+            for segment in segments {
+                try segment.audioData.write(
+                    to: directoryURL.appendingPathComponent(segment.fileName),
+                    options: .atomic
+                )
+            }
+
+            try Self.buildPlaylist(for: segments)
+                .write(to: playlistURL, atomically: true, encoding: .utf8)
+            return playlistURL
         }.value
     }
 
-    func removeAudio(forJobID jobID: String) async throws {
-        let fileURL = audioFileURL(forJobID: jobID)
+    func removeCachedNarration(forJobID jobID: String) async throws {
+        let directoryURL = jobDirectoryURL(forJobID: jobID)
+        let legacyFileURL = legacyAudioFileURL(forJobID: jobID)
 
         try await Task.detached(priority: .utility) {
             let fileManager = FileManager.default
-            guard fileManager.fileExists(atPath: fileURL.path) else { return }
-            try fileManager.removeItem(at: fileURL)
+            if fileManager.fileExists(atPath: directoryURL.path) {
+                try fileManager.removeItem(at: directoryURL)
+            }
+            if fileManager.fileExists(atPath: legacyFileURL.path) {
+                try fileManager.removeItem(at: legacyFileURL)
+            }
         }.value
     }
 
     private var narrationsDirectory: URL {
         baseDirectory.appendingPathComponent("Narrations", isDirectory: true)
+    }
+
+    private func jobDirectoryURL(forJobID jobID: String) -> URL {
+        narrationsDirectory.appendingPathComponent(sanitize(jobID), isDirectory: true)
+    }
+
+    private func playlistFileURL(forJobID jobID: String) -> URL {
+        jobDirectoryURL(forJobID: jobID).appendingPathComponent("playlist.m3u8")
+    }
+
+    private func legacyAudioFileURL(forJobID jobID: String) -> URL {
+        narrationsDirectory.appendingPathComponent("narration-\(sanitize(jobID)).mp3")
     }
 
     private func sanitize(_ rawValue: String) -> String {
@@ -60,5 +95,24 @@ struct LocalNarrationAudioStore: Sendable {
         return String(sanitized)
             .replacingOccurrences(of: "--+", with: "-", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    }
+
+    private static func buildPlaylist(for segments: [StoredSegment]) -> String {
+        let targetDuration = max(1, segments.map { Int(ceil($0.durationSeconds)) }.max() ?? 1)
+        var lines = [
+            "#EXTM3U",
+            "#EXT-X-VERSION:3",
+            "#EXT-X-TARGETDURATION:\(targetDuration)",
+            "#EXT-X-MEDIA-SEQUENCE:0",
+            "#EXT-X-PLAYLIST-TYPE:VOD",
+        ]
+
+        for segment in segments {
+            lines.append("#EXTINF:\(String(format: "%.3f", segment.durationSeconds)),")
+            lines.append(segment.fileName)
+        }
+
+        lines.append("#EXT-X-ENDLIST")
+        return lines.joined(separator: "\n")
     }
 }

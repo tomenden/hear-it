@@ -122,14 +122,26 @@ export class VercelJobStore implements JobStore {
 
   async update(jobId: string, patch: Partial<AudioJob>): Promise<boolean> {
     const now = new Date().toISOString();
+    const hasStatus = patch.status !== undefined;
+    const hasAudioUrl = patch.audioUrl !== undefined;
+    const hasPlaylistUrl = patch.playlistUrl !== undefined;
+    const hasAudioSegments = patch.audioSegments !== undefined;
+    const hasDurationSeconds = patch.durationSeconds !== undefined;
+    const hasError = patch.error !== undefined;
     const rows = await this.sql`
       UPDATE audio_jobs SET
-        status = COALESCE(${patch.status ?? null}, status),
-        audio_url = COALESCE(${patch.audioUrl ?? null}, audio_url),
-        playlist_url = COALESCE(${patch.playlistUrl ?? null}, playlist_url),
-        audio_segments = COALESCE(${patch.audioSegments ? this.sql.json(jsonb(patch.audioSegments)) : null}, audio_segments),
-        duration_seconds = COALESCE(${patch.durationSeconds ?? null}, duration_seconds),
-        error = ${patch.error !== undefined ? patch.error : null},
+        status = CASE WHEN ${hasStatus} THEN ${patch.status ?? null} ELSE status END,
+        audio_url = CASE WHEN ${hasAudioUrl} THEN ${patch.audioUrl ?? null} ELSE audio_url END,
+        playlist_url = CASE WHEN ${hasPlaylistUrl} THEN ${patch.playlistUrl ?? null} ELSE playlist_url END,
+        audio_segments = CASE
+          WHEN ${hasAudioSegments} THEN ${this.sql.json(jsonb(patch.audioSegments ?? []))}
+          ELSE audio_segments
+        END,
+        duration_seconds = CASE
+          WHEN ${hasDurationSeconds} THEN ${patch.durationSeconds ?? null}
+          ELSE duration_seconds
+        END,
+        error = CASE WHEN ${hasError} THEN ${patch.error ?? null} ELSE error END,
         updated_at = ${now}
       WHERE id = ${jobId}
       RETURNING id

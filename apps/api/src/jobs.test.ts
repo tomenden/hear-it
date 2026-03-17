@@ -189,11 +189,10 @@ describe("audio job service", () => {
 
     const completedJob = await service.getJob(queuedJob.id);
     expect(completedJob?.status).toBe("completed");
-    expect(completedJob?.audioUrl).toContain("narration-");
+    expect(completedJob?.audioUrl).toBeNull();
     expect(completedJob?.playlistUrl).toContain("playlist.m3u8");
     expect(completedJob?.audioSegments.length ?? 0).toBeGreaterThan(0);
     expect(completedJob?.durationSeconds).toBeGreaterThan(0);
-    expect(await service.getNarrationAudioUrl(queuedJob.id)).toBeTruthy();
   });
 
   it("reloads persisted jobs from disk", async () => {
@@ -214,8 +213,6 @@ describe("audio job service", () => {
     expect(persistedJob?.status).toBe("completed");
     expect(await secondService.listJobs()).toHaveLength(1);
     expect(persistedJob?.audioSegments.length ?? 0).toBeGreaterThan(0);
-    // Audio blob persists across service restarts (unlike old in-memory cache).
-    expect(await secondService.getNarrationAudioUrl(createdJob.id)).toBeTruthy();
   });
 
   it("creates a cached voice preview", async () => {
@@ -226,7 +223,7 @@ describe("audio job service", () => {
     expect(preview.audioUrl).toBe("/audio/previews/voice-preview--alloy.mp3");
   });
 
-  it("persists narration audio to the audio store", async () => {
+  it("does not expose a single-file narration download for completed jobs", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
     const { service, jobStore, audioStore } = createTestContext(audioDir, jobsFilePath);
@@ -245,15 +242,10 @@ describe("audio job service", () => {
       const address = server.address() as AddressInfo;
       const jobResponse = await fetch(`http://127.0.0.1:${address.port}/api/jobs/${queuedJob.id}`);
       const jobPayload = await jobResponse.json() as { job: { audioDownloadPath: string | null } };
-      expect(jobPayload.job.audioDownloadPath).toBe(`/api/jobs/${queuedJob.id}/audio`);
+      expect(jobPayload.job.audioDownloadPath).toBeNull();
 
-      // Verify audio was persisted to blob store
-      const audioUrl = await service.getNarrationAudioUrl(queuedJob.id);
-      expect(audioUrl).toBeTruthy();
-
-      // Verify cleanup works
-      await service.deleteNarrationAudio(queuedJob.id);
-      expect(await service.getNarrationAudioUrl(queuedJob.id)).toBeNull();
+      const audioResponse = await fetch(`http://127.0.0.1:${address.port}/api/jobs/${queuedJob.id}/audio`);
+      expect(audioResponse.status).toBe(404);
     } finally {
       server.close();
       await once(server, "close");
@@ -322,45 +314,12 @@ describe("audio job service", () => {
     expect(completedJob?.status).toBe("completed");
     expect(completedJob?.audioSegments.length ?? 0).toBeGreaterThan(1);
     expect(completedJob?.playlistUrl).toBe(`/audio/narrations/job-${queuedJob.id}/playlist.m3u8`);
-    expect(completedJob?.audioUrl).toContain(`narration-${queuedJob.id}.mp3`);
+    expect(completedJob?.audioUrl).toBeNull();
     expect(completedJob?.durationSeconds).toBeGreaterThan(11);
+    await expect(readFile(join(audioDir, "narrations", `narration-${queuedJob.id}.mp3`))).rejects.toThrow();
 
     const completedPlaylist = await readFile(playlistPath, "utf8");
     expect(completedPlaylist).toContain("#EXT-X-ENDLIST");
-  });
-
-  it("keeps narration download available after a successful fetch", async () => {
-    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
-    const jobsFilePath = join(audioDir, "jobs.json");
-    const { service, jobStore, audioStore } = createTestContext(audioDir, jobsFilePath);
-    const queuedJob = await service.createJob({
-      url: "https://example.com/posts/jobs",
-      html: sampleHtml,
-    });
-    await service.processJob(queuedJob.id);
-
-    const app = createApp({
-      audioJobService: service,
-      jobStore,
-      audioStore,
-      serveStaticAudio: audioDir,
-    });
-    const server = createServer(app);
-    server.listen(0);
-    await once(server, "listening");
-
-    try {
-      const address = server.address() as AddressInfo;
-      const first = await fetch(`http://127.0.0.1:${address.port}/api/jobs/${queuedJob.id}/audio`);
-      const second = await fetch(`http://127.0.0.1:${address.port}/api/jobs/${queuedJob.id}/audio`);
-
-      expect(first.status).toBe(200);
-      expect(second.status).toBe(200);
-      expect(await service.getNarrationAudioUrl(queuedJob.id)).toBeTruthy();
-    } finally {
-      server.close();
-      await once(server, "close");
-    }
   });
 
   it("rejects oversized articles before creating a job", async () => {

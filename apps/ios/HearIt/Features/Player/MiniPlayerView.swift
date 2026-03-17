@@ -56,11 +56,36 @@ struct MiniPlayerView: View {
                 .foregroundStyle(AppTheme.Colors.textPrimary)
                 .lineLimit(1)
 
-            Text("Tap to return to full player")
+            Text(statusSubtitle(for: job))
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(AppTheme.Colors.miniPlayerSubtitle)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func statusSubtitle(for job: AudioJob) -> String {
+        if model.isStreamingPlayback(for: job) {
+            return "Playing while narration finishes"
+        }
+
+        if model.isDownloadingAudio(for: job) {
+            return "Caching to this device"
+        }
+
+        if model.hasLocallyCachedAudio(for: job) {
+            return "Saved on this device"
+        }
+
+        switch job.status {
+        case .queued:
+            return "Waiting for narration to start"
+        case .processing:
+            return "Generating narration…"
+        case .completed:
+            return "Tap to return to full player"
+        case .failed:
+            return "Narration failed"
+        }
     }
 
     private var playPauseButton: some View {

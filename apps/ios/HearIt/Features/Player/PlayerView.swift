@@ -51,7 +51,7 @@ struct PlayerView: View {
     @ViewBuilder
     private var playerContent: some View {
         if let job = currentJob {
-            if job.status == .completed, hasPlayableAudio {
+            if job.status != .failed, hasPlayableAudio {
                 readyView(for: job)
             } else {
                 processingView(for: job)
@@ -145,6 +145,7 @@ struct PlayerView: View {
                     }
                 )
                 .tint(AppTheme.Colors.accentGreen)
+                .disabled(!model.player.canSeek)
 
                 HStack {
                     Text(Self.formatTime(model.player.currentTime))
@@ -187,6 +188,20 @@ struct PlayerView: View {
             }
 
             VStack(spacing: 8) {
+                if model.isStreamingPlayback(for: job) {
+                    Label("Playing while narration is still generating", systemImage: "dot.radiowaves.left.and.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.Colors.accentGreen)
+                } else if model.isDownloadingAudio(for: job) {
+                    Label("Caching narration to this device", systemImage: "arrow.down.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.Colors.textSecondary)
+                } else if model.hasLocallyCachedAudio(for: job) {
+                    Label("Saved on this device", systemImage: "checkmark.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.Colors.accentGreen)
+                }
+
                 HStack {
                     Image(systemName: "speaker.fill")
                         .foregroundStyle(AppTheme.Colors.textTertiary)
@@ -332,8 +347,8 @@ struct PlayerView: View {
         .padding(.top, 80)
     }
 
-    private static func formatTime(_ seconds: Double) -> String {
-        guard seconds.isFinite else { return "0:00" }
+    private static func formatTime(_ seconds: Double?) -> String {
+        guard let seconds, seconds.isFinite else { return "?" }
         let totalSeconds = max(0, Int(seconds.rounded()))
         let minutes = totalSeconds / 60
         let remainder = totalSeconds % 60

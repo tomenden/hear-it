@@ -6,7 +6,7 @@ import Observation
 @Observable
 final class AudioPlayerController {
     var currentTime: Double = 0
-    var duration: Double = 0
+    var duration: Double?
     var isPlaying = false
     var playbackRate = 1.0
     var volume = 1.0 {
@@ -15,6 +15,7 @@ final class AudioPlayerController {
         }
     }
     var loadedJobID: String?
+    var loadedSourceURL: URL?
 
     @ObservationIgnored private let player = AVPlayer()
     @ObservationIgnored private let previewMode: Bool
@@ -50,17 +51,18 @@ final class AudioPlayerController {
     }
 
     func load(url: URL, for jobID: String, knownDuration: Double? = nil) {
-        guard loadedJobID != jobID || currentAssetURL != url else {
+        guard loadedJobID != jobID || loadedSourceURL != url else {
             // Already loaded — just update duration if we have a better value
-            if let knownDuration, knownDuration > 0, duration == 0 {
+            if let knownDuration, knownDuration > 0, duration == nil {
                 duration = knownDuration
             }
             return
         }
 
         loadedJobID = jobID
+        loadedSourceURL = url
         currentTime = 0
-        duration = knownDuration ?? 0
+        duration = knownDuration
         isPlaying = false
         guard !previewMode else { return }
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
@@ -68,12 +70,18 @@ final class AudioPlayerController {
 
     func unload() {
         loadedJobID = nil
+        loadedSourceURL = nil
         currentTime = 0
-        duration = 0
+        duration = nil
         isPlaying = false
         guard !previewMode else { return }
         player.pause()
         player.replaceCurrentItem(with: nil)
+    }
+
+    func updateKnownDuration(_ knownDuration: Double?) {
+        guard let knownDuration, knownDuration > 0 else { return }
+        duration = knownDuration
     }
 
     func togglePlayback() {
@@ -102,6 +110,7 @@ final class AudioPlayerController {
     }
 
     func skipForward() {
+        guard let duration else { return }
         let nextTime = min(duration, currentTime + 15)
         guard !previewMode else {
             currentTime = nextTime
@@ -112,7 +121,7 @@ final class AudioPlayerController {
     }
 
     func seek(toProgress progress: Double) {
-        guard duration > 0 else { return }
+        guard let duration, duration > 0 else { return }
 
         let clamped = min(max(progress, 0), 1)
         let newTime = duration * clamped
@@ -137,28 +146,31 @@ final class AudioPlayerController {
     }
 
     var progress: Double {
-        guard duration > 0 else { return 0 }
+        guard let duration, duration > 0 else { return 0 }
         return currentTime / duration
+    }
+
+    var canSeek: Bool {
+        guard let duration else { return false }
+        return duration > 0
     }
 
     func configurePreviewState(
         jobID: String?,
-        duration: Double,
+        duration: Double?,
         currentTime: Double,
         isPlaying: Bool,
         playbackRate: Double = 1.0,
-        volume: Double = 1.0
+        volume: Double = 1.0,
+        loadedSourceURL: URL? = nil
     ) {
         loadedJobID = jobID
+        self.loadedSourceURL = loadedSourceURL
         self.duration = duration
-        self.currentTime = min(max(currentTime, 0), duration)
+        self.currentTime = min(max(currentTime, 0), duration ?? currentTime)
         self.isPlaying = isPlaying
         self.playbackRate = playbackRate
         self.volume = volume
-    }
-
-    private var currentAssetURL: URL? {
-        (player.currentItem?.asset as? AVURLAsset)?.url
     }
 
     private func configureAudioSession() {
@@ -177,7 +189,7 @@ final class AudioPlayerController {
 
                 currentTime = player.currentTime().seconds.isFinite ? player.currentTime().seconds : 0
                 let itemDuration = player.currentItem?.duration.seconds ?? 0
-                duration = itemDuration.isFinite ? itemDuration : 0
+                duration = itemDuration.isFinite && itemDuration > 0 ? itemDuration : nil
                 isPlaying = player.timeControlStatus == .playing
             }
         }

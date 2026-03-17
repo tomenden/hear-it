@@ -343,7 +343,7 @@ final class AppModel {
 
         do {
             try await apiClient.deleteJob(jobID: job.id, baseURL: baseURL)
-            try? await localAudioStore.removeAudio(forJobID: job.id)
+            try? await localAudioStore.removeCachedNarration(forJobID: job.id)
             jobs.removeAll(where: { $0.id == job.id })
             Analytics.track("narration_deleted", properties: ["job_id": job.id])
         } catch HearItAPIClient.APIError.unauthorized {
@@ -372,20 +372,19 @@ final class AppModel {
 
         settings.lastPresentedJobID = jobID
 
-        if player.loadedJobID == jobID,
-           player.isPlaying,
-           let currentSource = player.loadedSourceURL,
-           !currentSource.isFileURL,
-           localAudioStore.audioFileURLIfExists(forJobID: jobID) == nil {
-            return
-        }
-
         if job.status == .failed {
             player.unload()
             return
         }
 
-        if let playbackURL = localAudioStore.audioFileURLIfExists(forJobID: jobID) {
+        if player.loadedJobID == jobID,
+           let currentSource = player.loadedSourceURL,
+           !currentSource.isFileURL {
+            player.updateKnownDuration(job.durationSeconds)
+            return
+        }
+
+        if let playbackURL = localAudioStore.playbackURLIfExists(forJobID: jobID) {
             player.load(url: playbackURL, for: jobID, knownDuration: job.durationSeconds)
             return
         }
@@ -408,7 +407,7 @@ final class AppModel {
     }
 
     func hasPlayableAudio(for job: AudioJob) -> Bool {
-        if localAudioStore.audioFileURLIfExists(forJobID: job.id) != nil {
+        if hasLocallyCachedAudio(for: job) {
             return true
         }
 
@@ -426,6 +425,10 @@ final class AppModel {
         }
 
         return false
+    }
+
+    func hasLocallyCachedAudio(for job: AudioJob) -> Bool {
+        localAudioStore.playbackURLIfExists(forJobID: job.id) != nil
     }
 
     func isStreamingPlayback(for job: AudioJob) -> Bool {
@@ -469,9 +472,9 @@ final class AppModel {
         guard !previewMode else { return }
         guard job.status == .completed else { return }
         guard narrationDownloadTasks[job.id] == nil else { return }
-        guard localAudioStore.audioFileURLIfExists(forJobID: job.id) == nil else { return }
-        guard let baseURL = settings.apiBaseURL,
-              let downloadURL = job.narrationDownloadURL(relativeTo: baseURL) else { return }
+        guard localAudioStore.playbackURLIfExists(forJobID: job.id) == nil else { return }
+        guard let baseURL = settings.apiBaseURL else { return }
+        guard !job.audioSegments.isEmpty else { return }
 
         narrationDownloadTasks[job.id] = Task { [weak self] in
             guard let self else { return }
@@ -481,22 +484,24 @@ final class AppModel {
             }
 
             do {
-                let audioData = try await apiClient.downloadNarrationAudio(from: downloadURL)
-                _ = try await localAudioStore.save(audioData, forJobID: job.id)
+                var cachedSegments: [LocalNarrationAudioStore.StoredSegment] = []
+                for (index, segment) in job.audioSegments.enumerated() {
+                    guard let segmentURL = HearItAPIClient.resolveURL(segment.url, relativeTo: baseURL) else {
+                        throw CacheError.invalidSegmentURL(segment.url)
+                    }
+
+                    cachedSegments.append(LocalNarrationAudioStore.StoredSegment(
+                        fileName: "segment-\(index).mp3",
+                        durationSeconds: segment.durationSeconds,
+                        audioData: try await apiClient.downloadAudioData(from: segmentURL)
+                    ))
+                }
+                _ = try await localAudioStore.savePlaylistBundle(forJobID: job.id, segments: cachedSegments)
 
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     if playerPresentation?.jobID == job.id {
                         preparePlayer(for: job.id)
-                        if !player.isPlaying {
-                            player.togglePlayback()
-                            Analytics.track("narration_played", properties: [
-                                "job_id": job.id,
-                                "duration_listened": 0,
-                                "pct_completed": 0,
-                            ])
-                            trackFirstNarrationCompleted()
-                        }
                     }
                 }
             } catch is CancellationError {
@@ -526,9 +531,10 @@ final class AppModel {
 
     private func preparePresentedPlayerIfNeeded(for updatedJobs: [AudioJob], previousJobs: [AudioJob]) {
         if let currentPresentation = playerPresentation {
-            let wasCompleted = previousJobs.first(where: { $0.id == currentPresentation.jobID })?.status == .completed
+            let previousJob = previousJobs.first(where: { $0.id == currentPresentation.jobID })
+            let wasPlayable = previousJob.map(hasPlayableAudio(for:)) ?? false
             preparePlayer(for: currentPresentation.jobID)
-            if !wasCompleted,
+            if !wasPlayable,
                let currentJob = updatedJobs.first(where: { $0.id == currentPresentation.jobID }),
                hasPlayableAudio(for: currentJob),
                !player.isPlaying {
@@ -590,6 +596,17 @@ final class AppModel {
         jobs.insert(job, at: 0)
         settings.lastPresentedJobID = job.id
         ensureNarrationAudioDownloadRequested(for: job)
+    }
+
+    private enum CacheError: LocalizedError {
+        case invalidSegmentURL(String)
+
+        var errorDescription: String? {
+            switch self {
+            case let .invalidSegmentURL(rawValue):
+                "Hear It could not resolve a segment URL for caching: \(rawValue)"
+            }
+        }
     }
 
     private func trackFirstNarrationCreated() {

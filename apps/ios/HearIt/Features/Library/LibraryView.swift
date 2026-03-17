@@ -130,6 +130,8 @@ struct LibraryView: View {
                             Text(job.createdAt.formatted(.relative(presentation: .named)))
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(AppTheme.Colors.textInactive)
+
+                            statusBadge(for: job)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -173,6 +175,39 @@ struct LibraryView: View {
         RoundedRectangle(cornerRadius: AppTheme.Layout.cornerRadius)
             .fill(AppTheme.Colors.card)
             .shadow(color: .black.opacity(0.06), radius: 18, y: 8)
+    }
+
+    private func statusBadge(for job: AudioJob) -> some View {
+        let palette: (label: String, systemImage: String, tint: Color, background: Color) = {
+            if job.status == .completed, model.isDownloadingAudio(for: job) {
+                return ("Caching", "arrow.down.circle.fill", AppTheme.Colors.textSecondary, AppTheme.Colors.page)
+            }
+
+            if job.status == .completed, model.hasLocallyCachedAudio(for: job) {
+                return ("Saved", "checkmark.circle.fill", AppTheme.Colors.accentGreen, AppTheme.Colors.accentGreenLight)
+            }
+
+            switch job.status {
+            case .queued:
+                return ("Queued", "clock", AppTheme.Colors.textSecondary, AppTheme.Colors.page)
+            case .processing:
+                return ("In progress", "waveform", AppTheme.Colors.accentGreen, AppTheme.Colors.accentGreenLight)
+            case .completed:
+                return ("Ready", "checkmark.circle.fill", AppTheme.Colors.accentGreen, AppTheme.Colors.accentGreenLight)
+            case .failed:
+                return ("Failed", "exclamationmark.triangle.fill", AppTheme.Colors.accentRed, AppTheme.Colors.accentRedLight)
+            }
+        }()
+
+        return Label(palette.label, systemImage: palette.systemImage)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(palette.tint)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(palette.background)
+            )
     }
 
 }

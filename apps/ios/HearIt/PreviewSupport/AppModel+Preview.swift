@@ -39,6 +39,15 @@ extension AppModel {
         let model = previewBase(name: "player-processing")
         model.playerPresentation = PlayerPresentation(jobID: PreviewSamples.processingJob.id)
         model.settings.lastPresentedJobID = PreviewSamples.processingJob.id
+        model.player.configurePreviewState(
+            jobID: PreviewSamples.processingJob.id,
+            duration: nil,
+            currentTime: 41,
+            isPlaying: true,
+            playbackRate: 1.0,
+            volume: 0.82,
+            loadedSourceURL: URL(string: "http://127.0.0.1:3000/audio/job-preview-processing/playlist.m3u8")
+        )
         return model
     }
 

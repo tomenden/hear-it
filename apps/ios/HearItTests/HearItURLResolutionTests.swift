@@ -22,4 +22,38 @@ struct HearItURLResolutionTests {
             HearItAPIClient.resolveURL(absolute.absoluteString, relativeTo: baseURL) == absolute
         )
     }
+
+    @Test
+    func prefersPlaylistURLForIncrementalPlayback() {
+        let baseURL = URL(string: "http://localhost:3000")!
+        let job = AudioJob(
+            id: "job-1",
+            status: .processing,
+            article: Article(
+                url: "https://example.com/article",
+                title: "Incremental playback",
+                byline: nil,
+                siteName: nil,
+                excerpt: nil,
+                textContent: "Body",
+                wordCount: 100,
+                estimatedMinutes: 1
+            ),
+            speechOptions: AudioJob.SpeechOptions(voice: "alloy"),
+            provider: "openai",
+            audioUrl: "/audio/final.mp3",
+            audioDownloadPath: nil,
+            playlistUrl: "/audio/job-1/playlist.m3u8",
+            audioSegments: [],
+            durationSeconds: nil,
+            error: nil,
+            createdAt: .now,
+            updatedAt: .now
+        )
+
+        #expect(
+            job.playbackURL(relativeTo: baseURL) ==
+                URL(string: "http://localhost:3000/audio/job-1/playlist.m3u8")
+        )
+    }
 }

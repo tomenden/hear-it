@@ -106,14 +106,13 @@ export class AudioJobService {
 
   async processJob(jobId: string): Promise<void> {
     await this.init();
-    const queuedJob = await this.jobStore.get(jobId);
-    if (!queuedJob || queuedJob.status !== "queued") {
+    const queuedJob = await this.jobStore.claimQueued(jobId);
+    if (!queuedJob) {
       return;
     }
 
     await this.deleteNarrationArtifacts(jobId, queuedJob.audioSegments.length);
     await this.updateJob(jobId, {
-      status: "processing",
       error: null,
       audioUrl: null,
       playlistUrl: null,
@@ -260,6 +259,19 @@ export class AudioJobService {
           status: "queued",
           error: "Job resumed after server restart.",
         });
+        void this.processJob(job.id);
+      }
+    }
+  }
+
+  async kickQueuedJobs(userId?: string): Promise<void> {
+    await this.init();
+    const jobs = userId
+      ? await this.jobStore.getAllForUser(userId)
+      : await this.jobStore.getAll();
+
+    for (const job of jobs) {
+      if (job.status === "queued") {
         void this.processJob(job.id);
       }
     }

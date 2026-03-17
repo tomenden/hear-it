@@ -241,6 +241,7 @@ export function createApp(options: CreateAppOptions) {
   });
 
   app.get("/api/jobs", async (req, res) => {
+    await audioJobService.kickQueuedJobs(req.userId);
     res.json({ jobs: (await audioJobService.listJobs(req.userId)).map(serializeJob) });
   });
 
@@ -250,6 +251,10 @@ export function createApp(options: CreateAppOptions) {
     if (!job) {
       res.status(404).json({ error: "Job not found." });
       return;
+    }
+
+    if (job.status === "queued") {
+      void audioJobService.processJob(job.id);
     }
 
     res.json({ job: serializeJob(job) });

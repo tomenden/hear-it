@@ -121,6 +121,19 @@ export class VercelJobStore implements JobStore {
     `;
   }
 
+  async claimQueued(jobId: string): Promise<AudioJob | null> {
+    const now = new Date().toISOString();
+    const rows = await this.sql`
+      UPDATE audio_jobs
+      SET
+        status = 'processing',
+        updated_at = ${now}
+      WHERE id = ${jobId} AND status = 'queued'
+      RETURNING *
+    `;
+    return rows.length > 0 ? rowToJob(rows[0]) : null;
+  }
+
   async update(jobId: string, patch: Partial<AudioJob>): Promise<boolean> {
     const now = new Date().toISOString();
     const hasStatus = patch.status !== undefined;

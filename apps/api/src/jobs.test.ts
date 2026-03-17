@@ -351,6 +351,44 @@ describe("audio job service", () => {
     }
   });
 
+  it("rescues queued jobs when polling sees background processing was dropped", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const { service, jobStore, audioStore } = createTestContext(audioDir, jobsFilePath);
+    const app = createApp({
+      audioJobService: service,
+      jobStore,
+      audioStore,
+    });
+    const server = createServer(app);
+    server.listen(0);
+    await once(server, "listening");
+
+    try {
+      const address = server.address() as AddressInfo;
+      const queuedJob = await service.createJob({
+        url: "https://example.com/posts/jobs",
+        html: sampleHtml,
+      });
+
+      expect(queuedJob.status).toBe("queued");
+
+      const pollResponse = await fetch(`http://127.0.0.1:${address.port}/api/jobs`);
+      expect(pollResponse.status).toBe(200);
+
+      const completedJob = await waitFor(
+        () => service.getJob(queuedJob.id),
+        (job) => job !== null && job.status === "completed",
+      );
+
+      expect(completedJob?.playlistUrl).toContain("playlist.m3u8");
+      expect(completedJob?.audioSegments.length ?? 0).toBeGreaterThan(0);
+    } finally {
+      server.close();
+      await once(server, "close");
+    }
+  });
+
   it("makes a job playable before full completion via a growing playlist", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");

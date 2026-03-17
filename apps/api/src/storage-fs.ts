@@ -62,6 +62,20 @@ export class FileJobStore implements JobStore {
     await this.persist();
   }
 
+  async claimQueued(jobId: string): Promise<AudioJob | null> {
+    const existing = this.jobs.get(jobId);
+    if (!existing || existing.status !== "queued") return null;
+
+    const claimed = {
+      ...existing,
+      status: "processing" as const,
+      updatedAt: new Date().toISOString(),
+    };
+    this.jobs.set(jobId, claimed);
+    await this.persist();
+    return claimed;
+  }
+
   async update(jobId: string, patch: Partial<AudioJob>): Promise<boolean> {
     const existing = this.jobs.get(jobId);
     if (!existing) return false;

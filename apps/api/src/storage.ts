@@ -15,6 +15,8 @@ export interface JobStore {
   getAll(): Promise<AudioJob[]>;
   get(jobId: string): Promise<AudioJob | null>;
   save(job: AudioJob): Promise<void>;
+  /** Atomically move a queued job into processing. Returns null if it was already claimed. */
+  claimQueued(jobId: string): Promise<AudioJob | null>;
   /** Update specific fields on an existing job. Returns false if the job doesn't exist. */
   update(jobId: string, patch: Partial<AudioJob>): Promise<boolean>;
   /** Delete a job by ID. Returns false if the job doesn't exist. */

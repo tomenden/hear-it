@@ -150,7 +150,7 @@ struct PlayerView: View {
                 HStack {
                     Text(Self.formatTime(model.player.currentTime))
                     Spacer()
-                    Text(Self.formatTime(model.player.duration))
+                    Text(Self.formatTime(model.displayedTotalDuration(for: job)))
                 }
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(AppTheme.Colors.textSecondary)

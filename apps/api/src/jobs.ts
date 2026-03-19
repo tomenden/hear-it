@@ -176,7 +176,8 @@ export class AudioJobService {
 
           try {
             const textChunk = segmentTexts[index]!;
-            const result = await this.speechProvider.synthesizeText(
+            const result = await synthesizeSegmentWithRetry(
+              this.speechProvider,
               textChunk,
               claimedJob.speechOptions,
               {
@@ -350,10 +351,69 @@ function safeHostname(url: string): string | null {
 
 const MAX_SEGMENT_CHARS = 800;
 const DEFAULT_TTS_CONCURRENCY = 5;
+const DEFAULT_SEGMENT_RETRY_ATTEMPTS = 2;
+const SEGMENT_RETRY_BASE_DELAY_MS = 500;
 
 function getTtsConcurrency(): number {
   const parsed = Number(process.env.TTS_CONCURRENCY ?? DEFAULT_TTS_CONCURRENCY);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_TTS_CONCURRENCY;
+}
+
+function getSegmentRetryAttempts(): number {
+  const parsed = Number(
+    process.env.TTS_SEGMENT_RETRY_ATTEMPTS ?? DEFAULT_SEGMENT_RETRY_ATTEMPTS,
+  );
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : DEFAULT_SEGMENT_RETRY_ATTEMPTS;
+}
+
+async function synthesizeSegmentWithRetry(
+  speechProvider: SpeechProvider,
+  text: string,
+  speechOptions: SpeechOptions,
+  context: { audioStore: AudioStore; fileKey: string },
+) {
+  let attempt = 0;
+  let lastError: unknown;
+  const maxRetries = getSegmentRetryAttempts();
+
+  while (attempt <= maxRetries) {
+    try {
+      return await speechProvider.synthesizeText(text, speechOptions, context);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= maxRetries || !isRetryableSegmentError(error)) {
+        throw error;
+      }
+
+      await delay(SEGMENT_RETRY_BASE_DELAY_MS * (attempt + 1));
+      attempt += 1;
+    }
+  }
+
+  throw lastError;
+}
+
+function isRetryableSegmentError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return (
+      /(^|\s)bad gateway(\s|$)/i.test(error.message) ||
+      /gateway timeout/i.test(message) ||
+      /timed out/i.test(message) ||
+      /timeout/i.test(message) ||
+      /fetch failed/i.test(message) ||
+      /econnreset/i.test(message) ||
+      /eai_again/i.test(message) ||
+      /temporarily unavailable/i.test(message) ||
+      /openai speech generation failed: 5\d\d/i.test(message)
+    );
+  }
+
+  return false;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function chunkNarrationText(text: string, maxChars = MAX_SEGMENT_CHARS): string[] {

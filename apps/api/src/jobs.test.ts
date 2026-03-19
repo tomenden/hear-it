@@ -238,6 +238,71 @@ class FailingAfterFirstSegmentSpeechProvider implements SpeechProvider {
   }
 }
 
+class RetryableGatewayFailureSpeechProvider implements SpeechProvider {
+  readonly name = "retryable-gateway-failure-test";
+  private readonly attempts = new Map<number, number>();
+
+  constructor(
+    private readonly segments: Array<{
+      audioData: Buffer;
+      durationSeconds: number;
+    }>,
+    private readonly retrySegmentIndex: number,
+  ) {}
+
+  async synthesize(
+    article: ExtractedArticle,
+    speechOptions: SpeechOptions,
+    context: SpeechSynthesisContext,
+  ): Promise<AudioRenderResult> {
+    return this.synthesizeText(article.textContent, speechOptions, context);
+  }
+
+  async synthesizeText(
+    _text: string,
+    _speechOptions: SpeechOptions,
+    context: SpeechSynthesisContext,
+  ): Promise<AudioRenderResult> {
+    const match = context.fileKey?.match(/segment-(\d+)\.mp3$/);
+    const segmentIndex = match ? Number(match[1]) : 0;
+    const nextAttempt = (this.attempts.get(segmentIndex) ?? 0) + 1;
+    this.attempts.set(segmentIndex, nextAttempt);
+
+    if (segmentIndex === this.retrySegmentIndex && nextAttempt === 1) {
+      throw new Error("Bad Gateway");
+    }
+
+    const segment = this.segments[segmentIndex];
+    if (!segment) {
+      throw new Error(`Unexpected synthesizeText call for segment ${segmentIndex}`);
+    }
+
+    const audioUrl =
+      context.audioStore && context.fileKey
+        ? await context.audioStore.put(
+            context.fileKey,
+            segment.audioData,
+            "audio/mpeg",
+          )
+        : null;
+
+    return {
+      audioUrl,
+      playlistUrl: null,
+      audioSegments: audioUrl
+        ? [{ url: audioUrl, durationSeconds: segment.durationSeconds }]
+        : [],
+      durationSeconds: segment.durationSeconds,
+      audioData: segment.audioData,
+      contentType: "audio/mpeg",
+    };
+  }
+
+  getAttempts(segmentIndex: number): number {
+    return this.attempts.get(segmentIndex) ?? 0;
+  }
+}
+
 class StrictDuplicateKeyAudioStore implements AudioStore {
   private readonly blobs = new Map<string, Buffer>();
 
@@ -821,6 +886,49 @@ describe("audio job service", () => {
     expect(failedJob?.audioSegments).toEqual([]);
     expect(failedJob?.durationSeconds).toBeNull();
     expect(failedJob?.error).toContain("failed after the first playable chunk");
+  });
+
+  it("retries transient segment failures and still completes the job", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const audioStore = new FileAudioStore(audioDir, "/audio");
+    const jobStore = new FileJobStore(jobsFilePath);
+    const speechProvider = new RetryableGatewayFailureSpeechProvider([
+      { audioData: Buffer.from("ID3SEGMENTONE"), durationSeconds: 11 },
+      { audioData: Buffer.from("ID3SEGMENTTWO"), durationSeconds: 13 },
+      { audioData: Buffer.from("ID3SEGMENTTHREE"), durationSeconds: 17 },
+    ], 1);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider,
+    });
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/retry-job",
+      html: `
+        <!doctype html>
+        <html>
+          <head><title>Retry Segmented Article</title></head>
+          <body>
+            <article>
+              <h1>Retry Segmented Article</h1>
+              <p>${"First segment content. ".repeat(30)}</p>
+              <p>${"Second segment content. ".repeat(30)}</p>
+              <p>${"Third segment content. ".repeat(30)}</p>
+            </article>
+          </body>
+        </html>
+      `,
+    });
+
+    await service.processJob(queuedJob.id);
+
+    const completedJob = await service.getJob(queuedJob.id);
+    expect(completedJob?.status).toBe("completed");
+    expect(completedJob?.audioSegments).toHaveLength(3);
+    expect(completedJob?.error).toBeNull();
+    expect(speechProvider.getAttempts(1)).toBe(2);
   });
 
   it("can rewrite the stable playlist key as new segments arrive", async () => {

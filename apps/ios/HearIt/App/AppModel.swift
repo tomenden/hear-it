@@ -370,6 +370,8 @@ final class AppModel {
             return
         }
 
+        let knownPlaybackDuration = playbackDuration(for: job)
+
         settings.lastPresentedJobID = jobID
 
         if job.status == .failed {
@@ -380,12 +382,12 @@ final class AppModel {
         if player.loadedJobID == jobID,
            let currentSource = player.loadedSourceURL,
            !currentSource.isFileURL {
-            player.updateKnownDuration(job.durationSeconds)
+            player.updateKnownDuration(knownPlaybackDuration)
             return
         }
 
         if let playbackURL = localAudioStore.playbackURLIfExists(forJobID: jobID) {
-            player.load(url: playbackURL, for: jobID, knownDuration: job.durationSeconds)
+            player.load(url: playbackURL, for: jobID, knownDuration: knownPlaybackDuration)
             return
         }
 
@@ -402,7 +404,7 @@ final class AppModel {
         player.load(
             url: playbackURL,
             for: jobID,
-            knownDuration: job.durationSeconds
+            knownDuration: knownPlaybackDuration
         )
     }
 
@@ -429,6 +431,14 @@ final class AppModel {
 
     func hasLocallyCachedAudio(for job: AudioJob) -> Bool {
         localAudioStore.playbackURLIfExists(forJobID: job.id) != nil
+    }
+
+    func displayedTotalDuration(for job: AudioJob) -> Double? {
+        if isStreamingPlayback(for: job) {
+            return nil
+        }
+
+        return player.duration
     }
 
     func isStreamingPlayback(for job: AudioJob) -> Bool {
@@ -596,6 +606,15 @@ final class AppModel {
         jobs.insert(job, at: 0)
         settings.lastPresentedJobID = job.id
         ensureNarrationAudioDownloadRequested(for: job)
+    }
+
+    private func playbackDuration(for job: AudioJob) -> Double? {
+        if let durationSeconds = job.durationSeconds, durationSeconds > 0 {
+            return durationSeconds
+        }
+
+        guard !job.audioSegments.isEmpty else { return nil }
+        return job.audioSegments.reduce(0) { $0 + $1.durationSeconds }
     }
 
     private enum CacheError: LocalizedError {

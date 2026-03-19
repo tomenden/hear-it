@@ -73,6 +73,7 @@ struct HearItApp: App {
                 Task { await authManager.handleOpenURL(url) }
                 model?.handleIncomingURL(url)
             }
+            .preferredColorScheme(.light)
         }
     }
 

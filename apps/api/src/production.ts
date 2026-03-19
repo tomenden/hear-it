@@ -9,10 +9,12 @@ import { PostgresJobStore } from "./storage-postgres.js";
 import { SupabaseAudioStore } from "./storage-supabase.js";
 
 const port = Number(process.env.PORT ?? 3000);
+const supabaseUrl = getRequiredEnv("SUPABASE_URL");
+const supabaseServiceRoleKey = getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY");
 const jobStore = new PostgresJobStore();
 const audioStore = new SupabaseAudioStore(
-  process.env.SUPABASE_URL ?? "",
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+  supabaseUrl,
+  supabaseServiceRoleKey,
   process.env.SUPABASE_STORAGE_BUCKET ?? "audio",
 );
 const audioJobService = new AudioJobService({ jobStore, audioStore });
@@ -22,10 +24,19 @@ const app = createApp({
   jobStore,
   audioStore,
   recoverInterruptedJobsOnStartup: true,
-  supabaseUrl: process.env.SUPABASE_URL,
+  supabaseUrl,
   supabaseJwtSecret: process.env.SUPABASE_JWT_SECRET,
 });
 
 app.listen(port, () => {
   console.log(`Hear It API listening on http://0.0.0.0:${port}`);
 });
+
+function getRequiredEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`${name} environment variable is not set.`);
+  }
+
+  return value;
+}

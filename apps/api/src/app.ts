@@ -57,8 +57,8 @@ export interface CreateAppOptions {
   allowJwtSecretFallback?: boolean;
 }
 
-// Rate limiting uses the default in-memory store. On Vercel serverless, the
-// counter resets on each cold start — acceptable for launch but not watertight.
+// Rate limiting uses the default in-memory store. It is intentionally simple for
+// the current single-service deployment, but counters reset on process restarts.
 const rateLimitMessage = { error: "Too many requests. Please try again later." };
 
 const jobCreationLimiter = rateLimit({
@@ -127,8 +127,8 @@ export function createApp(options: CreateAppOptions) {
 
   app.use(express.json({ limit: "1mb" }));
 
-  // In local dev, serve audio files from disk and the web prototype.
-  // In production (Vercel), audio URLs are absolute blob URLs.
+  // Local dev serves disk-backed audio files and the static prototype.
+  // Production audio is resolved from the configured storage backend.
   if (options.serveStaticAudio) {
     app.use("/audio", express.static(options.serveStaticAudio));
     const publicDir = join(import.meta.dirname, "..", "public");

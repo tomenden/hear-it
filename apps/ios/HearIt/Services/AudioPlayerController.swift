@@ -66,6 +66,9 @@ final class AudioPlayerController {
         isPlaying = false
         guard !previewMode else { return }
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
+        if let knownDuration, knownDuration > 0 {
+            player.seek(to: .zero)
+        }
     }
 
     func unload() {

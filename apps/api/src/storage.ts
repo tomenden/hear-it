@@ -17,11 +17,6 @@ export interface JobStore {
   save(job: AudioJob): Promise<void>;
   /** Atomically move a queued job into processing. Returns null if it was already claimed. */
   claimQueued(jobId: string): Promise<AudioJob | null>;
-  /**
-   * Atomically claim a queued job, or a stalled processing job, for continued work.
-   * `stalledBefore` should be an ISO timestamp; processing jobs older than it are resumable.
-   */
-  claimPending(jobId: string, stalledBefore: string): Promise<AudioJob | null>;
   /** Update specific fields on an existing job. Returns false if the job doesn't exist. */
   update(jobId: string, patch: Partial<AudioJob>): Promise<boolean>;
   /** Delete a job by ID. Returns false if the job doesn't exist. */

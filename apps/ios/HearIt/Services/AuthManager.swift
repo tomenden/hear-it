@@ -81,7 +81,7 @@ final class AuthManager {
 
         // fullName is only provided on first sign-in (account creation)
         if let fullName {
-            try? await client.auth.update(
+            _ = try? await client.auth.update(
                 user: UserAttributes(data: ["full_name": .string(fullName)])
             )
         }

@@ -1,33 +1,26 @@
 import postgres, { type JSONValue } from "postgres";
-import { put, head, del } from "@vercel/blob";
 import { randomUUID } from "node:crypto";
 import * as Sentry from "@sentry/node";
 
 import type { AudioJob } from "./types.js";
-import type { AudioStore, AudioStorePutOptions, JobStore } from "./storage.js";
+import type { JobStore } from "./storage.js";
 
-/** Cast a typed object to JSONValue for postgres.js JSONB parameters. */
 const jsonb = (value: unknown) => value as JSONValue;
-
-// ---------------------------------------------------------------------------
-// Postgres JobStore
-// ---------------------------------------------------------------------------
 
 function getSQL() {
   const url = process.env.POSTGRES_URL;
   if (!url) {
     throw new Error("POSTGRES_URL environment variable is not set.");
   }
-  // Serverless-safe options: keep pool to 1 connection to avoid exhausting
-  // Neon's connection limit across concurrent Vercel function invocations.
+
   return postgres(url, {
-    max: 1,
+    max: 5,
     idle_timeout: 20,
     connect_timeout: 10,
   });
 }
 
-export class VercelJobStore implements JobStore {
+export class PostgresJobStore implements JobStore {
   private _sql: ReturnType<typeof getSQL> | null = null;
 
   private get sql(): ReturnType<typeof getSQL> {
@@ -41,7 +34,7 @@ export class VercelJobStore implements JobStore {
     try {
       await this.sql`SELECT 1`;
     } catch (error) {
-      captureStorageFailure("db_check", error);
+      captureDatabaseFailure("db_check", error);
       throw error;
     }
   }
@@ -77,7 +70,7 @@ export class VercelJobStore implements JobStore {
         CREATE INDEX IF NOT EXISTS idx_audio_jobs_user_id ON audio_jobs(user_id)
       `;
     } catch (error) {
-      captureStorageFailure("db_init", error);
+      captureDatabaseFailure("db_init", error);
       throw error;
     }
   }
@@ -132,16 +125,12 @@ export class VercelJobStore implements JobStore {
           user_id = EXCLUDED.user_id
       `;
     } catch (error) {
-      captureStorageFailure("db_save_job", error, { jobId: job.id, status: job.status });
+      captureDatabaseFailure("db_save_job", error, { jobId: job.id, status: job.status });
       throw error;
     }
   }
 
   async claimQueued(jobId: string): Promise<AudioJob | null> {
-    return this.claimPending(jobId, new Date(0).toISOString());
-  }
-
-  async claimPending(jobId: string, stalledBefore: string): Promise<AudioJob | null> {
     const now = new Date().toISOString();
     const rows = await this.sql`
       UPDATE audio_jobs
@@ -149,10 +138,7 @@ export class VercelJobStore implements JobStore {
         status = 'processing',
         updated_at = ${now}
       WHERE id = ${jobId}
-        AND (
-          status = 'queued'
-          OR (status = 'processing' AND updated_at < ${stalledBefore})
-        )
+        AND status = 'queued'
       RETURNING *
     `;
     return rows.length > 0 ? rowToJob(rows[0]) : null;
@@ -238,70 +224,7 @@ function rowToJob(row: Record<string, unknown>): AudioJob {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Vercel Blob AudioStore
-// ---------------------------------------------------------------------------
-
-export class VercelAudioStore implements AudioStore {
-  async check(): Promise<void> {
-    // Attempt a head request for a non-existent key. A "not found" error is
-    // expected and means the store is reachable. Any other error propagates.
-    try {
-      await head("__health_check__");
-    } catch (error: unknown) {
-      const isBlobNotFound = isBlobMissingError(error);
-      if (!isBlobNotFound) {
-        captureStorageFailure("blob_check", error);
-        throw error;
-      }
-    }
-  }
-
-  async put(
-    key: string,
-    data: Buffer,
-    contentType = "audio/mpeg",
-    options?: AudioStorePutOptions,
-  ): Promise<string> {
-    try {
-      const blob = await put(key, data, {
-        access: "public",
-        contentType,
-        addRandomSuffix: false,
-        allowOverwrite: options?.overwrite ?? false,
-      });
-      return blob.url;
-    } catch (error) {
-      captureStorageFailure("blob_put", error, { key, contentType, overwrite: options?.overwrite ?? false });
-      throw error;
-    }
-  }
-
-  async head(key: string): Promise<string | null> {
-    try {
-      const blob = await head(key);
-      return blob.url;
-    } catch {
-      return null;
-    }
-  }
-
-  async delete(key: string): Promise<void> {
-    try {
-      await del(key);
-    } catch {
-      // Ignore — blob may already be gone.
-    }
-  }
-}
-
-export function isBlobMissingError(error: unknown): boolean {
-  return error instanceof Error
-    && (error.name === "BlobNotFoundError"
-      || error.message.includes("does not exist"));
-}
-
-function captureStorageFailure(
+function captureDatabaseFailure(
   operation: string,
   error: unknown,
   extra?: Record<string, unknown>,
@@ -309,7 +232,7 @@ function captureStorageFailure(
   Sentry.captureException(error, {
     tags: {
       operation,
-      layer: operation.startsWith("blob_") ? "blob" : "database",
+      layer: "database",
     },
     extra,
   });

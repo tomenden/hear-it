@@ -7,6 +7,7 @@ apps/api/data/
 
 # Yarn PnP (machine-specific)
 .pnp.*
+yarn.lock
 .yarn/install-state.gz
 .yarn/unplugged/
 

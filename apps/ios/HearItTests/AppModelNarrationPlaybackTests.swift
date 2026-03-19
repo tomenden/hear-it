@@ -5,6 +5,18 @@ import Testing
 @MainActor
 struct AppModelNarrationPlaybackTests {
     @Test
+    func appSettingsDefaultToRenderProductionBaseURL() {
+        let suiteName = "HearItTests.AppSettings.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let settings = AppSettings(defaults: defaults)
+
+        #expect(settings.apiBaseURLString == "https://hear-it.onrender.com")
+        #expect(settings.apiBaseURL?.absoluteString == "https://hear-it.onrender.com")
+    }
+
+    @Test
     func processingJobWithPlaylistIsPlayableAndLoadsRemoteSource() async throws {
         let defaults = UserDefaults(suiteName: "HearItTests.AppModelNarrationPlayback.\(UUID().uuidString)")!
         let settings = AppSettings(defaults: defaults)
@@ -54,7 +66,9 @@ struct AppModelNarrationPlaybackTests {
             model.player.loadedSourceURL ==
                 URL(string: "http://localhost:3000/audio/job-processing/playlist.m3u8")
         )
-        #expect(model.player.duration == nil)
+        #expect(model.player.duration == 12)
+        #expect(model.player.canSeek)
+        #expect(model.displayedTotalDuration(for: job) == nil)
     }
 
     @Test
@@ -113,6 +127,7 @@ struct AppModelNarrationPlaybackTests {
 
         #expect(model.player.loadedSourceURL == playlistURL)
         #expect(model.player.duration == 30)
+        #expect(model.displayedTotalDuration(for: job) == 30)
     }
 
     @Test

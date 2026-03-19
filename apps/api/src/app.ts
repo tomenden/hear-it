@@ -160,7 +160,7 @@ export function createApp(options: CreateAppOptions) {
 <ul>
   <li><strong>Account info</strong> — your email address, used solely for authentication (managed by Supabase Auth).</li>
   <li><strong>Article URLs</strong> — the links you submit, used to fetch and convert articles. We store the URL and extracted text on our server while the audio job is active.</li>
-  <li><strong>Generated audio</strong> — stored in cloud storage so you can stream it from the app.</li>
+  <li><strong>Generated audio</strong> — stored on your device so you can listen offline. The audio is generated server-side and downloaded to your device; we do not retain it on our servers after delivery.</li>
   <li><strong>Analytics events</strong> — anonymous product-interaction data (e.g. screens viewed, features used) sent to PostHog to help us improve the app. No personally identifiable information is included.</li>
   <li><strong>Crash &amp; performance data</strong> — sent to Sentry so we can fix bugs. This may include device model and OS version but not personal content.</li>
 </ul>

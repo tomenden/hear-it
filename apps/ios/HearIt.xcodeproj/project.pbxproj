@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0B4B4C45E125AC828C6FFE31 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D587510DB7863E42F0D1761 /* SettingsView.swift */; };
+		0D3299DEF80AAD5DA755F5E5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 9E18647AEB9EB62530A0329D /* PrivacyInfo.xcprivacy */; };
 		0FDFA0C2A9917B653738B877 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C1095DCE470707982737C5C /* ProfileView.swift */; };
 		17797B4C9DD94CEB12C90801 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C8FA41CD6AAEDAB113823F /* PlayerView.swift */; };
 		220DCDE216188F658A41F038 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = FACB2013E5EA584A7A759AA1 /* Supabase */; };
@@ -75,6 +76,7 @@
 		87C8FA41CD6AAEDAB113823F /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		8E493E67BC1B8EECE18403E0 /* RootTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTab.swift; sourceTree = "<group>"; };
 		92F42827EE00E24900D2F408 /* HearIt.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HearIt.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9E18647AEB9EB62530A0329D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		9FE5F10C9DACB6182F536801 /* AudioJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioJob.swift; sourceTree = "<group>"; };
 		A068252339B48496D9BBF3FC /* Article.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Article.swift; sourceTree = "<group>"; };
 		A30013ECC1CB1F68E636157F /* HearItURLResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HearItURLResolutionTests.swift; sourceTree = "<group>"; };
@@ -92,6 +94,7 @@
 		FA9A9C72C19F9A029933648C /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		FC34FDF70E56DF54E6D6F232 /* LocalNarrationAudioStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNarrationAudioStore.swift; sourceTree = "<group>"; };
 		FC3BB971CB96D85741C9C2D9 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		"TEMP_B8CCFAA0-7594-4DDC-9A3D-1E4219C79F91" /* local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = local.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -113,6 +116,7 @@
 			isa = PBXGroup;
 			children = (
 				B5767CE1B8ABDB59615131A4 /* Assets.xcassets */,
+				9E18647AEB9EB62530A0329D /* PrivacyInfo.xcprivacy */,
 				F2994D976ADA2485FA28A023 /* VoicePreviews */,
 			);
 			path = Resources;
@@ -286,6 +290,14 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
+		"TEMP_273D2254-D57B-458B-89CB-C4E43D95E383" /* ios */ = {
+			isa = PBXGroup;
+			children = (
+				"TEMP_B8CCFAA0-7594-4DDC-9A3D-1E4219C79F91" /* local.xcconfig */,
+			);
+			path = ios;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -375,6 +387,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				957C62B7A10BB9666F7B8488 /* Assets.xcassets in Resources */,
+				0D3299DEF80AAD5DA755F5E5 /* PrivacyInfo.xcprivacy in Resources */,
 				D5A0E21D0A479A633708B8AA /* VoicePreviews in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -541,6 +554,7 @@
 		};
 		97FDE13BA3CD26DC88CE2970 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = "TEMP_B8CCFAA0-7594-4DDC-9A3D-1E4219C79F91" /* local.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -570,6 +584,7 @@
 		};
 		BE19246FB97AE8E1AC962DA5 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = "TEMP_B8CCFAA0-7594-4DDC-9A3D-1E4219C79F91" /* local.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;

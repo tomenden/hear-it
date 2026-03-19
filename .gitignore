@@ -23,5 +23,8 @@ DerivedData/
 .vercel
 .env*.local
 
+# iOS local signing config
+apps/ios/local.xcconfig
+
 # dev-3.0 local config
 .dev3/config.local.json

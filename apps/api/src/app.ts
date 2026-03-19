@@ -135,6 +135,67 @@ export function createApp(options: CreateAppOptions) {
     app.use(express.static(publicDir));
   }
 
+  app.get("/privacy", (_req, res) => {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hear It — Privacy Policy</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #222; }
+  h1 { color: #3D8A5A; }
+  h2 { margin-top: 1.5em; }
+</style>
+</head>
+<body>
+<h1>Hear It — Privacy Policy</h1>
+<p><strong>Effective date:</strong> March 19, 2026</p>
+
+<h2>What Hear It Does</h2>
+<p>Hear It converts web articles into audio so you can listen on the go. You sign in with your email, paste a link, and the app generates a spoken version of the article.</p>
+
+<h2>Data We Collect</h2>
+<ul>
+  <li><strong>Account info</strong> — your email address, used solely for authentication (managed by Supabase Auth).</li>
+  <li><strong>Article URLs</strong> — the links you submit, used to fetch and convert articles. We store the URL and extracted text on our server while the audio job is active.</li>
+  <li><strong>Generated audio</strong> — stored on your device so you can listen offline. The audio is generated server-side and downloaded to your device; we do not retain it on our servers after delivery.</li>
+  <li><strong>Analytics events</strong> — anonymous product-interaction data (e.g. screens viewed, features used) sent to PostHog to help us improve the app. No personally identifiable information is included.</li>
+  <li><strong>Crash &amp; performance data</strong> — sent to Sentry so we can fix bugs. This may include device model and OS version but not personal content.</li>
+</ul>
+
+<h2>Data We Do Not Collect</h2>
+<ul>
+  <li>We do not track you across other apps or websites.</li>
+  <li>We do not sell, rent, or share your data with third parties for advertising.</li>
+  <li>We do not use your data to build advertising profiles.</li>
+</ul>
+
+<h2>Third-Party Services</h2>
+<ul>
+  <li><strong>Supabase</strong> — authentication and database hosting.</li>
+  <li><strong>OpenAI</strong> — text-to-speech generation. Article text is sent to OpenAI's API to produce audio. See <a href="https://openai.com/policies/privacy-policy">OpenAI's privacy policy</a>.</li>
+  <li><strong>PostHog</strong> — anonymous product analytics.</li>
+  <li><strong>Sentry</strong> — error and performance monitoring.</li>
+  <li><strong>Render</strong> — server hosting.</li>
+</ul>
+
+<h2>Data Retention</h2>
+<p>Your account and generated audio persist until you delete them. You can delete individual articles from the app at any time. If you want your account fully removed, contact us.</p>
+
+<h2>Your Rights</h2>
+<p>You can request access to, correction of, or deletion of your personal data at any time by emailing us.</p>
+
+<h2>Contact</h2>
+<p>Questions? Email <a href="mailto:tom.enden@gmail.com">tom.enden@gmail.com</a>.</p>
+
+<h2>Changes</h2>
+<p>We may update this policy from time to time. The latest version will always be available at this URL.</p>
+</body>
+</html>`);
+  });
+
   app.get("/health", async (_req, res) => {
     const dependencies: Record<string, "ok" | "error"> = {
       database: "ok",

@@ -54,6 +54,6 @@ final class AppSettings {
     }
 
     private static var defaultBaseURLString: String {
-        "https://project-q60ho.vercel.app"
+        "https://hear-it.onrender.com"
     }
 }

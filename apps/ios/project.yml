@@ -50,14 +50,22 @@ targets:
       path: HearIt/Support/Info.plist
       properties:
         UILaunchScreen: {}
+        UIBackgroundModes:
+          - audio
+        CFBundleDisplayName: Hear It
         SentryDSN: "$(SENTRY_DSN)"
         POSTHOG_API_KEY: "$(POSTHOG_API_KEY)"
         POSTHOG_HOST: "$(POSTHOG_HOST)"
         SUPABASE_URL: "$(SUPABASE_URL)"
         SUPABASE_ANON_KEY: "$(SUPABASE_ANON_KEY)"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleURLTypes:
           - CFBundleURLSchemes:
               - com.tome.hearit
+    configFiles:
+      Debug: local.xcconfig
+      Release: local.xcconfig
     settings:
       base:
         SENTRY_DSN: "https://92e80dd7e7b8779e974032e4af6370ac@o4511049880436736.ingest.de.sentry.io/4511049897803856"

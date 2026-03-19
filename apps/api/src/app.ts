@@ -31,6 +31,7 @@ export const createAudioJobSchema = extractRequestSchema.extend({
   speechOptions: z
     .object({
       voice: z.enum(AVAILABLE_VOICES).optional(),
+      language: z.string().min(1).max(64).optional(),
     })
     .optional(),
 });

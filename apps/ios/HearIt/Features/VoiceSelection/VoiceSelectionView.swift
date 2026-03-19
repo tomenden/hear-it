@@ -18,6 +18,7 @@ struct VoiceSelectionView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: AppTheme.Layout.sectionSpacing) {
                         articlePreview
+                        languagePicker
                         voiceList
 
                         Button {
@@ -88,6 +89,72 @@ struct VoiceSelectionView: View {
         }
         .padding(22)
         .background(cardBackground)
+    }
+
+    private struct Language: Identifiable {
+        /// Stable key used to identify the row in ForEach. "auto" means auto-detect.
+        let id: String
+        /// The value sent to the API (nil = auto-detect / omit the field).
+        let code: String?
+        let displayName: String
+        let flag: String
+    }
+
+    private static let supportedLanguages: [Language] = [
+        Language(id: "auto",       code: nil,          displayName: "Auto-detect", flag: "🌐"),
+        Language(id: "English",    code: "English",    displayName: "English",    flag: "🇬🇧"),
+        Language(id: "Russian",    code: "Russian",    displayName: "Russian",    flag: "🇷🇺"),
+        Language(id: "Hebrew",     code: "Hebrew",     displayName: "Hebrew",     flag: "🇮🇱"),
+        Language(id: "Spanish",    code: "Spanish",    displayName: "Spanish",    flag: "🇪🇸"),
+        Language(id: "French",     code: "French",     displayName: "French",     flag: "🇫🇷"),
+        Language(id: "German",     code: "German",     displayName: "German",     flag: "🇩🇪"),
+        Language(id: "Arabic",     code: "Arabic",     displayName: "Arabic",     flag: "🇸🇦"),
+        Language(id: "Chinese",    code: "Chinese",    displayName: "Chinese",    flag: "🇨🇳"),
+        Language(id: "Japanese",   code: "Japanese",   displayName: "Japanese",   flag: "🇯🇵"),
+        Language(id: "Portuguese", code: "Portuguese", displayName: "Portuguese", flag: "🇧🇷"),
+        Language(id: "Italian",    code: "Italian",    displayName: "Italian",    flag: "🇮🇹"),
+    ]
+
+    private var selectedLanguageDisplay: String {
+        let lang = Self.supportedLanguages.first(where: { $0.code == model.settings.selectedLanguage })
+        let l = lang ?? Self.supportedLanguages[0]
+        return "\(l.flag) \(l.displayName)"
+    }
+
+    private var languagePicker: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Language")
+                .font(.title3)
+                .bold()
+                .foregroundStyle(AppTheme.Colors.textPrimary)
+
+            Menu {
+                ForEach(Self.supportedLanguages) { lang in
+                    Button {
+                        model.chooseLanguage(lang.code)
+                    } label: {
+                        Text("\(lang.flag) \(lang.displayName)")
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(selectedLanguageDisplay)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(AppTheme.Colors.textPrimary)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(AppTheme.Colors.textSecondary)
+                }
+                .padding(.vertical, 14)
+                .padding(.horizontal, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(AppTheme.Colors.card)
+                        .shadow(color: .black.opacity(0.04), radius: 12, y: 6)
+                )
+            }
+        }
     }
 
     private var voiceList: some View {

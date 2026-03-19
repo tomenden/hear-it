@@ -7,6 +7,7 @@ final class AppSettings {
     private enum Key {
         static let apiBaseURL = "hear-it.api-base-url"
         static let selectedVoiceID = "hear-it.selected-voice-id"
+        static let selectedLanguage = "hear-it.selected-language"
         static let lastPresentedJobID = "hear-it.last-presented-job-id"
     }
 
@@ -21,6 +22,17 @@ final class AppSettings {
     var selectedVoiceID: String {
         didSet {
             defaults.set(selectedVoiceID, forKey: Key.selectedVoiceID)
+        }
+    }
+
+    /// BCP 47 language tag (e.g. "en", "ru", "he") or nil for auto-detect.
+    var selectedLanguage: String? {
+        didSet {
+            if let lang = selectedLanguage {
+                defaults.set(lang, forKey: Key.selectedLanguage)
+            } else {
+                defaults.removeObject(forKey: Key.selectedLanguage)
+            }
         }
     }
 
@@ -44,6 +56,7 @@ final class AppSettings {
         self.defaults = defaults
         self.apiBaseURLString = defaults.string(forKey: Key.apiBaseURL) ?? Self.defaultBaseURLString
         self.selectedVoiceID = defaults.string(forKey: Key.selectedVoiceID) ?? "alloy"
+        self.selectedLanguage = defaults.string(forKey: Key.selectedLanguage)
         self.lastPresentedJobID = defaults.string(forKey: Key.lastPresentedJobID)
     }
 

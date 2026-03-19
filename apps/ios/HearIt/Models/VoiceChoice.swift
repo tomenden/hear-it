@@ -44,10 +44,25 @@ struct VoiceChoice: Hashable, Identifiable {
             tone: "Clear and measured with a steady delivery.",
             symbolName: "sun.haze.fill"
         ),
+        "coral": VoiceMetadata(
+            displayName: "Coral",
+            tone: "Warm and expressive with natural multilingual flow.",
+            symbolName: "bubble.left.and.bubble.right.fill"
+        ),
+        "nova": VoiceMetadata(
+            displayName: "Nova",
+            tone: "Smooth and versatile, ideal for multilingual content.",
+            symbolName: "globe"
+        ),
         "sage": VoiceMetadata(
             displayName: "Sage",
             tone: "Warm and conversational for softer narration.",
             symbolName: "leaf.fill"
+        ),
+        "shimmer": VoiceMetadata(
+            displayName: "Shimmer",
+            tone: "Bright and clear with excellent multilingual articulation.",
+            symbolName: "star.fill"
         ),
         "verse": VoiceMetadata(
             displayName: "Verse",

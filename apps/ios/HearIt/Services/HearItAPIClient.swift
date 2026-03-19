@@ -45,13 +45,13 @@ struct HearItAPIClient {
         )
     }
 
-    func createJob(articleURL: String, voiceID: String, baseURL: URL) async throws -> AudioJob {
+    func createJob(articleURL: String, voiceID: String, language: String?, baseURL: URL) async throws -> AudioJob {
         let response: JobResponse = try await request(
             path: "/api/jobs",
             method: .post,
             body: CreateJobBody(
                 url: articleURL,
-                speechOptions: CreateJobBody.SpeechOptions(voice: voiceID)
+                speechOptions: CreateJobBody.SpeechOptions(voice: voiceID, language: language)
             ),
             baseURL: baseURL
         )
@@ -266,6 +266,7 @@ extension HearItAPIClient {
     private struct CreateJobBody: Encodable {
         struct SpeechOptions: Encodable {
             let voice: String
+            let language: String?
         }
 
         let url: String

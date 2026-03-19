@@ -120,6 +120,10 @@ final class AppModel {
             urlInput = sharedURL
             selectedTab = .home
             homeMessage = InlineMessage(text: "Imported a shared article URL.", kind: .success)
+            // URL shared via the Share Extension — go straight to voice selection
+            if url.host == "share" {
+                voiceSelectionPresented = true
+            }
             return
         }
 

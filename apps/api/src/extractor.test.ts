@@ -130,6 +130,46 @@ describe("article extraction", () => {
     expect(article.textContent).not.toContain("@0xsero)");
   });
 
+  it("falls back to Twitterbot fetch when oEmbed fails for tweet URLs", async () => {
+    // First call (oEmbed) fails, second call (Twitterbot fetch) succeeds
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({}) })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => `<!doctype html><html><head>
+          <meta property="og:title" content="@0xsero on X" />
+          <meta property="og:description" content="Shipped something cool today. Here is what I learned." />
+        </head><body></body></html>`,
+      }) as typeof fetch;
+
+    const article = await extractArticle({
+      url: "https://x.com/0xsero/status/2035022588439581076",
+    });
+
+    expect(article.title).toBe("@0xsero on X");
+    expect(article.siteName).toBe("X (formerly Twitter)");
+    expect(article.textContent).toContain("Shipped something cool today");
+  });
+
+  it("extracts X Article content via Twitterbot fetch", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      text: async () => `<!doctype html><html><head>
+        <meta property="og:title" content="Why I build in public" />
+        <meta property="og:description" content="Building in public for 90 days taught me more than 3 years of working in stealth. Here is the full breakdown." />
+        <meta property="og:site_name" content="X (formerly Twitter)" />
+      </head><body></body></html>`,
+    }) as typeof fetch;
+
+    const article = await extractArticle({
+      url: "https://x.com/i/article/1234567890",
+    });
+
+    expect(article.title).toBe("Why I build in public");
+    expect(article.siteName).toBe("X (formerly Twitter)");
+    expect(article.textContent).toContain("Building in public for 90 days");
+  });
+
   it("times out external article fetches instead of hanging indefinitely", async () => {
     process.env.ARTICLE_FETCH_TIMEOUT_MS = "10";
     globalThis.fetch = vi.fn((_input, init) => new Promise((_, reject) => {

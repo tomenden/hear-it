@@ -172,6 +172,15 @@ function isTwitterUrl(url: string): boolean {
   }
 }
 
+// Matches standard tweet URLs: x.com/<handle>/status/<id>
+function isTwitterStatusUrl(url: string): boolean {
+  try {
+    return isTwitterUrl(url) && /^\/\w+\/status\/\d+/.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
 interface TwitterOEmbedResponse {
   html: string;
   author_name: string;
@@ -181,6 +190,25 @@ interface TwitterOEmbedResponse {
 }
 
 async function extractTwitterArticle(url: string): Promise<ExtractedArticle> {
+  // Standard tweet URLs: use oEmbed (structured, full text, author info).
+  // Fall back to Twitterbot fetch if oEmbed fails.
+  // X Articles and other X URLs: use Twitterbot fetch directly (oEmbed doesn't support them).
+  // X serves og: metadata to known bots, bypassing the JS-only SPA wall.
+  if (isTwitterStatusUrl(url)) {
+    try {
+      return await extractTwitterViaOEmbed(url);
+    } catch (error) {
+      console.warn("[extractor] Twitter oEmbed failed, falling back to Twitterbot fetch", {
+        url,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return extractTwitterViaTwitterbotFetch(url);
+}
+
+async function extractTwitterViaOEmbed(url: string): Promise<ExtractedArticle> {
   const oembedUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}&omit_script=true`;
   const timeoutMs = Number(process.env.ARTICLE_FETCH_TIMEOUT_MS ?? DEFAULT_ARTICLE_FETCH_TIMEOUT_MS);
   const controller = new AbortController();
@@ -202,15 +230,12 @@ async function extractTwitterArticle(url: string): Promise<ExtractedArticle> {
     if (controller.signal.aborted) {
       throw new ArticleFetchTimeoutError({ url, timeoutMs });
     }
-    Sentry.captureException(error, { tags: { url, phase: "twitter_oembed" } });
     throw error;
   } finally {
     clearTimeout(timeoutId);
   }
 
-  // Parse the oEmbed HTML to extract the tweet text.
-  // The HTML is a <blockquote> containing <p> elements with the tweet content
-  // followed by an attribution <a> tag, e.g.:
+  // The oEmbed HTML is a <blockquote> with <p> tweet text followed by an attribution <a>:
   //   <blockquote class="twitter-tweet">
   //     <p lang="en">Tweet text</p>
   //     &mdash; Name (@handle) <a href="...">timestamp</a>
@@ -221,17 +246,14 @@ async function extractTwitterArticle(url: string): Promise<ExtractedArticle> {
     throw new Error("Unexpected Twitter oEmbed format: no blockquote found");
   }
 
-  // Remove the trailing attribution link (last <a> in the blockquote)
+  // Remove the trailing attribution link then strip the remaining em-dash attribution text
   blockquote.querySelector("a:last-of-type")?.remove();
-
   const tweetText = normalizeText(blockquote.textContent ?? "");
   if (!tweetText) {
-    throw new Error("Failed to extract tweet content");
+    throw new Error("Failed to extract tweet content from oEmbed");
   }
 
-  // Strip the em-dash attribution suffix left after link removal (e.g. "— Name (@handle)")
   const bodyText = tweetText.replace(/\s*[—–-]\s*\S.*\(@\w+\)\s*$/, "").trim();
-
   const handle = oembed.author_url.split("/").pop() ?? "";
   const title = `@${handle} on X`;
   const textContent = `${title}\n\n${bodyText}`;
@@ -241,6 +263,67 @@ async function extractTwitterArticle(url: string): Promise<ExtractedArticle> {
     url,
     title,
     byline: oembed.author_name,
+    siteName: "X (formerly Twitter)",
+    excerpt: bodyText.slice(0, 200) || null,
+    textContent,
+    wordCount,
+    estimatedMinutes: Math.max(1, Math.ceil(wordCount / WORDS_PER_MINUTE)),
+  };
+}
+
+// Fetches X/Twitter pages using the Twitterbot user-agent, which causes X to
+// serve server-rendered HTML with og: metadata instead of the bare JS shell
+// returned to regular bots. Works for X Articles and as an oEmbed fallback.
+async function extractTwitterViaTwitterbotFetch(url: string): Promise<ExtractedArticle> {
+  const timeoutMs = Number(process.env.ARTICLE_FETCH_TIMEOUT_MS ?? DEFAULT_ARTICLE_FETCH_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort("timeout"), timeoutMs);
+
+  let html: string;
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "user-agent": "Twitterbot/1.0",
+        accept: "text/html,application/xhtml+xml",
+      },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch X URL: ${response.status}`);
+    }
+
+    html = await response.text();
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new ArticleFetchTimeoutError({ url, timeoutMs });
+    }
+    Sentry.captureException(error, { tags: { url, phase: "twitter_twitterbot_fetch" } });
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const dom = new JSDOM(html, { url });
+  const document = dom.window.document;
+
+  const bodyText = readMetaContent(document, 'meta[property="og:description"]')
+    ?? readMetaContent(document, 'meta[name="description"]');
+
+  if (!bodyText) {
+    throw new Error("Failed to extract content from X page — og:description not found");
+  }
+
+  const rawTitle = readMetaContent(document, 'meta[property="og:title"]')
+    ?? normalizeText(document.querySelector("title")?.textContent ?? "");
+  const title = rawTitle || "Post on X";
+  const textContent = `${title}\n\n${bodyText}`;
+  const wordCount = countWords(textContent);
+
+  return {
+    url,
+    title,
+    byline: null,
     siteName: "X (formerly Twitter)",
     excerpt: bodyText.slice(0, 200) || null,
     textContent,

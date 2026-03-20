@@ -98,6 +98,38 @@ describe("article extraction", () => {
     });
   });
 
+  it("extracts tweet content via oEmbed for twitter.com URLs", async () => {
+    const oembedHtml = [
+      '<blockquote class="twitter-tweet">',
+      '<p lang="en" dir="ltr">Shipped something cool today. Here is what I learned building in public for 90 days straight.</p>',
+      '&mdash; Sero (@0xsero)',
+      '<a href="https://twitter.com/0xsero/status/2035022588439581076">March 20, 2026</a>',
+      "</blockquote>",
+    ].join("\n");
+
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        html: oembedHtml,
+        author_name: "Sero",
+        author_url: "https://twitter.com/0xsero",
+        provider_name: "Twitter",
+        url: "https://twitter.com/0xsero/status/2035022588439581076",
+      }),
+    }) as typeof fetch;
+
+    const article = await extractArticle({
+      url: "https://x.com/0xsero/status/2035022588439581076",
+    });
+
+    expect(article.title).toBe("@0xsero on X");
+    expect(article.byline).toBe("Sero");
+    expect(article.siteName).toBe("X (formerly Twitter)");
+    expect(article.textContent).toContain("Shipped something cool today");
+    expect(article.textContent).not.toContain("March 20, 2026");
+    expect(article.textContent).not.toContain("@0xsero)");
+  });
+
   it("times out external article fetches instead of hanging indefinitely", async () => {
     process.env.ARTICLE_FETCH_TIMEOUT_MS = "10";
     globalThis.fetch = vi.fn((_input, init) => new Promise((_, reject) => {

@@ -89,6 +89,10 @@ export class ArticleFetchTimeoutError extends Error {
 export async function extractArticle(
   input: ExtractArticleInput,
 ): Promise<ExtractedArticle> {
+  if (!input.html && isTwitterUrl(input.url)) {
+    return extractTwitterArticle(input.url);
+  }
+
   const html = input.html ?? (await fetchHtml(input.url));
   const dom = new JSDOM(html, { url: input.url });
   const document = dom.window.document;
@@ -155,6 +159,93 @@ export async function extractArticle(
     textContent,
     wordCount,
     estimatedMinutes,
+  };
+}
+
+function isTwitterUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname === "twitter.com" || hostname === "x.com"
+      || hostname === "www.twitter.com" || hostname === "www.x.com";
+  } catch {
+    return false;
+  }
+}
+
+interface TwitterOEmbedResponse {
+  html: string;
+  author_name: string;
+  author_url: string;
+  provider_name: string;
+  url: string;
+}
+
+async function extractTwitterArticle(url: string): Promise<ExtractedArticle> {
+  const oembedUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}&omit_script=true`;
+  const timeoutMs = Number(process.env.ARTICLE_FETCH_TIMEOUT_MS ?? DEFAULT_ARTICLE_FETCH_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort("timeout"), timeoutMs);
+
+  let oembed: TwitterOEmbedResponse;
+  try {
+    const response = await fetch(oembedUrl, {
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Twitter oEmbed request failed: ${response.status}`);
+    }
+
+    oembed = await response.json() as TwitterOEmbedResponse;
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new ArticleFetchTimeoutError({ url, timeoutMs });
+    }
+    Sentry.captureException(error, { tags: { url, phase: "twitter_oembed" } });
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  // Parse the oEmbed HTML to extract the tweet text.
+  // The HTML is a <blockquote> containing <p> elements with the tweet content
+  // followed by an attribution <a> tag, e.g.:
+  //   <blockquote class="twitter-tweet">
+  //     <p lang="en">Tweet text</p>
+  //     &mdash; Name (@handle) <a href="...">timestamp</a>
+  //   </blockquote>
+  const dom = new JSDOM(oembed.html);
+  const blockquote = dom.window.document.querySelector("blockquote");
+  if (!blockquote) {
+    throw new Error("Unexpected Twitter oEmbed format: no blockquote found");
+  }
+
+  // Remove the trailing attribution link (last <a> in the blockquote)
+  blockquote.querySelector("a:last-of-type")?.remove();
+
+  const tweetText = normalizeText(blockquote.textContent ?? "");
+  if (!tweetText) {
+    throw new Error("Failed to extract tweet content");
+  }
+
+  // Strip the em-dash attribution suffix left after link removal (e.g. "— Name (@handle)")
+  const bodyText = tweetText.replace(/\s*[—–-]\s*\S.*\(@\w+\)\s*$/, "").trim();
+
+  const handle = oembed.author_url.split("/").pop() ?? "";
+  const title = `@${handle} on X`;
+  const textContent = `${title}\n\n${bodyText}`;
+  const wordCount = countWords(textContent);
+
+  return {
+    url,
+    title,
+    byline: oembed.author_name,
+    siteName: "X (formerly Twitter)",
+    excerpt: bodyText.slice(0, 200) || null,
+    textContent,
+    wordCount,
+    estimatedMinutes: Math.max(1, Math.ceil(wordCount / WORDS_PER_MINUTE)),
   };
 }
 

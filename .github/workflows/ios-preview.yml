@@ -1,0 +1,111 @@
+name: iOS Preview Build
+
+# Builds the iOS app for a branch and distributes it via Firebase App Distribution.
+# The build is configured to point at the Render preview URL for that branch, so
+# you get a full end-to-end testable build on your phone.
+#
+# Trigger manually via:
+#   gh workflow run ios-preview.yml --ref <branch>
+# or from the Actions tab in GitHub.
+#
+# Required GitHub secrets:
+#   RENDER_API_KEY              — Render API key (to look up the preview URL)
+#   MATCH_PASSWORD              — Fastlane Match passphrase
+#   MATCH_GIT_URL               — Private git repo URL storing certificates/profiles
+#   APP_STORE_CONNECT_API_KEY   — App Store Connect API key JSON (for signing)
+#   FIREBASE_APP_ID             — Firebase iOS App ID  (e.g. 1:123456:ios:abcdef)
+#   FIREBASE_TOKEN              — Firebase CLI token (`firebase login:ci`)
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build (defaults to the branch this workflow runs on)"
+        required: false
+        default: ""
+
+jobs:
+  build-and-distribute:
+    name: Build iOS app and distribute
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set branch name
+        id: branch
+        run: |
+          BRANCH="${{ github.event.inputs.branch }}"
+          if [[ -z "$BRANCH" ]]; then
+            BRANCH="${{ github.ref_name }}"
+          fi
+          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch Render preview URL for branch
+        id: render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          BRANCH="${{ steps.branch.outputs.name }}"
+          SERVICE_NAME="hear-it-api"
+          API="https://api.render.com/v1"
+
+          # Try the branch-specific preview first, fall back to production URL
+          RESPONSE=$(curl -sf \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Accept: application/json" \
+            "$API/services?limit=100")
+
+          URL=$(echo "$RESPONSE" | jq -r --arg name "$SERVICE_NAME" --arg branch "$BRANCH" \
+            '[.[] | select(
+                (.service.name | startswith($name)) and
+                .service.type == "web_service" and
+                (.service.repo.branch // "" | test($branch; "i"))
+              )][0].service.serviceDetails.url // empty')
+
+          if [[ -z "$URL" ]]; then
+            echo "No preview found for branch '$BRANCH', falling back to production URL."
+            URL=$(echo "$RESPONSE" | jq -r --arg name "$SERVICE_NAME" \
+              '[.[] | select(.service.name == $name and .service.type == "web_service")][0].service.serviceDetails.url // empty')
+          fi
+
+          if [[ -z "$URL" ]]; then
+            echo "Error: could not determine Render URL." >&2
+            exit 1
+          fi
+
+          echo "api_url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Using API URL: $URL"
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          working-directory: apps/ios
+
+      - name: Install Xcode tools
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: apps/ios
+        run: xcodegen generate
+
+      - name: Run Fastlane beta lane
+        working-directory: apps/ios
+        env:
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          HEAR_IT_API_URL: ${{ steps.render.outputs.api_url }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          GIT_BRANCH: ${{ steps.branch.outputs.name }}
+        run: bundle exec fastlane beta

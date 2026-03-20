@@ -1,0 +1,113 @@
+name: Preview URL Comment
+
+# Posts a comment on every PR with:
+#   • the Render preview environment URL (backend)
+#   • a link to trigger an iOS preview build (see ios-preview.yml)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  post-preview-url:
+    name: Post Render preview URL
+    runs-on: ubuntu-latest
+
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Wait for Render preview to deploy
+        # Render takes a moment to spin up the preview service after a push.
+        # Poll the API until the service URL appears (up to ~5 min).
+        id: render-url
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          SERVICE_NAME="hear-it-api"
+          API="https://api.render.com/v1"
+
+          echo "Waiting for Render preview to be available for branch: $BRANCH"
+
+          for attempt in $(seq 1 20); do
+            RESPONSE=$(curl -sf \
+              -H "Authorization: Bearer $RENDER_API_KEY" \
+              -H "Accept: application/json" \
+              "$API/services?limit=100" || echo "")
+
+            URL=$(echo "$RESPONSE" | jq -r --arg name "$SERVICE_NAME" --arg branch "$BRANCH" \
+              '[.[] | select(
+                  (.service.name | startswith($name)) and
+                  .service.type == "web_service" and
+                  (.service.repo.branch // "" | test($branch; "i"))
+                )][0].service.serviceDetails.url // empty' 2>/dev/null || echo "")
+
+            if [[ -n "$URL" ]]; then
+              echo "Found: $URL"
+              echo "url=$URL" >> "$GITHUB_OUTPUT"
+              break
+            fi
+
+            echo "Attempt $attempt/20: preview not ready yet, retrying in 15s…"
+            sleep 15
+          done
+
+          if [[ -z "$URL" ]]; then
+            echo "url=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const renderUrl = '${{ steps.render-url.outputs.url }}';
+            const branch = '${{ github.head_ref }}';
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/ios-preview.yml`;
+
+            let body;
+            if (renderUrl) {
+              body = [
+                '## Preview environments',
+                '',
+                `| | |`,
+                `|---|---|`,
+                `| **Backend (Render)** | [\`${renderUrl}\`](${renderUrl}) |`,
+                `| **iOS build** | [Trigger a build →](${runUrl}) *(uses workflow dispatch, select branch \`${branch}\`)* |`,
+                '',
+                '> The iOS build will be distributed via Firebase App Distribution.',
+                '> You will receive an install link on your phone.',
+              ].join('\n');
+            } else {
+              body = [
+                '## Preview environments',
+                '',
+                '⚠️ Render preview URL not yet available. It may still be deploying.',
+                `Check the [Render dashboard](https://dashboard.render.com) or re-run this workflow once the deploy completes.`,
+              ].join('\n');
+            }
+
+            // Upsert: update existing comment if present, otherwise create one
+            const marker = '## Preview environments';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.user.login === 'github-actions[bot]' && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

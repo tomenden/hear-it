@@ -58,6 +58,7 @@ targets:
         POSTHOG_HOST: "$(POSTHOG_HOST)"
         SUPABASE_URL: "$(SUPABASE_URL)"
         SUPABASE_ANON_KEY: "$(SUPABASE_ANON_KEY)"
+        HEAR_IT_API_BASE_URL: "$(HEAR_IT_API_BASE_URL)"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleURLTypes:
@@ -73,6 +74,7 @@ targets:
         POSTHOG_HOST: "https://eu.i.posthog.com"
         SUPABASE_URL: "https://qnvsdeshcxjnzlgrrhxd.supabase.co"
         SUPABASE_ANON_KEY: "sb_publishable_X3hvegdXoNaSIXYZ5L6dSg_FabSgYKd"
+        HEAR_IT_API_BASE_URL: "https://hear-it.onrender.com"
         PRODUCT_BUNDLE_IDENTIFIER: com.tome.hearit
         PRODUCT_NAME: HearIt
         CODE_SIGN_STYLE: Automatic

@@ -157,10 +157,6 @@ final class AppModel {
         settings.selectedVoiceID = voice.id
     }
 
-    func chooseLanguage(_ language: String?) {
-        settings.selectedLanguage = language
-    }
-
     func updatePastedURL(_ pastedValue: String) {
         let cleaned = pastedValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
@@ -270,14 +266,13 @@ final class AppModel {
 
         let breadcrumb = Breadcrumb(level: .info, category: "narration")
         breadcrumb.message = "Create narration"
-        breadcrumb.data = ["url": articleURL, "voice": selectedVoice.id, "language": settings.selectedLanguage ?? "auto"]
+        breadcrumb.data = ["url": articleURL, "voice": selectedVoice.id]
         SentrySDK.addBreadcrumb(breadcrumb)
 
         do {
             let job = try await apiClient.createJob(
                 articleURL: articleURL,
                 voiceID: selectedVoice.id,
-                language: settings.selectedLanguage,
                 baseURL: baseURL
             )
             previewArticle = job.article

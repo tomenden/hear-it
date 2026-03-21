@@ -117,12 +117,15 @@ final class AppModel {
     func handleIncomingURL(_ url: URL) {
         if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
            let sharedURL = components.queryItems?.first(where: { $0.name == "url" })?.value {
+            guard let parsed = URL(string: sharedURL),
+                  ["http", "https"].contains(parsed.scheme?.lowercased()) else { return }
             urlInput = sharedURL
             selectedTab = .home
-            homeMessage = InlineMessage(text: "Imported a shared article URL.", kind: .success)
             // URL shared via the Share Extension — go straight to voice selection
             if url.host == "share" {
                 voiceSelectionPresented = true
+            } else {
+                homeMessage = InlineMessage(text: "Imported a shared article URL.", kind: .success)
             }
             return
         }

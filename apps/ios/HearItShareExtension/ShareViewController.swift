@@ -41,7 +41,7 @@ final class ShareViewController: UIViewController {
                         url = nil
                     }
 
-                    if let url {
+                    if let url, ["http", "https"].contains(url.scheme?.lowercased()) {
                         self?.openMainApp(with: url)
                     } else {
                         self?.cancel()

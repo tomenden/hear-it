@@ -30,8 +30,9 @@ final class ShareViewController: UIViewController {
         for attachment in attachments {
             guard attachment.hasItemConformingToTypeIdentifier(urlType) else { continue }
 
-            attachment.loadItem(forTypeIdentifier: urlType, options: nil) { [weak self] data, _ in
-                DispatchQueue.main.async {
+            Task { @MainActor in
+                do {
+                    let data = try await attachment.loadItem(forTypeIdentifier: urlType)
                     let url: URL?
                     if let u = data as? URL {
                         url = u
@@ -42,10 +43,12 @@ final class ShareViewController: UIViewController {
                     }
 
                     if let url, ["http", "https"].contains(url.scheme?.lowercased()) {
-                        self?.openMainApp(with: url)
+                        openMainApp(with: url)
                     } else {
-                        self?.cancel()
+                        cancel()
                     }
+                } catch {
+                    cancel()
                 }
             }
             return
@@ -70,7 +73,15 @@ final class ShareViewController: UIViewController {
             return
         }
 
-        extensionContext?.open(appURL) { [weak self] _ in
+        // Share Extensions don't have direct access to UIApplication.shared.
+        // Use the responder chain to find the UIApplication and open the URL.
+        guard let application = UIApplication.value(forKeyPath: #keyPath(UIApplication.shared)) as? UIApplication else {
+            cancel()
+            return
+        }
+        application.open(appURL)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.done()
         }
     }

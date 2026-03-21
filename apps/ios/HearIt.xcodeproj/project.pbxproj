@@ -10,6 +10,7 @@
 		0B4B4C45E125AC828C6FFE31 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D587510DB7863E42F0D1761 /* SettingsView.swift */; };
 		0D3299DEF80AAD5DA755F5E5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 9E18647AEB9EB62530A0329D /* PrivacyInfo.xcprivacy */; };
 		0FDFA0C2A9917B653738B877 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C1095DCE470707982737C5C /* ProfileView.swift */; };
+		13CF3380F8A1322992BE9F8F /* HearItShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 63498763E1CB2FDC7C2EE0AA /* HearItShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		17797B4C9DD94CEB12C90801 /* PlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C8FA41CD6AAEDAB113823F /* PlayerView.swift */; };
 		220DCDE216188F658A41F038 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = FACB2013E5EA584A7A759AA1 /* Supabase */; };
 		26330DCFCBC0E8BB6F2B547D /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4E53A003161DCBF0B225C3 /* LibraryView.swift */; };
@@ -24,6 +25,7 @@
 		6B58532F5C7E786DA796EE2D /* Analytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F3560F788EC4A94E9909A0 /* Analytics.swift */; };
 		6B7AA6FD7D83E427DA968C8C /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = 4DEFB58CCF8B0C2A4FC1699D /* Auth */; };
 		71A8FA213B32D6C96B0C846D /* HearItURLResolutionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30013ECC1CB1F68E636157F /* HearItURLResolutionTests.swift */; };
+		7FA80F725D722E4EE75C3A43 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7085D64322400CFC895C9342 /* ShareViewController.swift */; };
 		8BD0F64C3D3818ACD03F83A2 /* LocalNarrationAudioStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC34FDF70E56DF54E6D6F232 /* LocalNarrationAudioStore.swift */; };
 		948AAB0B070DDE32D4391FB2 /* MiniPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5623BFE57B3A1953B8ED6AD /* MiniPlayerView.swift */; };
 		957C62B7A10BB9666F7B8488 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B5767CE1B8ABDB59615131A4 /* Assets.xcassets */; };
@@ -55,7 +57,28 @@
 			remoteGlobalIDString = 8BEB4DC71717BA0BC6AB9E6B;
 			remoteInfo = HearIt;
 		};
+		7AD2B71868EF9138A0A45F8F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9CE30797020252CE02F7A8A6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A2BAA3D6A85E6B80406C5144;
+			remoteInfo = HearItShareExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		665D7E08910448A14C0B5DCA /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				13CF3380F8A1322992BE9F8F /* HearItShareExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		08D89A043D4EE39A7D81998B /* Color+Hex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Hex.swift"; sourceTree = "<group>"; };
@@ -63,6 +86,7 @@
 		0B57E46118380FA6252EEADD /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		17259412496749BEA5AA0621 /* LibraryFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFilter.swift; sourceTree = "<group>"; };
 		2C1095DCE470707982737C5C /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		354AC3123B2C2D06D342E472 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3938DD84F481914666EBD96C /* HearItAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HearItAPIClient.swift; sourceTree = "<group>"; };
 		3D587510DB7863E42F0D1761 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		45E6F3A4CFD4DE0C1CD922ED /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
@@ -73,6 +97,8 @@
 		4E93C64E7948C26DC7D501A2 /* VoiceSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceSelectionView.swift; sourceTree = "<group>"; };
 		54F3560F788EC4A94E9909A0 /* Analytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Analytics.swift; sourceTree = "<group>"; };
 		5A71946812B0A81DA6E70A8E /* AudioPlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerController.swift; sourceTree = "<group>"; };
+		63498763E1CB2FDC7C2EE0AA /* HearItShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HearItShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		7085D64322400CFC895C9342 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		87C8FA41CD6AAEDAB113823F /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		8E493E67BC1B8EECE18403E0 /* RootTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTab.swift; sourceTree = "<group>"; };
 		92F42827EE00E24900D2F408 /* HearIt.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HearIt.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -94,7 +120,7 @@
 		FA9A9C72C19F9A029933648C /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		FC34FDF70E56DF54E6D6F232 /* LocalNarrationAudioStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNarrationAudioStore.swift; sourceTree = "<group>"; };
 		FC3BB971CB96D85741C9C2D9 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
-		"TEMP_B8CCFAA0-7594-4DDC-9A3D-1E4219C79F91" /* local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = local.xcconfig; sourceTree = "<group>"; };
+		"TEMP_438A710D-111F-4AC6-BC47-13708F228BC7" /* local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = local.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -148,6 +174,7 @@
 			isa = PBXGroup;
 			children = (
 				A3E8680503A6D476F6F9C79F /* HearIt */,
+				6901298AFF61F1A23F88BECB /* HearItShareExtension */,
 				5D58588CDFF298DCEC3D2E19 /* HearItTests */,
 				D4DDBA4C1AECB58BF044B7B8 /* Products */,
 			);
@@ -207,6 +234,15 @@
 			path = App;
 			sourceTree = "<group>";
 		};
+		6901298AFF61F1A23F88BECB /* HearItShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				354AC3123B2C2D06D342E472 /* Info.plist */,
+				7085D64322400CFC895C9342 /* ShareViewController.swift */,
+			);
+			path = HearItShareExtension;
+			sourceTree = "<group>";
+		};
 		8AD5373F9A553217F61FC464 /* PreviewSupport */ = {
 			isa = PBXGroup;
 			children = (
@@ -264,6 +300,7 @@
 			isa = PBXGroup;
 			children = (
 				92F42827EE00E24900D2F408 /* HearIt.app */,
+				63498763E1CB2FDC7C2EE0AA /* HearItShareExtension.appex */,
 				E5A75951B42CE5507DCA6A95 /* HearItTests.xctest */,
 			);
 			name = Products;
@@ -290,10 +327,10 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
-		"TEMP_273D2254-D57B-458B-89CB-C4E43D95E383" /* ios */ = {
+		"TEMP_DDC3A70F-2F7E-450E-A40E-E729E2069606" /* ios */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_B8CCFAA0-7594-4DDC-9A3D-1E4219C79F91" /* local.xcconfig */,
+				"TEMP_438A710D-111F-4AC6-BC47-13708F228BC7" /* local.xcconfig */,
 			);
 			path = ios;
 			sourceTree = "<group>";
@@ -326,10 +363,12 @@
 				CEBE826AF024987C0F312640 /* Sources */,
 				EBD7E0EF48D67A3179BCC635 /* Resources */,
 				BCEC2C4A823DEC45928CA6E2 /* Frameworks */,
+				665D7E08910448A14C0B5DCA /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				02DEE0B2EE243C0E68DCDF31 /* PBXTargetDependency */,
 			);
 			name = HearIt;
 			packageProductDependencies = (
@@ -342,6 +381,23 @@
 			productReference = 92F42827EE00E24900D2F408 /* HearIt.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A2BAA3D6A85E6B80406C5144 /* HearItShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E265A6CDA916EED766FD43F5 /* Build configuration list for PBXNativeTarget "HearItShareExtension" */;
+			buildPhases = (
+				868E4DAD373586306E87822B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HearItShareExtension;
+			packageProductDependencies = (
+			);
+			productName = HearItShareExtension;
+			productReference = 63498763E1CB2FDC7C2EE0AA /* HearItShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -352,6 +408,11 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					8BEB4DC71717BA0BC6AB9E6B = {
+						DevelopmentTeam = Q3VTL5U3XB;
+						ProvisioningStyle = Automatic;
+					};
+					A2BAA3D6A85E6B80406C5144 = {
+						DevelopmentTeam = Q3VTL5U3XB;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -376,6 +437,7 @@
 			projectRoot = "";
 			targets = (
 				8BEB4DC71717BA0BC6AB9E6B /* HearIt */,
+				A2BAA3D6A85E6B80406C5144 /* HearItShareExtension */,
 				4B7D26D24237DD27FCA58CB9 /* HearItTests */,
 			);
 		};
@@ -402,6 +464,14 @@
 				4AABA0971E6ADE4622E8606A /* AppModelNarrationPlaybackTests.swift in Sources */,
 				71A8FA213B32D6C96B0C846D /* HearItURLResolutionTests.swift in Sources */,
 				48328A4E1ADFBABEC20448A8 /* LocalNarrationAudioStoreTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		868E4DAD373586306E87822B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7FA80F725D722E4EE75C3A43 /* ShareViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -443,6 +513,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		02DEE0B2EE243C0E68DCDF31 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A2BAA3D6A85E6B80406C5144 /* HearItShareExtension */;
+			targetProxy = 7AD2B71868EF9138A0A45F8F /* PBXContainerItemProxy */;
+		};
 		65ABA690292CC099B1673630 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 8BEB4DC71717BA0BC6AB9E6B /* HearIt */;
@@ -534,6 +609,27 @@
 			};
 			name = Debug;
 		};
+		80CE3AAB838D86D73375B226 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = "TEMP_438A710D-111F-4AC6-BC47-13708F228BC7" /* local.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HearItShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.tome.hearit.ShareExtension;
+				PRODUCT_NAME = HearItShareExtension;
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
 		867D85B386CC0D182466657C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -554,7 +650,7 @@
 		};
 		97FDE13BA3CD26DC88CE2970 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_B8CCFAA0-7594-4DDC-9A3D-1E4219C79F91" /* local.xcconfig */;
+			baseConfigurationReference = "TEMP_438A710D-111F-4AC6-BC47-13708F228BC7" /* local.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -584,7 +680,7 @@
 		};
 		BE19246FB97AE8E1AC962DA5 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_B8CCFAA0-7594-4DDC-9A3D-1E4219C79F91" /* local.xcconfig */;
+			baseConfigurationReference = "TEMP_438A710D-111F-4AC6-BC47-13708F228BC7" /* local.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -670,6 +766,27 @@
 			};
 			name = Release;
 		};
+		D64114CA24D3A542B7B8AE62 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = "TEMP_438A710D-111F-4AC6-BC47-13708F228BC7" /* local.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HearItShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.tome.hearit.ShareExtension;
+				PRODUCT_NAME = HearItShareExtension;
+				SDKROOT = iphoneos;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -696,6 +813,15 @@
 			buildConfigurations = (
 				867D85B386CC0D182466657C /* Debug */,
 				44117768072E3CACC5A79417 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E265A6CDA916EED766FD43F5 /* Build configuration list for PBXNativeTarget "HearItShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				80CE3AAB838D86D73375B226 /* Debug */,
+				D64114CA24D3A542B7B8AE62 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

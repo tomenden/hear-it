@@ -5,6 +5,8 @@ import SwiftUI
 struct HearItApp: App {
     @State private var authManager = AuthManager()
     @State private var model: AppModel?
+    /// Holds a URL that arrived before the model was ready (e.g. cold launch via Share Extension).
+    @State private var pendingURL: URL?
 
     init() {
         if let dsn = Bundle.main.object(forInfoDictionaryKey: "SentryDSN") as? String,
@@ -71,7 +73,11 @@ struct HearItApp: App {
             }
             .onOpenURL { url in
                 Task { await authManager.handleOpenURL(url) }
-                model?.handleIncomingURL(url)
+                if let model {
+                    model.handleIncomingURL(url)
+                } else {
+                    pendingURL = url
+                }
             }
             .preferredColorScheme(.light)
         }
@@ -86,6 +92,11 @@ struct HearItApp: App {
 
     private func createModel() {
         guard model == nil else { return }
-        model = AppModel(authManager: authManager)
+        let newModel = AppModel(authManager: authManager)
+        if let url = pendingURL {
+            pendingURL = nil
+            newModel.handleIncomingURL(url)
+        }
+        model = newModel
     }
 }

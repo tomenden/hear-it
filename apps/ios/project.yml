@@ -34,6 +34,8 @@ targets:
         product: Auth
       - package: Supabase
         product: Supabase
+      - target: HearItShareExtension
+        embed: true
     sources:
       - path: HearIt
         excludes:
@@ -88,6 +90,35 @@ targets:
     scheme:
       testTargets:
         - HearItTests
+  HearItShareExtension:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: HearItShareExtension
+    info:
+      path: HearItShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Hear It
+        NSExtension:
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionPointIdentifier: com.apple.share-services
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tome.hearit.ShareExtension
+        PRODUCT_NAME: HearItShareExtension
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: 1
+        SWIFT_VERSION: 6.0
+        IPHONEOS_DEPLOYMENT_TARGET: 26.0
+        SWIFT_STRICT_CONCURRENCY: minimal
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../../Frameworks"
   HearItTests:
     type: bundle.unit-test
     platform: iOS

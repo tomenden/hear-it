@@ -18,6 +18,7 @@
 		2C17CB99675410640072EA09 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B57E46118380FA6252EEADD /* AppTheme.swift */; };
 		3D005C4BBA6025C34B96D861 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = DB17BEC52CCAE6649EE60610 /* Sentry */; };
 		40AFE1923EB3FECB6CCB3AC6 /* HearItApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3BFBB00D4C28D4380A903C3 /* HearItApp.swift */; };
+		4223198136B7B43B79E73D33 /* ShareExtensionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74C270D84EDA7773FBD5C0AA /* ShareExtensionView.swift */; };
 		48328A4E1ADFBABEC20448A8 /* LocalNarrationAudioStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48EA0CD9F21B999B3E03DF8D /* LocalNarrationAudioStoreTests.swift */; };
 		48BD34433BE16F76DE5EF3BD /* AudioJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE5F10C9DACB6182F536801 /* AudioJob.swift */; };
 		4AABA0971E6ADE4622E8606A /* AppModelNarrationPlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5AAFBE2CD5B567C356CB87F /* AppModelNarrationPlaybackTests.swift */; };
@@ -103,6 +104,7 @@
 		5A71946812B0A81DA6E70A8E /* AudioPlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerController.swift; sourceTree = "<group>"; };
 		63498763E1CB2FDC7C2EE0AA /* HearItShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HearItShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		7085D64322400CFC895C9342 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		74C270D84EDA7773FBD5C0AA /* ShareExtensionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareExtensionView.swift; sourceTree = "<group>"; };
 		87C8FA41CD6AAEDAB113823F /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		8E493E67BC1B8EECE18403E0 /* RootTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTab.swift; sourceTree = "<group>"; };
 		92F42827EE00E24900D2F408 /* HearIt.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HearIt.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -125,7 +127,7 @@
 		FA9A9C72C19F9A029933648C /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		FC34FDF70E56DF54E6D6F232 /* LocalNarrationAudioStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNarrationAudioStore.swift; sourceTree = "<group>"; };
 		FC3BB971CB96D85741C9C2D9 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
-		"TEMP_A2E576F1-FC8C-4963-9A1D-7D84361DD02A" /* local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = local.xcconfig; sourceTree = "<group>"; };
+		"TEMP_DD3892ED-713B-463E-8160-226765EAE92D" /* local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = local.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -244,6 +246,7 @@
 			children = (
 				1BFF530D0AB282DF1E072976 /* HearItShareExtension.entitlements */,
 				354AC3123B2C2D06D342E472 /* Info.plist */,
+				74C270D84EDA7773FBD5C0AA /* ShareExtensionView.swift */,
 				7085D64322400CFC895C9342 /* ShareViewController.swift */,
 			);
 			path = HearItShareExtension;
@@ -343,10 +346,10 @@
 			path = Support;
 			sourceTree = "<group>";
 		};
-		"TEMP_0489512E-5B15-4A5E-9220-FD16620C7F75" /* ios */ = {
+		"TEMP_201686AB-9F4A-4F9E-9CA4-A5D34684A383" /* ios */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_A2E576F1-FC8C-4963-9A1D-7D84361DD02A" /* local.xcconfig */,
+				"TEMP_DD3892ED-713B-463E-8160-226765EAE92D" /* local.xcconfig */,
 			);
 			path = ios;
 			sourceTree = "<group>";
@@ -487,6 +490,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4223198136B7B43B79E73D33 /* ShareExtensionView.swift in Sources */,
 				7FA80F725D722E4EE75C3A43 /* ShareViewController.swift in Sources */,
 				57DAC60ADF645B44A03BFCF2 /* SharedKeychain.swift in Sources */,
 			);
@@ -629,7 +633,7 @@
 		};
 		80CE3AAB838D86D73375B226 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_A2E576F1-FC8C-4963-9A1D-7D84361DD02A" /* local.xcconfig */;
+			baseConfigurationReference = "TEMP_DD3892ED-713B-463E-8160-226765EAE92D" /* local.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HearItShareExtension/HearItShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -669,7 +673,7 @@
 		};
 		97FDE13BA3CD26DC88CE2970 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_A2E576F1-FC8C-4963-9A1D-7D84361DD02A" /* local.xcconfig */;
+			baseConfigurationReference = "TEMP_DD3892ED-713B-463E-8160-226765EAE92D" /* local.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -700,7 +704,7 @@
 		};
 		BE19246FB97AE8E1AC962DA5 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_A2E576F1-FC8C-4963-9A1D-7D84361DD02A" /* local.xcconfig */;
+			baseConfigurationReference = "TEMP_DD3892ED-713B-463E-8160-226765EAE92D" /* local.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -789,7 +793,7 @@
 		};
 		D64114CA24D3A542B7B8AE62 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_A2E576F1-FC8C-4963-9A1D-7D84361DD02A" /* local.xcconfig */;
+			baseConfigurationReference = "TEMP_DD3892ED-713B-463E-8160-226765EAE92D" /* local.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HearItShareExtension/HearItShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;

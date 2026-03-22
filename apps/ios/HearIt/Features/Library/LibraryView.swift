@@ -47,7 +47,7 @@ struct LibraryView: View {
                     .bold()
                     .foregroundStyle(AppTheme.Colors.textPrimary)
 
-                Text("Recent narrations")
+                Text("Recent audio")
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.Colors.textSecondary)
             }
@@ -92,9 +92,9 @@ struct LibraryView: View {
     private var narrationList: some View {
         if model.filteredJobs.isEmpty {
             ContentUnavailableView(
-                "No narrations here yet",
+                "Nothing here yet",
                 systemImage: "books.vertical",
-                description: Text("Create a narration from Home and it will show up in your library.")
+                description: Text("Create audio from Home and it will show up in your library.")
             )
             .frame(maxWidth: .infinity)
             .padding(.top, 24)
@@ -255,18 +255,18 @@ private struct DeleteConfirmationSheet: View {
                         .foregroundStyle(AppTheme.Colors.accentRed)
                 )
 
-            Text("Delete Narration?")
+            Text("Delete Audio?")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(AppTheme.Colors.textPrimary)
 
-            Text("This narration will be permanently removed from your library. This action cannot be undone.")
+            Text("This audio will be permanently removed from your library. This action cannot be undone.")
                 .font(.system(size: 14))
                 .foregroundStyle(AppTheme.Colors.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
 
-            // Context card showing which narration
+            // Context card showing which audio
             HStack(spacing: 12) {
                 Image(systemName: "waveform")
                     .font(.system(size: 18))
@@ -300,7 +300,7 @@ private struct DeleteConfirmationSheet: View {
                     HStack(spacing: 8) {
                         Image(systemName: "trash")
                             .font(.system(size: 14))
-                        Text("Delete Narration")
+                        Text("Delete Audio")
                             .font(.system(size: 15, weight: .semibold))
                     }
                     .foregroundStyle(.white)

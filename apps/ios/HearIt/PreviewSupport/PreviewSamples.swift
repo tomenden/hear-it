@@ -67,7 +67,7 @@ enum PreviewSamples {
         title: "The Case for an Audio Inbox",
         siteName: "Tomorrow Product",
         byline: "Ava Thompson",
-        excerpt: "Treating narration like a saved queue unlocks a calmer reading habit across the whole day.",
+        excerpt: "Treating audio like a saved queue unlocks a calmer reading habit across the whole day.",
         wordCount: 1580,
         estimatedMinutes: 10,
         status: .completed,

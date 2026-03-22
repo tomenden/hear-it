@@ -124,7 +124,7 @@ struct HomeView: View {
                     await model.createNarration()
                 }
             } label: {
-                Label(model.isCreatingNarration ? "Creating…" : "Start Narrating", systemImage: "play.fill")
+                Label(model.isCreatingNarration ? "Creating…" : "Start Listening", systemImage: "play.fill")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(Color.white)
                     .frame(maxWidth: .infinity, minHeight: 56)

@@ -255,7 +255,7 @@ final class AppModel {
         guard !previewMode else { return }
         guard let baseURL = settings.apiBaseURL else {
             homeMessage = InlineMessage(
-                text: "Set your API URL in Settings before creating a narration.",
+                text: "Set your API URL in Settings before creating audio.",
                 kind: .error
             )
             settingsPresented = true
@@ -269,7 +269,7 @@ final class AppModel {
         }
 
         isCreatingNarration = true
-        homeMessage = InlineMessage(text: "Creating your narration…", kind: .neutral)
+        homeMessage = InlineMessage(text: "Creating your audio…", kind: .neutral)
 
         let breadcrumb = Breadcrumb(level: .info, category: "narration")
         breadcrumb.message = "Create narration"
@@ -287,7 +287,7 @@ final class AppModel {
             urlInput = ""
             voiceSelectionPresented = false
             selectedTab = .library
-            homeMessage = InlineMessage(text: "Narration queued successfully.", kind: .success)
+            homeMessage = InlineMessage(text: "Audio queued successfully.", kind: .success)
             openPlayer(for: job.id)
             trackFirstNarrationCreated()
         } catch HearItAPIClient.APIError.unauthorized {

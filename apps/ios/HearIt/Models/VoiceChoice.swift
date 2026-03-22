@@ -22,7 +22,7 @@ struct VoiceChoice: Hashable, Identifiable {
     private var metadata: VoiceMetadata {
         Self.catalogMetadata[id.lowercased(), default: VoiceMetadata(
             displayName: id.capitalized,
-            tone: "OpenAI-supported narration voice.",
+            tone: "OpenAI-supported voice.",
             symbolName: "waveform"
         )]
     }
@@ -46,7 +46,7 @@ struct VoiceChoice: Hashable, Identifiable {
         ),
         "sage": VoiceMetadata(
             displayName: "Sage",
-            tone: "Warm and conversational for softer narration.",
+            tone: "Warm and conversational for softer listening.",
             symbolName: "leaf.fill"
         ),
         "verse": VoiceMetadata(

@@ -25,7 +25,7 @@ struct VoiceSelectionView: View {
                                 await model.createNarration()
                             }
                         } label: {
-                            Label(model.isCreatingNarration ? "Creating…" : "Create Narration", systemImage: "headphones")
+                            Label(model.isCreatingNarration ? "Creating…" : "Create Audio", systemImage: "headphones")
                                 .font(.headline)
                                 .frame(maxWidth: .infinity, minHeight: 54)
                         }
@@ -50,7 +50,7 @@ struct VoiceSelectionView: View {
 
     private var articlePreview: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Article to narrate")
+            Text("Article to listen to")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.Colors.textTertiary)
                 .textCase(.uppercase)
@@ -63,7 +63,7 @@ struct VoiceSelectionView: View {
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.Colors.textSecondary)
 
-            Text(model.previewArticle?.summary ?? "Hear It can preview extraction quality before you create narration.")
+            Text(model.previewArticle?.summary ?? "Hear It can preview extraction quality before you create audio.")
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.Colors.textSecondary)
 

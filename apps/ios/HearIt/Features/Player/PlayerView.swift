@@ -58,9 +58,9 @@ struct PlayerView: View {
             }
         } else {
             ContentUnavailableView(
-                "No narration selected",
+                "No audio selected",
                 systemImage: "waveform",
-                description: Text("Choose a narration from your library.")
+                description: Text("Choose audio from your library.")
             )
             .padding(.top, 100)
         }
@@ -189,11 +189,11 @@ struct PlayerView: View {
 
             VStack(spacing: 8) {
                 if model.isStreamingPlayback(for: job) {
-                    Label("Playing while narration is still generating", systemImage: "dot.radiowaves.left.and.right")
+                    Label("Playing while audio is being created", systemImage: "dot.radiowaves.left.and.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(AppTheme.Colors.accentGreen)
                 } else if model.isDownloadingAudio(for: job) {
-                    Label("Caching narration to this device", systemImage: "arrow.down.circle")
+                    Label("Saving audio to this device", systemImage: "arrow.down.circle")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(AppTheme.Colors.textSecondary)
                 } else if model.hasLocallyCachedAudio(for: job) {
@@ -283,12 +283,12 @@ struct PlayerView: View {
             VStack(spacing: 10) {
                 Text(
                     isFailed
-                        ? "Narration failed"
+                        ? "Audio failed"
                         : isAudioUnavailable
                             ? "Audio unavailable"
                             : isDownloadingToDevice
-                                ? "Downloading narration…"
-                                : "Generating narration…"
+                                ? "Downloading audio…"
+                                : "Creating audio…"
                 )
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle((isFailed || isAudioUnavailable) ? AppTheme.Colors.error : AppTheme.Colors.textPrimary)
@@ -335,9 +335,9 @@ struct PlayerView: View {
                 isFailed
                     ? job.statusMessage
                     : isAudioUnavailable
-                        ? "Delete this narration and create a new one to listen again."
+                        ? "Delete this audio and create a new one to listen again."
                         : isDownloadingToDevice
-                            ? "Saving this narration to your device."
+                            ? "Saving audio to your device."
                             : "This may take a moment"
             )
                 .font(.system(size: 12))

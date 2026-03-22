@@ -47,13 +47,13 @@ struct AudioJob: Codable, Hashable, Identifiable {
     var statusMessage: String {
         switch status {
         case .queued:
-            "Waiting in line to generate your narration."
+            "Waiting in line to create your audio."
         case .processing:
             "Generating audio now. This usually finishes in under a minute for shorter reads."
         case .completed:
             "Ready to play."
         case .failed:
-            error ?? "Narration failed before audio was generated."
+            error ?? "Audio creation failed."
         }
     }
 

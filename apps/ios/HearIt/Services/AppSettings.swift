@@ -11,6 +11,7 @@ final class AppSettings {
     }
 
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let sharedDefaults = UserDefaults(suiteName: "group.com.tome.hearit")
 
     var apiBaseURLString: String {
         didSet {
@@ -21,6 +22,7 @@ final class AppSettings {
     var selectedVoiceID: String {
         didSet {
             defaults.set(selectedVoiceID, forKey: Key.selectedVoiceID)
+            sharedDefaults?.set(selectedVoiceID, forKey: Key.selectedVoiceID)
         }
     }
 
@@ -45,6 +47,7 @@ final class AppSettings {
         self.apiBaseURLString = defaults.string(forKey: Key.apiBaseURL) ?? Self.defaultBaseURLString
         self.selectedVoiceID = defaults.string(forKey: Key.selectedVoiceID) ?? "alloy"
         self.lastPresentedJobID = defaults.string(forKey: Key.lastPresentedJobID)
+        sharedDefaults?.set(selectedVoiceID, forKey: Key.selectedVoiceID)
     }
 
     static func normalizeBaseURLString(_ rawValue: String) -> String {

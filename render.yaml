@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: hear-it-api
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/config
+
+    previewsEnabled: true
+    previewPlan: starter
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_TTS_MODEL
+        value: gpt-4o-mini-tts
+      - key: POSTGRES_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: audio
+      - key: TTS_CONCURRENCY
+        value: "5"

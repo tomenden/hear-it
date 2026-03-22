@@ -1,0 +1,3 @@
+app_identifier "com.tome.hearit"
+
+# App Store Connect API key is loaded from the APP_STORE_CONNECT_API_KEY env var in the Fastfile.

@@ -54,6 +54,15 @@ final class AppSettings {
     }
 
     private static var defaultBaseURLString: String {
-        "https://hear-it.onrender.com"
+        // HEAR_IT_API_BASE_URL is injected via Info.plist at build time.
+        // CI sets it to the Render preview URL for the branch being built,
+        // so each distributed build automatically points at the right backend.
+        // The xcconfig default ("https://hear-it.onrender.com") is used for local dev.
+        if let url = Bundle.main.object(forInfoDictionaryKey: "HEAR_IT_API_BASE_URL") as? String,
+           !url.isEmpty, url != "$(HEAR_IT_API_BASE_URL)"
+        {
+            return url
+        }
+        return "https://hear-it.onrender.com"
     }
 }

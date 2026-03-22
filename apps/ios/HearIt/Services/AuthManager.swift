@@ -52,6 +52,7 @@ final class AuthManager {
         do {
             let session = try await client.auth.session
             state = .signedIn(session.user)
+            SharedKeychain.saveToken(session.accessToken)
         } catch {
             state = .signedOut
         }
@@ -64,9 +65,11 @@ final class AuthManager {
                 case .signedIn, .tokenRefreshed:
                     if let session {
                         self.state = .signedIn(session.user)
+                        SharedKeychain.saveToken(session.accessToken)
                     }
                 case .signedOut:
                     self.state = .signedOut
+                    SharedKeychain.deleteToken()
                 default:
                     break
                 }
@@ -96,6 +99,7 @@ final class AuthManager {
 
     func signOut() async throws {
         try await client.auth.signOut()
+        SharedKeychain.deleteToken()
         state = .signedOut
     }
 

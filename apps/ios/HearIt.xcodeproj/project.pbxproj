@@ -127,7 +127,7 @@
 		FA9A9C72C19F9A029933648C /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		FC34FDF70E56DF54E6D6F232 /* LocalNarrationAudioStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNarrationAudioStore.swift; sourceTree = "<group>"; };
 		FC3BB971CB96D85741C9C2D9 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
-		"TEMP_DD3892ED-713B-463E-8160-226765EAE92D" /* local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = local.xcconfig; sourceTree = "<group>"; };
+		"TEMP_70227CBF-3A44-4861-A6AD-A302D74FDD6C" /* local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = local.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -346,10 +346,10 @@
 			path = Support;
 			sourceTree = "<group>";
 		};
-		"TEMP_201686AB-9F4A-4F9E-9CA4-A5D34684A383" /* ios */ = {
+		"TEMP_0A783870-12A8-456E-94B7-4224561CFE41" /* ios */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_DD3892ED-713B-463E-8160-226765EAE92D" /* local.xcconfig */,
+				"TEMP_70227CBF-3A44-4861-A6AD-A302D74FDD6C" /* local.xcconfig */,
 			);
 			path = ios;
 			sourceTree = "<group>";
@@ -633,7 +633,7 @@
 		};
 		80CE3AAB838D86D73375B226 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_DD3892ED-713B-463E-8160-226765EAE92D" /* local.xcconfig */;
+			baseConfigurationReference = "TEMP_70227CBF-3A44-4861-A6AD-A302D74FDD6C" /* local.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HearItShareExtension/HearItShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -673,7 +673,7 @@
 		};
 		97FDE13BA3CD26DC88CE2970 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_DD3892ED-713B-463E-8160-226765EAE92D" /* local.xcconfig */;
+			baseConfigurationReference = "TEMP_70227CBF-3A44-4861-A6AD-A302D74FDD6C" /* local.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -704,7 +704,7 @@
 		};
 		BE19246FB97AE8E1AC962DA5 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_DD3892ED-713B-463E-8160-226765EAE92D" /* local.xcconfig */;
+			baseConfigurationReference = "TEMP_70227CBF-3A44-4861-A6AD-A302D74FDD6C" /* local.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -793,7 +793,7 @@
 		};
 		D64114CA24D3A542B7B8AE62 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_DD3892ED-713B-463E-8160-226765EAE92D" /* local.xcconfig */;
+			baseConfigurationReference = "TEMP_70227CBF-3A44-4861-A6AD-A302D74FDD6C" /* local.xcconfig */;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = HearItShareExtension/HearItShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;

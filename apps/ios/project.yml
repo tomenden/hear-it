@@ -106,6 +106,7 @@ targets:
           - group.com.tome.hearit
     sources:
       - path: HearItShareExtension
+      - path: HearIt/Services/SharedKeychain.swift
     configFiles:
       Debug: local.xcconfig
       Release: local.xcconfig

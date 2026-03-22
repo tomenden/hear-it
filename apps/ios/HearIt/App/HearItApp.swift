@@ -5,7 +5,7 @@ import SwiftUI
 struct HearItApp: App {
     @State private var authManager = AuthManager()
     @State private var model: AppModel?
-    /// Holds a URL that arrived before the model was ready (e.g. cold launch via Share Extension).
+    /// Holds a URL that arrived before the model was ready (e.g. cold launch via deep link).
     @State private var pendingURL: URL?
 
     init() {

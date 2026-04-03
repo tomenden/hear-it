@@ -65,7 +65,7 @@ struct MiniPlayerView: View {
 
     private func statusSubtitle(for job: AudioJob) -> String {
         if model.isStreamingPlayback(for: job) {
-            return "Playing while narration finishes"
+            return "Playing while audio is being created"
         }
 
         if model.isDownloadingAudio(for: job) {
@@ -78,13 +78,13 @@ struct MiniPlayerView: View {
 
         switch job.status {
         case .queued:
-            return "Waiting for narration to start"
+            return "Waiting for audio to start"
         case .processing:
-            return "Generating narration…"
+            return "Creating audio…"
         case .completed:
             return "Tap to return to full player"
         case .failed:
-            return "Narration failed"
+            return "Audio failed"
         }
     }
 

@@ -18,10 +18,13 @@
 		2C17CB99675410640072EA09 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B57E46118380FA6252EEADD /* AppTheme.swift */; };
 		3D005C4BBA6025C34B96D861 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = DB17BEC52CCAE6649EE60610 /* Sentry */; };
 		40AFE1923EB3FECB6CCB3AC6 /* HearItApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3BFBB00D4C28D4380A903C3 /* HearItApp.swift */; };
+		4223198136B7B43B79E73D33 /* ShareExtensionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74C270D84EDA7773FBD5C0AA /* ShareExtensionView.swift */; };
 		48328A4E1ADFBABEC20448A8 /* LocalNarrationAudioStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48EA0CD9F21B999B3E03DF8D /* LocalNarrationAudioStoreTests.swift */; };
 		48BD34433BE16F76DE5EF3BD /* AudioJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE5F10C9DACB6182F536801 /* AudioJob.swift */; };
 		4AABA0971E6ADE4622E8606A /* AppModelNarrationPlaybackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5AAFBE2CD5B567C356CB87F /* AppModelNarrationPlaybackTests.swift */; };
 		4AB273D154EFF671DD573076 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC3BB971CB96D85741C9C2D9 /* LoginView.swift */; };
+		57DAC60ADF645B44A03BFCF2 /* SharedKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 263728F86C4BFDABB26AE8B4 /* SharedKeychain.swift */; };
+		597C7EDA12004CA431959472 /* SharedKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 263728F86C4BFDABB26AE8B4 /* SharedKeychain.swift */; };
 		6B58532F5C7E786DA796EE2D /* Analytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F3560F788EC4A94E9909A0 /* Analytics.swift */; };
 		6B7AA6FD7D83E427DA968C8C /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = 4DEFB58CCF8B0C2A4FC1699D /* Auth */; };
 		71A8FA213B32D6C96B0C846D /* HearItURLResolutionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30013ECC1CB1F68E636157F /* HearItURLResolutionTests.swift */; };
@@ -85,6 +88,8 @@
 		09DBDC9261CA52AB7D17821D /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		0B57E46118380FA6252EEADD /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		17259412496749BEA5AA0621 /* LibraryFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFilter.swift; sourceTree = "<group>"; };
+		1BFF530D0AB282DF1E072976 /* HearItShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HearItShareExtension.entitlements; sourceTree = "<group>"; };
+		263728F86C4BFDABB26AE8B4 /* SharedKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedKeychain.swift; sourceTree = "<group>"; };
 		2C1095DCE470707982737C5C /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		354AC3123B2C2D06D342E472 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3938DD84F481914666EBD96C /* HearItAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HearItAPIClient.swift; sourceTree = "<group>"; };
@@ -99,9 +104,11 @@
 		5A71946812B0A81DA6E70A8E /* AudioPlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerController.swift; sourceTree = "<group>"; };
 		63498763E1CB2FDC7C2EE0AA /* HearItShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HearItShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		7085D64322400CFC895C9342 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		74C270D84EDA7773FBD5C0AA /* ShareExtensionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareExtensionView.swift; sourceTree = "<group>"; };
 		87C8FA41CD6AAEDAB113823F /* PlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
 		8E493E67BC1B8EECE18403E0 /* RootTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTab.swift; sourceTree = "<group>"; };
 		92F42827EE00E24900D2F408 /* HearIt.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HearIt.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9CE84C38494CC7A2CBA52AFA /* HearIt.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = HearIt.entitlements; sourceTree = "<group>"; };
 		9E18647AEB9EB62530A0329D /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		9FE5F10C9DACB6182F536801 /* AudioJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioJob.swift; sourceTree = "<group>"; };
 		A068252339B48496D9BBF3FC /* Article.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Article.swift; sourceTree = "<group>"; };
@@ -120,7 +127,7 @@
 		FA9A9C72C19F9A029933648C /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		FC34FDF70E56DF54E6D6F232 /* LocalNarrationAudioStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNarrationAudioStore.swift; sourceTree = "<group>"; };
 		FC3BB971CB96D85741C9C2D9 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
-		"TEMP_438A710D-111F-4AC6-BC47-13708F228BC7" /* local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = local.xcconfig; sourceTree = "<group>"; };
+		"TEMP_076E3605-36E0-452D-8D3D-04AE3264E2A1" /* local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = local.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -237,7 +244,9 @@
 		6901298AFF61F1A23F88BECB /* HearItShareExtension */ = {
 			isa = PBXGroup;
 			children = (
+				1BFF530D0AB282DF1E072976 /* HearItShareExtension.entitlements */,
 				354AC3123B2C2D06D342E472 /* Info.plist */,
+				74C270D84EDA7773FBD5C0AA /* ShareExtensionView.swift */,
 				7085D64322400CFC895C9342 /* ShareViewController.swift */,
 			);
 			path = HearItShareExtension;
@@ -262,6 +271,7 @@
 				8AD5373F9A553217F61FC464 /* PreviewSupport */,
 				0A4932905DCEA4EB59A42E54 /* Resources */,
 				B13A1AEC46A4CC242F18A9D1 /* Services */,
+				F086B010FB925112CE011D60 /* Support */,
 			);
 			path = HearIt;
 			sourceTree = "<group>";
@@ -275,6 +285,7 @@
 				AA58700A64691799E1F44725 /* AuthManager.swift */,
 				3938DD84F481914666EBD96C /* HearItAPIClient.swift */,
 				FC34FDF70E56DF54E6D6F232 /* LocalNarrationAudioStore.swift */,
+				263728F86C4BFDABB26AE8B4 /* SharedKeychain.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -327,10 +338,18 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
-		"TEMP_DDC3A70F-2F7E-450E-A40E-E729E2069606" /* ios */ = {
+		F086B010FB925112CE011D60 /* Support */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_438A710D-111F-4AC6-BC47-13708F228BC7" /* local.xcconfig */,
+				9CE84C38494CC7A2CBA52AFA /* HearIt.entitlements */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		"TEMP_ED0B44C1-6611-40EA-A846-74269F7B6551" /* ios */ = {
+			isa = PBXGroup;
+			children = (
+				"TEMP_076E3605-36E0-452D-8D3D-04AE3264E2A1" /* local.xcconfig */,
 			);
 			path = ios;
 			sourceTree = "<group>";
@@ -471,7 +490,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4223198136B7B43B79E73D33 /* ShareExtensionView.swift in Sources */,
 				7FA80F725D722E4EE75C3A43 /* ShareViewController.swift in Sources */,
+				57DAC60ADF645B44A03BFCF2 /* SharedKeychain.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -505,6 +526,7 @@
 				D2B8B002573F34338511AD1B /* RootView.swift in Sources */,
 				BA5C2E6B0474B8E0175E1E64 /* ServerConfig.swift in Sources */,
 				0B4B4C45E125AC828C6FFE31 /* SettingsView.swift in Sources */,
+				597C7EDA12004CA431959472 /* SharedKeychain.swift in Sources */,
 				C0DB74CA5317D0B74B2BCD33 /* VoiceChoice.swift in Sources */,
 				E5A3862FD204DF644A11F20A /* VoiceSelectionView.swift in Sources */,
 			);
@@ -611,8 +633,9 @@
 		};
 		80CE3AAB838D86D73375B226 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_438A710D-111F-4AC6-BC47-13708F228BC7" /* local.xcconfig */;
+			baseConfigurationReference = "TEMP_076E3605-36E0-452D-8D3D-04AE3264E2A1" /* local.xcconfig */;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HearItShareExtension/HearItShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HearItShareExtension/Info.plist;
@@ -650,10 +673,11 @@
 		};
 		97FDE13BA3CD26DC88CE2970 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_438A710D-111F-4AC6-BC47-13708F228BC7" /* local.xcconfig */;
+			baseConfigurationReference = "TEMP_076E3605-36E0-452D-8D3D-04AE3264E2A1" /* local.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HearIt/Support/HearIt.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_PREVIEWS = YES;
@@ -680,10 +704,11 @@
 		};
 		BE19246FB97AE8E1AC962DA5 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_438A710D-111F-4AC6-BC47-13708F228BC7" /* local.xcconfig */;
+			baseConfigurationReference = "TEMP_076E3605-36E0-452D-8D3D-04AE3264E2A1" /* local.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HearIt/Support/HearIt.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_PREVIEWS = YES;
@@ -768,8 +793,9 @@
 		};
 		D64114CA24D3A542B7B8AE62 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_438A710D-111F-4AC6-BC47-13708F228BC7" /* local.xcconfig */;
+			baseConfigurationReference = "TEMP_076E3605-36E0-452D-8D3D-04AE3264E2A1" /* local.xcconfig */;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = HearItShareExtension/HearItShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HearItShareExtension/Info.plist;

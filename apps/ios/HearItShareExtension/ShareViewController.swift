@@ -1,20 +1,13 @@
+import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// Share Extension entry point.
-///
-/// When a user taps "Share" in Safari, Chrome, WhatsApp or any app that shares
-/// web URLs, this view controller is instantiated. It extracts the URL from the
-/// share context and opens the main Hear It app, which will display the voice
-/// selector so the user can immediately create a narration.
 final class ShareViewController: UIViewController {
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
         extractURL()
     }
-
-    // MARK: - URL Extraction
 
     private func extractURL() {
         guard
@@ -43,9 +36,9 @@ final class ShareViewController: UIViewController {
                     }
 
                     if let url, ["http", "https"].contains(url.scheme?.lowercased()) {
-                        openMainApp(with: url)
+                        presentShareView(for: url)
                     } else {
-                        cancel()
+                        presentShareView(invalidURL: true)
                     }
                 } catch {
                     cancel()
@@ -57,42 +50,32 @@ final class ShareViewController: UIViewController {
         cancel()
     }
 
-    // MARK: - Open Main App
-
-    private func openMainApp(with sharedURL: URL) {
-        // Build com.tome.hearit://share?url=<encoded-url>
-        // The "share" host signals to the main app that this came from
-        // the Share Extension and should open the voice selector directly.
-        var components = URLComponents()
-        components.scheme = "com.tome.hearit"
-        components.host = "share"
-        components.queryItems = [URLQueryItem(name: "url", value: sharedURL.absoluteString)]
-
-        guard let appURL = components.url else {
-            cancel()
-            return
+    private func presentShareView(for url: URL) {
+        let shareView = ShareExtensionView(url: url) { [weak self] in
+            self?.extensionContext?.completeRequest(returningItems: nil)
         }
-
-        // Share Extensions don't have direct access to UIApplication.shared.
-        // Use the responder chain to find the UIApplication and open the URL.
-        guard let application = UIApplication.value(forKeyPath: #keyPath(UIApplication.shared)) as? UIApplication else {
-            cancel()
-            return
-        }
-        application.open(appURL)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            self?.done()
-        }
+        embedHostingController(rootView: shareView)
     }
 
-    // MARK: - Extension Context Helpers
+    private func presentShareView(invalidURL: Bool) {
+        let shareView = ShareExtensionView(url: nil) { [weak self] in
+            self?.extensionContext?.completeRequest(returningItems: nil)
+        }
+        embedHostingController(rootView: shareView)
+    }
+
+    private func embedHostingController(rootView: some View) {
+        let hostingController = UIHostingController(rootView: rootView)
+        hostingController.view.backgroundColor = .clear
+
+        addChild(hostingController)
+        view.addSubview(hostingController.view)
+        hostingController.view.frame = view.bounds
+        hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        hostingController.didMove(toParent: self)
+    }
 
     private func cancel() {
         extensionContext?.cancelRequest(withError: NSError(domain: "HearItShareExtension", code: 0))
-    }
-
-    private func done() {
-        extensionContext?.completeRequest(returningItems: nil)
     }
 }

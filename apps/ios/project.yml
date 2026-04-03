@@ -25,6 +25,11 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "26.0"
+    entitlements:
+      path: HearIt/Support/HearIt.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.tome.hearit
     dependencies:
       - package: PostHog
         product: PostHog
@@ -94,8 +99,14 @@ targets:
     type: app-extension
     platform: iOS
     deploymentTarget: "26.0"
+    entitlements:
+      path: HearItShareExtension/HearItShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.tome.hearit
     sources:
       - path: HearItShareExtension
+      - path: HearIt/Services/SharedKeychain.swift
     configFiles:
       Debug: local.xcconfig
       Release: local.xcconfig

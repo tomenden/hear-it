@@ -33,6 +33,10 @@ export function buildSpeechScript(input: SpeechScriptInput): SpeechScript {
       continue;
     }
 
+    if (trimmedLine !== rawLine) {
+      normalization.whitespaceCollapsed += 1;
+    }
+
     if (isSeparatorLine(trimmedLine)) {
       normalization.separatorsRemoved += 1;
       continue;
@@ -40,27 +44,31 @@ export function buildSpeechScript(input: SpeechScriptInput): SpeechScript {
 
     const headingMatch = trimmedLine.match(HEADING_LINE);
     if (headingMatch) {
-      const headingText = humanizeUrls(cleanupWhitespace(headingMatch[2]!));
+      const { text: headingText, urlsHumanized } = humanizeUrls(
+        cleanupWhitespace(headingMatch[2]!),
+      );
       cleanedLines.push(`Heading: ${headingText}`);
       normalization.headingsLabeled += 1;
+      normalization.urlsHumanized += urlsHumanized;
       headingFallbackSourceLines.push(headingText);
       continue;
     }
 
     const captionMatch = trimmedLine.match(CAPTION_LINE);
     if (captionMatch) {
-      const captionText = humanizeUrls(cleanupWhitespace(captionMatch[1]!));
+      const { text: captionText, urlsHumanized } = humanizeUrls(
+        cleanupWhitespace(captionMatch[1]!),
+      );
       cleanedLines.push(`Image caption: ${captionText}`);
       normalization.captionsLabeled += 1;
+      normalization.urlsHumanized += urlsHumanized;
       continue;
     }
 
-    const humanizedLine = humanizeUrls(trimmedLine);
+    const { text: humanizedLine, urlsHumanized } = humanizeUrls(trimmedLine);
     cleanedLines.push(humanizedLine);
+    normalization.urlsHumanized += urlsHumanized;
     bodyFallbackSourceLines.push(humanizedLine);
-    if (humanizedLine !== rawLine) {
-      normalization.whitespaceCollapsed += 1;
-    }
   }
 
   const script = cleanedLines.join("\n");
@@ -122,12 +130,16 @@ function isSeparatorLine(line: string): boolean {
   return SEPARATOR_LINE.test(line);
 }
 
-function humanizeUrls(text: string): string {
-  return text.replace(RAW_URL, (rawUrl) => {
+function humanizeUrls(text: string): { text: string; urlsHumanized: number } {
+  let urlsHumanized = 0;
+  const humanizedText = text.replace(RAW_URL, (rawUrl) => {
     const { core, trailing } = splitTrailingPunctuation(rawUrl);
     const spoken = humanizeUrl(core);
+    urlsHumanized += 1;
     return `${spoken}${trailing}`;
   });
+
+  return { text: humanizedText, urlsHumanized };
 }
 
 function splitTrailingPunctuation(value: string): { core: string; trailing: string } {

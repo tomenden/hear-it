@@ -12,6 +12,8 @@ describe("buildSpeechScript", () => {
     expect(result.script).not.toContain("https://");
     expect(result.script).toContain("Read more at");
     expect(result.script).toContain("example dot com");
+    expect(result.normalization.urlsHumanized).toBe(1);
+    expect(result.normalization.whitespaceCollapsed).toBe(0);
   });
 
   it("preserves headings with a light cue", () => {
@@ -34,6 +36,19 @@ describe("buildSpeechScript", () => {
     expect(result.script).toContain("Image caption: The team reviewing the live dashboard.");
     expect(result.script).toContain("The article continues.");
     expect(result.normalization.captionsLabeled).toBe(1);
+  });
+
+  it("tracks whitespace cleanup separately from url rewriting", () => {
+    const result = buildSpeechScript({
+      title: "Example",
+      textContent: "##   Overview   \nCaption:   A  helpful   chart.   \nBody   text with   extra spaces.",
+    });
+
+    expect(result.script).toContain("Heading: Overview");
+    expect(result.script).toContain("Image caption: A helpful chart.");
+    expect(result.script).toContain("Body text with extra spaces.");
+    expect(result.normalization.whitespaceCollapsed).toBe(3);
+    expect(result.normalization.urlsHumanized).toBe(0);
   });
 
   it("removes noisy repeated separators", () => {

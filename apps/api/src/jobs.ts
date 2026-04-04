@@ -213,16 +213,20 @@ export class AudioJobService {
       }
     } finally {
       stopHeartbeat();
-      if (!leaseState.lost) {
-        await this.updateOwnedJob(
-          jobId,
-          {
-            leaseOwner: null,
-            leaseExpiresAt: null,
-            runId: null,
-          },
-          ownership,
-        );
+      const released = !leaseState.lost
+        ? await this.updateOwnedJob(
+            jobId,
+            {
+              leaseOwner: null,
+              leaseExpiresAt: null,
+              runId: null,
+            },
+            ownership,
+          )
+        : false;
+
+      if (!released) {
+        await this.releaseObservedTerminalLease(jobId, ownership);
       }
     }
   }
@@ -286,6 +290,36 @@ export class AudioJobService {
     ownership: JobOwnership,
   ) {
     return this.jobStore.updateOwned(jobId, patch, ownership);
+  }
+
+  private async releaseObservedTerminalLease(
+    jobId: string,
+    ownership: JobOwnership,
+  ): Promise<void> {
+    const observedJob = await this.jobStore.get(jobId);
+    if (
+      !observedJob ||
+      !isTerminalStatus(observedJob.status) ||
+      observedJob.leaseOwner !== ownership.leaseOwner ||
+      observedJob.runId !== ownership.runId
+    ) {
+      return;
+    }
+
+    await this.jobStore.updateIfLeaseSnapshotMatches(
+      jobId,
+      {
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        runId: null,
+      },
+      {
+        status: observedJob.status,
+        leaseOwner: observedJob.leaseOwner,
+        leaseExpiresAt: observedJob.leaseExpiresAt ?? null,
+        runId: observedJob.runId,
+      },
+    );
   }
 
   private async deleteNarrationArtifacts(jobId: string): Promise<void> {

@@ -24,6 +24,7 @@ import {
 import { FileJobStore, FileAudioStore } from "./storage-fs.js";
 import type { AudioStore } from "./storage.js";
 import type {
+  AudioJob,
   AudioRenderResult,
   ExtractedArticle,
   SpeechOptions,
@@ -516,6 +517,38 @@ class FlakyInitJobStore extends FileJobStore {
   }
 }
 
+class LateFalseHeartbeatJobStore extends FileJobStore {
+  private delayedHeartbeatResolvers: Array<(updated: boolean) => void> = [];
+
+  override async heartbeat(
+    _jobId: string,
+    _leaseOwner: string,
+    _leaseExpiresAt: string,
+    _runId: string,
+  ): Promise<boolean> {
+    return await new Promise<boolean>((resolve) => {
+      this.delayedHeartbeatResolvers.push(resolve);
+    });
+  }
+
+  override async updateOwned(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    ownership: { leaseOwner: string; runId: string },
+  ): Promise<boolean> {
+    const updated = await super.updateOwned(jobId, patch, ownership);
+
+    if (updated && patch.status === "completed") {
+      for (const resolve of this.delayedHeartbeatResolvers.splice(0)) {
+        resolve(false);
+      }
+      await Promise.resolve();
+    }
+
+    return updated;
+  }
+}
+
 async function waitFor<T>(
   action: () => Promise<T>,
   predicate: (value: T) => boolean,
@@ -999,6 +1032,52 @@ describe("audio job service", () => {
     expect(renewedLeaseJob?.leaseOwner).toBe("test-worker");
 
     await processingPromise;
+
+    const completedJob = await service.getJob(queuedJob.id);
+    expect(completedJob?.status).toBe("completed");
+    expect(completedJob?.leaseOwner).toBeNull();
+    expect(completedJob?.leaseExpiresAt).toBeNull();
+    expect(completedJob?.runId).toBeNull();
+  });
+
+  it("clears the lease even when an in-flight heartbeat resolves false after completion", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const audioStore = new FileAudioStore(audioDir, "/audio");
+    const jobStore = new LateFalseHeartbeatJobStore(jobsFilePath);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider: new DelayedSegmentSpeechProvider([
+        { audioData: Buffer.from("ID3SEGMENTONE"), durationSeconds: 11, delayMs: 40 },
+        { audioData: Buffer.from("ID3SEGMENTTWO"), durationSeconds: 13, delayMs: 40 },
+        { audioData: Buffer.from("ID3SEGMENTTHREE"), durationSeconds: 17, delayMs: 40 },
+      ]),
+      mediaPackager: new TestMediaPackager(),
+      leaseOwner: "test-worker",
+      leaseDurationMs: 5_000,
+      heartbeatIntervalMs: 10,
+    });
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/late-heartbeat",
+      html: `
+        <!doctype html>
+        <html>
+          <head><title>Late Heartbeat</title></head>
+          <body>
+            <article>
+              <h1>Late Heartbeat</h1>
+              <p>${"First segment content. ".repeat(30)}</p>
+              <p>${"Second segment content. ".repeat(30)}</p>
+              <p>${"Third segment content. ".repeat(30)}</p>
+            </article>
+          </body>
+        </html>
+      `,
+    });
+
+    await service.processJob(queuedJob.id);
 
     const completedJob = await service.getJob(queuedJob.id);
     expect(completedJob?.status).toBe("completed");

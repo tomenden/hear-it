@@ -741,6 +741,81 @@ describe("audio job service", () => {
     expect(stillProcessingJob?.durationSeconds).toBeNull();
   });
 
+  it("claims jobs with a lease and heartbeats them while processing", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const audioStore = new FileAudioStore(audioDir, "/audio");
+    const jobStore = new FileJobStore(jobsFilePath);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider: new DelayedSegmentSpeechProvider([
+        { audioData: Buffer.from("ID3SEGMENTONE"), durationSeconds: 11, delayMs: 120 },
+        { audioData: Buffer.from("ID3SEGMENTTWO"), durationSeconds: 13, delayMs: 120 },
+        { audioData: Buffer.from("ID3SEGMENTTHREE"), durationSeconds: 17, delayMs: 120 },
+      ]),
+      mediaPackager: new TestMediaPackager(),
+      leaseOwner: "test-worker",
+      leaseDurationMs: 40,
+      heartbeatIntervalMs: 10,
+    });
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/leased-job",
+      html: `
+        <!doctype html>
+        <html>
+          <head><title>Leased Segmented Article</title></head>
+          <body>
+            <article>
+              <h1>Leased Segmented Article</h1>
+              <p>${"First segment content. ".repeat(30)}</p>
+              <p>${"Second segment content. ".repeat(30)}</p>
+              <p>${"Third segment content. ".repeat(30)}</p>
+            </article>
+          </body>
+        </html>
+      `,
+    });
+
+    const processingPromise = service.processJob(queuedJob.id);
+
+    const leasedJob = await waitFor(
+      () => service.getJob(queuedJob.id),
+      (job) =>
+        job !== null &&
+        job.status === "processing" &&
+        typeof job.leaseOwner === "string" &&
+        job.leaseOwner.length > 0 &&
+        typeof job.leaseExpiresAt === "string" &&
+        job.leaseExpiresAt.length > 0 &&
+        typeof job.runId === "string" &&
+        job.runId.length > 0,
+      1_500,
+    );
+
+    const firstLeaseExpiry = leasedJob?.leaseExpiresAt ?? "";
+    const renewedLeaseJob = await waitFor(
+      () => service.getJob(queuedJob.id),
+      (job) =>
+        job !== null &&
+        job.status === "processing" &&
+        typeof job.leaseExpiresAt === "string" &&
+        job.leaseExpiresAt > firstLeaseExpiry,
+      1_500,
+    );
+
+    expect(renewedLeaseJob?.leaseOwner).toBe("test-worker");
+
+    await processingPromise;
+
+    const completedJob = await service.getJob(queuedJob.id);
+    expect(completedJob?.status).toBe("completed");
+    expect(completedJob?.leaseOwner).toBeNull();
+    expect(completedJob?.leaseExpiresAt).toBeNull();
+    expect(completedJob?.runId).toBeNull();
+  });
+
   it("makes a job playable before full completion via a growing playlist", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");

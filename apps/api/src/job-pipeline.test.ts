@@ -616,6 +616,9 @@ describe("job pipeline", () => {
     expect(harness.getCurrentJob().availableDurationSeconds).toBe(0);
     expect(harness.getCurrentJob().liveEdgeUpdatedAt).toBeNull();
     expect(harness.getCurrentJob().audioUrl).toBeNull();
+    expect(harness.audioStore.deletedPrefixes).toContain(buildJobMediaPrefix("job-123"));
+    expect(harness.audioStore.has("jobs/job-123/playlist.m3u8")).toBe(false);
+    expect(harness.audioStore.has("jobs/job-123/tmp/chunk-0000.mp3")).toBe(false);
   });
 
   it("fails fast when a speech provider returns unsupported chunk media", async () => {

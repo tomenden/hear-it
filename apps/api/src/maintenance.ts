@@ -211,15 +211,27 @@ export function startMaintenanceWorker(options: StartMaintenanceWorkerOptions) {
     leaseName: options.leaseName,
   });
   const intervalMs = options.intervalMs ?? DEFAULT_MAINTENANCE_INTERVAL_MS;
+  let running = false;
 
-  const tick = () => {
-    void runner.runOnce().catch((error) => {
+  const tick = async () => {
+    if (running) {
+      return;
+    }
+
+    running = true;
+    try {
+      await runner.runOnce();
+    } catch (error) {
       options.onError?.(error);
-    });
+    } finally {
+      running = false;
+    }
   };
 
-  tick();
-  const timer = setInterval(tick, intervalMs);
+  void tick();
+  const timer = setInterval(() => {
+    void tick();
+  }, intervalMs);
   timer.unref?.();
 
   return () => clearInterval(timer);

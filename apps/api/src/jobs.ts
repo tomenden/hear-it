@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { trackEvent } from "./analytics.js";
 import { extractArticle } from "./extractor.js";
 import type { FfmpegMediaPackager } from "./ffmpeg-media-packager.js";
@@ -19,11 +21,17 @@ import type {
   SpeechOptions,
 } from "./types.js";
 
+const DEFAULT_JOB_LEASE_MS = 60_000;
+const DEFAULT_JOB_HEARTBEAT_MS = 15_000;
+
 export class AudioJobService {
   private readonly jobStore: JobStore;
   private readonly audioStore: AudioStore;
   private readonly speechProvider: SpeechProvider;
   private readonly mediaPackager: FfmpegMediaPackager;
+  private readonly leaseOwner: string;
+  private readonly leaseDurationMs: number;
+  private readonly heartbeatIntervalMs: number;
   private initPromise: Promise<void> | null = null;
 
   constructor(options: {
@@ -31,11 +39,20 @@ export class AudioJobService {
     audioStore: AudioStore;
     speechProvider?: SpeechProvider;
     mediaPackager?: FfmpegMediaPackager;
+    leaseOwner?: string;
+    leaseDurationMs?: number;
+    heartbeatIntervalMs?: number;
   }) {
     this.jobStore = options.jobStore;
     this.audioStore = options.audioStore;
     this.speechProvider = options.speechProvider ?? createSpeechProvider();
     this.mediaPackager = options.mediaPackager ?? createFfmpegMediaPackager();
+    this.leaseOwner =
+      options.leaseOwner?.trim() ||
+      `job-worker-${process.pid}-${randomUUID().slice(0, 8)}`;
+    this.leaseDurationMs = options.leaseDurationMs ?? DEFAULT_JOB_LEASE_MS;
+    this.heartbeatIntervalMs =
+      options.heartbeatIntervalMs ?? DEFAULT_JOB_HEARTBEAT_MS;
   }
 
   async init(): Promise<void> {
@@ -113,35 +130,51 @@ export class AudioJobService {
 
   async processJob(jobId: string): Promise<void> {
     await this.init();
-    const claimedJob = await this.jobStore.claimQueued(jobId);
+    const runId = randomUUID();
+    const claimedJob = await this.jobStore.claimQueued(jobId, {
+      leaseOwner: this.leaseOwner,
+      leaseExpiresAt: createLeaseExpiry(this.leaseDurationMs),
+      runId,
+    });
     if (!claimedJob) {
       return;
     }
+
+    const stopHeartbeat = this.startLeaseHeartbeat(jobId);
 
     const shouldStartFresh =
       claimedJob.audioSegments.length === 0 &&
       !claimedJob.audioUrl &&
       !claimedJob.playlistUrl;
 
-    if (shouldStartFresh) {
-      await this.deleteNarrationArtifacts(jobId);
-    }
+    try {
+      if (shouldStartFresh) {
+        await this.deleteNarrationArtifacts(jobId);
+      }
 
-    const pipeline = createJobPipeline({
-      audioStore: this.audioStore,
-      speechProvider: this.speechProvider,
-      mediaPackager: this.mediaPackager,
-      onJobUpdate: async (patch) => {
-        await this.updateJob(jobId, patch);
-      },
-    });
+      const pipeline = createJobPipeline({
+        audioStore: this.audioStore,
+        speechProvider: this.speechProvider,
+        mediaPackager: this.mediaPackager,
+        onJobUpdate: async (patch) => {
+          await this.updateJob(jobId, patch);
+        },
+      });
 
-    const result = await pipeline.processClaimedJob(claimedJob);
-    if (result.job.status === "failed" && result.job.error) {
-      trackEvent("tts_failed", {
-        job_id: jobId,
-        voice: claimedJob.speechOptions.voice,
-        error: result.job.error,
+      const result = await pipeline.processClaimedJob(claimedJob);
+      if (result.job.status === "failed" && result.job.error) {
+        trackEvent("tts_failed", {
+          job_id: jobId,
+          voice: claimedJob.speechOptions.voice,
+          error: result.job.error,
+        });
+      }
+    } finally {
+      stopHeartbeat();
+      await this.jobStore.update(jobId, {
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        runId: null,
       });
     }
   }
@@ -207,6 +240,23 @@ export class AudioJobService {
     });
     await pipeline.deleteJobArtifacts(jobId);
   }
+
+  private startLeaseHeartbeat(jobId: string): () => void {
+    if (!this.jobStore.heartbeat || this.heartbeatIntervalMs <= 0) {
+      return () => {};
+    }
+
+    const timer = setInterval(() => {
+      void this.jobStore.heartbeat?.(
+        jobId,
+        this.leaseOwner,
+        createLeaseExpiry(this.leaseDurationMs),
+      );
+    }, this.heartbeatIntervalMs);
+    timer.unref?.();
+
+    return () => clearInterval(timer);
+  }
 }
 
 function resolveSpeechOptions(input?: Partial<SpeechOptions>): SpeechOptions {
@@ -225,4 +275,8 @@ function safeHostname(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+function createLeaseExpiry(durationMs: number): string {
+  return new Date(Date.now() + durationMs).toISOString();
 }

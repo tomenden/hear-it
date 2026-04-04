@@ -80,6 +80,7 @@ export function createJobPipeline(options: JobPipelineOptions) {
       let playlistUrl = currentJob.playlistUrl;
       let publishPromise = Promise.resolve();
       let nextChunkIndex = 0;
+      let workerPromises: Promise<void>[] = [];
 
       const emitUpdate = async (patch: Partial<AudioJob>) => {
         currentJob = {
@@ -102,6 +103,16 @@ export function createJobPipeline(options: JobPipelineOptions) {
             provider: currentJob.provider,
           },
         });
+        try {
+          await audioStore.deletePrefix(buildJobMediaPrefix(currentJob.id));
+        } catch (cleanupError) {
+          Sentry.captureException(cleanupError, {
+            tags: {
+              jobId: currentJob.id,
+              operation: "job_cleanup_after_failure",
+            },
+          });
+        }
         const playback = await emitUpdate({
           status: "failed",
           internalState: "failed",
@@ -290,7 +301,8 @@ export function createJobPipeline(options: JobPipelineOptions) {
             ? Math.min(ttsConcurrency, remainingChunks)
             : 0;
 
-        await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+        workerPromises = Array.from({ length: workerCount }, () => runWorker());
+        await Promise.all(workerPromises);
         await publishPromise;
 
         const contiguousChunks = getContiguousChunks(synthesizedChunks);
@@ -366,6 +378,8 @@ export function createJobPipeline(options: JobPipelineOptions) {
           playback,
         };
       } catch (error) {
+        await Promise.allSettled(workerPromises);
+        await Promise.allSettled([publishPromise]);
         return failJob(error);
       }
     },

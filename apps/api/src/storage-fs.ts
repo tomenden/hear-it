@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { access, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
+import type { JobLeaseClaim } from "./job-events.js";
 import type { AudioJob } from "./types.js";
 import type { AudioStore, AudioStorePutOptions, JobStore } from "./storage.js";
 
@@ -67,7 +68,7 @@ export class FileJobStore implements JobStore {
     await this.persist();
   }
 
-  async claimQueued(jobId: string): Promise<AudioJob | null> {
+  async claimQueued(jobId: string, lease?: JobLeaseClaim): Promise<AudioJob | null> {
     const existing = this.jobs.get(jobId);
     if (!existing) return null;
     if (existing.status !== "queued") return null;
@@ -75,6 +76,10 @@ export class FileJobStore implements JobStore {
     const claimed = {
       ...existing,
       status: "processing" as const,
+      leaseOwner: lease?.leaseOwner ?? null,
+      leaseExpiresAt: lease?.leaseExpiresAt ?? null,
+      runId: lease?.runId ?? null,
+      attempt: lease?.attempt ?? existing.attempt ?? 1,
       updatedAt: new Date().toISOString(),
     };
     this.jobs.set(jobId, claimed);
@@ -141,6 +146,29 @@ export class FileJobStore implements JobStore {
       leaseExpiresAt,
       leaseName,
     };
+    return true;
+  }
+
+  async heartbeat(
+    jobId: string,
+    leaseOwner: string,
+    leaseExpiresAt: string,
+  ): Promise<boolean> {
+    const existing = this.jobs.get(jobId);
+    if (!existing || existing.status !== "processing") {
+      return false;
+    }
+
+    if (existing.leaseOwner !== leaseOwner) {
+      return false;
+    }
+
+    this.jobs.set(jobId, {
+      ...existing,
+      leaseExpiresAt,
+      updatedAt: new Date().toISOString(),
+    });
+    await this.persist();
     return true;
   }
 

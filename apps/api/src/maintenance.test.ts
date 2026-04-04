@@ -6,6 +6,7 @@ import {
   HlsRetentionCleaner,
   JobReconciler,
   MaintenanceRunner,
+  startMaintenanceWorker,
 } from "./maintenance.js";
 import type { AudioStore, JobStore } from "./storage.js";
 import type { AudioJob } from "./types.js";
@@ -14,6 +15,7 @@ class MemoryJobStore implements JobStore {
   readonly updates: Array<{ jobId: string; patch: Partial<AudioJob> }> = [];
   readonly leaseClaims: Array<{ leaseOwner: string; leaseExpiresAt: string }> = [];
   maintenanceLeaseAvailable = true;
+  maintenanceLeaseOwner: string | null = null;
   private readonly jobs = new Map<string, AudioJob>();
 
   async init(): Promise<void> {}
@@ -77,11 +79,16 @@ class MemoryJobStore implements JobStore {
     leaseExpiresAt: string,
   ): Promise<boolean> {
     this.leaseClaims.push({ leaseOwner, leaseExpiresAt });
-    if (!this.maintenanceLeaseAvailable) {
+    if (
+      !this.maintenanceLeaseAvailable &&
+      this.maintenanceLeaseOwner !== null &&
+      this.maintenanceLeaseOwner !== leaseOwner
+    ) {
       return false;
     }
 
     this.maintenanceLeaseAvailable = false;
+    this.maintenanceLeaseOwner = leaseOwner;
     return true;
   }
 }
@@ -235,6 +242,37 @@ describe("maintenance services", () => {
     expect(firstService.runOnce).toHaveBeenCalledTimes(1);
     expect(secondService.runOnce).not.toHaveBeenCalled();
     expect(jobStore.leaseClaims).toHaveLength(2);
+  });
+
+  it("does not overlap maintenance passes within one process", async () => {
+    vi.useFakeTimers();
+
+    try {
+      const jobStore = new MemoryJobStore();
+      let resolveSlowRun: () => void = () => {};
+      const slowRun = new Promise<void>((resolve) => {
+        resolveSlowRun = () => resolve();
+      });
+      const slowService = {
+        runOnce: vi.fn(() => slowRun),
+      };
+
+      const stop = startMaintenanceWorker({
+        jobStore,
+        leaseOwner: "worker-a",
+        intervalMs: 10,
+        services: [slowService],
+      });
+
+      await vi.advanceTimersByTimeAsync(35);
+      expect(slowService.runOnce).toHaveBeenCalledTimes(1);
+
+      resolveSlowRun();
+      await Promise.resolve();
+      stop();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

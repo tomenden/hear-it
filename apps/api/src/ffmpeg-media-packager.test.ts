@@ -1,3 +1,5 @@
+import { readFile, writeFile } from "node:fs/promises";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,7 +10,12 @@ import {
   buildPlaylistKey,
   evaluateStartupBuffer,
 } from "./media-packager.js";
-import { createFfmpegMediaPackager, FfmpegBinaryMissingError, FfmpegCommandFailedError } from "./ffmpeg-media-packager.js";
+import {
+  createFfmpegMediaPackager,
+  EmptyMediaChunkInputError,
+  FfmpegBinaryMissingError,
+  FfmpegCommandFailedError,
+} from "./ffmpeg-media-packager.js";
 
 const sampleChunks = [
   {
@@ -80,11 +87,25 @@ describe("evaluateStartupBuffer", () => {
 
 describe("createFfmpegMediaPackager", () => {
   it("packages final MP3 metadata from ordered chunk inputs", async () => {
-    const run = vi.fn(async () => ({
-      exitCode: 0,
-      stdout: Buffer.from("final-mp3-bytes"),
-      stderr: Buffer.alloc(0),
-    }));
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const run = vi.fn(async (_command: string, args: string[]) => {
+      calls.push({ command: "ffmpeg", args });
+      const concatListPath = args[args.indexOf("-i") + 1];
+      if (concatListPath?.endsWith("inputs.txt")) {
+        const concatListText = await readFile(concatListPath, "utf8");
+        expect(concatListText).toContain("chunk-0000.wav");
+        expect(concatListText).toContain("chunk-0001.pcm");
+      }
+      const outputPath = args.at(-1);
+      if (outputPath?.endsWith("final.mp3")) {
+        await writeFile(outputPath, Buffer.from("packaged-mp3-bytes"));
+      }
+      return {
+        exitCode: 0,
+        stdout: Buffer.alloc(0),
+        stderr: Buffer.alloc(0),
+      };
+    });
     const packager = createFfmpegMediaPackager({ run });
 
     const result = await packager.packageMedia("job-123", sampleChunks);
@@ -96,10 +117,54 @@ describe("createFfmpegMediaPackager", () => {
     expect(result.finalAudio.durationSeconds).toBe(20);
     expect(result.finalAudio.sampleRateHz).toBe(44_100);
     expect(result.finalAudio.channelCount).toBe(1);
-    expect(result.finalAudio.audioData.toString()).toBe("final-mp3-bytes");
+    expect(result.finalAudio.audioData.toString()).toBe("packaged-mp3-bytes");
     expect(result.startupBuffer.isPlayable).toBe(true);
     expect(result.playlistText).toContain("jobs/job-123/segments/chunk-0000.m4s");
-    expect(run).toHaveBeenCalledTimes(2);
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.args).toEqual(expect.arrayContaining([
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      expect.stringContaining("inputs.txt"),
+      "-f",
+      "hls",
+      "-hls_playlist_type",
+      "event",
+      "-hls_segment_type",
+      "fmp4",
+      "-hls_fmp4_init_filename",
+      expect.stringContaining("init.mp4"),
+      "-hls_segment_filename",
+      expect.stringContaining("chunk-%04d.m4s"),
+      expect.stringContaining("playlist.m3u8"),
+    ]));
+    expect(calls[1]?.args).toEqual(expect.arrayContaining([
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      expect.stringContaining("inputs.txt"),
+      "-c:a",
+      "libmp3lame",
+      expect.stringContaining("final.mp3"),
+    ]));
+  });
+
+  it("fails fast when no chunks are provided", async () => {
+    const packager = createFfmpegMediaPackager({
+      run: vi.fn(async () => ({
+        exitCode: 0,
+        stdout: Buffer.alloc(0),
+        stderr: Buffer.alloc(0),
+      })),
+    });
+
+    await expect(packager.packageMedia("job-123", [])).rejects.toBeInstanceOf(
+      EmptyMediaChunkInputError,
+    );
   });
 
   it("fails loudly when ffmpeg is missing", async () => {

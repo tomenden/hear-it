@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { spawn } from "node:child_process";
 
 import {
@@ -26,6 +29,15 @@ export interface FfmpegMediaPackagerOptions {
   commandRunner?: FfmpegCommandRunner;
   run?: FfmpegCommandRunner["run"];
   startupBufferSeconds?: number;
+}
+
+export class EmptyMediaChunkInputError extends Error {
+  readonly code = "empty_media_chunk_input";
+
+  constructor() {
+    super("At least one chunk is required for media packaging.");
+    this.name = "EmptyMediaChunkInputError";
+  }
 }
 
 export class FfmpegBinaryMissingError extends Error {
@@ -66,59 +78,116 @@ export function createFfmpegMediaPackager(
 
   return {
     async packageMedia(jobId, chunks) {
-      const startupBuffer = evaluateStartupBuffer(chunks, startupBufferSeconds);
-      const playlistKey = buildPlaylistKey(jobId);
-      const initSegmentKey = buildInitSegmentKey(jobId);
-      const segmentKeys = chunks.map((chunk) => buildChunkMediaKey(jobId, chunk.index));
-      const playlistText = buildHlsEventPlaylist(jobId, chunks, {
-        startupBufferPlayable: startupBuffer.isPlayable,
-      });
+      if (chunks.length === 0) {
+        throw new EmptyMediaChunkInputError();
+      }
 
-      await runFfmpegCommand(commandRunner, ffmpegPath, [
-        "-y",
-        "-i",
-        ...segmentKeys.flatMap((key) => ["-i", key]),
-        "-f",
-        "hls",
-        "-hls_playlist_type",
-        "event",
-        "-hls_segment_type",
-        "fmp4",
-        "-hls_fmp4_init_filename",
-        initSegmentKey,
-        playlistKey,
-      ]);
+      const workingDir = await mkdtemp(join(tmpdir(), "hear-it-packager-"));
+      try {
+        const inputsDir = join(workingDir, "inputs");
+        const outputsDir = join(workingDir, "outputs");
+        await mkdir(inputsDir, { recursive: true });
+        await mkdir(outputsDir, { recursive: true });
 
-      const finalAudioKey = buildFinalAudioKey(jobId);
-      const finalAudioResult = await runFfmpegCommand(commandRunner, ffmpegPath, [
-        "-y",
-        "-i",
-        playlistKey,
-        "-c:a",
-        "libmp3lame",
-        finalAudioKey,
-      ]);
+        const stagedInputs = await stageChunkInputs(chunks, inputsDir);
+        const concatListPath = join(workingDir, "inputs.txt");
+        await writeFile(
+          concatListPath,
+          stagedInputs.map((input) => `file '${escapeConcatPath(input.path)}'`).join("\n"),
+        );
 
-      return {
-        playlistKey,
-        playlistText,
-        initSegmentKey,
-        segments: chunks.map((chunk) => ({
-          index: chunk.index,
-          key: buildChunkMediaKey(jobId, chunk.index),
-          durationSeconds: chunk.chunkMedia.durationSeconds,
-        })),
-        startupBuffer,
-        finalAudio: {
-          key: finalAudioKey,
-          audioData: finalAudioResult.stdout,
-          contentType: "audio/mpeg",
-          format: "mp3",
-          durationSeconds: startupBuffer.bufferedSeconds,
-          sampleRateHz: chunks[0]?.chunkMedia.sampleRateHz ?? 44_100,
-          channelCount: chunks[0]?.chunkMedia.channelCount ?? 1,
-        },
-      };
+        const startupBuffer = evaluateStartupBuffer(chunks, startupBufferSeconds);
+        const playlistKey = buildPlaylistKey(jobId);
+        const initSegmentKey = buildInitSegmentKey(jobId);
+        const playlistText = buildHlsEventPlaylist(
+          jobId,
+          chunks.map((chunk) => ({
+            index: chunk.index,
+            chunkMedia: chunk.chunkMedia,
+          })),
+          { startupBufferPlayable: startupBuffer.isPlayable },
+        );
+        const hlsPlaylistPath = join(outputsDir, "playlist.m3u8");
+        const hlsInitSegmentPath = join(outputsDir, "init.mp4");
+        const hlsSegmentPattern = join(outputsDir, "chunk-%04d.m4s");
+
+        await runFfmpegCommand(commandRunner, ffmpegPath, [
+          "-y",
+          "-hide_banner",
+          "-loglevel",
+          "error",
+          "-f",
+          "concat",
+          "-safe",
+          "0",
+          "-i",
+          concatListPath,
+          "-c:a",
+          "aac",
+          "-ar",
+          String(chunks[0]!.chunkMedia.sampleRateHz),
+          "-ac",
+          String(chunks[0]!.chunkMedia.channelCount),
+          "-f",
+          "hls",
+          "-hls_playlist_type",
+          "event",
+          "-hls_segment_type",
+          "fmp4",
+          "-hls_fmp4_init_filename",
+          hlsInitSegmentPath,
+          "-hls_segment_filename",
+          hlsSegmentPattern,
+          hlsPlaylistPath,
+        ]);
+
+        const finalAudioKey = buildFinalAudioKey(jobId);
+        const finalAudioPath = join(outputsDir, "final.mp3");
+        await runFfmpegCommand(commandRunner, ffmpegPath, [
+          "-y",
+          "-hide_banner",
+          "-loglevel",
+          "error",
+          "-f",
+          "concat",
+          "-safe",
+          "0",
+          "-i",
+          concatListPath,
+          "-c:a",
+          "libmp3lame",
+          "-ar",
+          String(chunks[0]!.chunkMedia.sampleRateHz),
+          "-ac",
+          String(chunks[0]!.chunkMedia.channelCount),
+          finalAudioPath,
+        ]);
+
+        const finalAudioData = await readFile(finalAudioPath);
+
+        return {
+          playlistKey,
+          playlistText,
+          initSegmentKey,
+          segments: chunks.map((chunk) => ({
+            index: chunk.index,
+            key: buildChunkMediaKey(jobId, chunk.index),
+            durationSeconds: chunk.chunkMedia.durationSeconds,
+          })),
+          startupBuffer,
+          finalAudio: {
+            key: finalAudioKey,
+            audioData: finalAudioData,
+            contentType: "audio/mpeg",
+            format: "mp3",
+            durationSeconds: startupBuffer.bufferedSeconds,
+            sampleRateHz: chunks[0]!.chunkMedia.sampleRateHz,
+            channelCount: chunks[0]!.chunkMedia.channelCount,
+          },
+        };
+      } finally {
+        await rm(workingDir, { recursive: true, force: true });
+      }
     },
   };
 }
@@ -173,6 +242,28 @@ async function runFfmpegCommand(
 
     throw error;
   }
+}
+
+async function stageChunkInputs(
+  chunks: readonly MediaChunkInput[],
+  inputsDir: string,
+): Promise<Array<{ index: number; path: string }>> {
+  const staged: Array<{ index: number; path: string }> = [];
+
+  for (const chunk of chunks) {
+    const inputPath = join(
+      inputsDir,
+      `chunk-${chunk.index.toString().padStart(4, "0")}.${chunk.chunkMedia.format}`,
+    );
+    await writeFile(inputPath, chunk.chunkMedia.audioData);
+    staged.push({ index: chunk.index, path: inputPath });
+  }
+
+  return staged;
+}
+
+function escapeConcatPath(path: string): string {
+  return path.replace(/'/g, "'\\''");
 }
 
 function isMissingBinaryError(error: unknown): error is NodeJS.ErrnoException {

@@ -18,6 +18,23 @@ export interface SpeechOptions {
   voice: string;
 }
 
+export interface SpeechScriptNormalization {
+  whitespaceCollapsed: number;
+  separatorsRemoved: number;
+  headingsLabeled: number;
+  captionsLabeled: number;
+  urlsHumanized: number;
+  titleFallbackUsed: boolean;
+}
+
+export interface SpeechScript {
+  displayTitle: string;
+  script: string;
+  speechScript: string;
+  speechScriptVersion: number;
+  normalization: SpeechScriptNormalization;
+}
+
 export type AudioJobStatus =
   | "queued"
   | "processing"

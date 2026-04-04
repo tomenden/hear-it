@@ -1,6 +1,8 @@
 import * as Sentry from "@sentry/node";
 import { trackEvent } from "./analytics.js";
 import { extractArticle } from "./extractor.js";
+import { buildSpeechScript } from "./speech-script.js";
+import { chunkSpeechScript } from "./text-chunker.js";
 import {
   DEFAULT_SPEECH_OPTIONS,
   AVAILABLE_VOICES,
@@ -112,7 +114,14 @@ export class AudioJobService {
       return;
     }
 
-    const segmentTexts = chunkNarrationText(claimedJob.article.textContent);
+    const speechScript = buildSpeechScript({
+      title: claimedJob.article.title,
+      textContent: claimedJob.article.textContent,
+    });
+    const segmentTexts = chunkSpeechScript({
+      script: speechScript.script,
+      targetSecondsPerChunk: 30,
+    }).map((chunk) => chunk.text);
     let audioSegments: AudioJob["audioSegments"] = [...claimedJob.audioSegments];
     let combinedSegmentAudioData: Buffer[] = [];
     const canResumePersistedSegments =

@@ -9,10 +9,15 @@ import type { AudioStore } from "./storage.js";
 const OPENAI_API_URL = "https://api.openai.com/v1/audio/speech";
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini-tts";
 const DEFAULT_OPENAI_TTS_TIMEOUT_MS = 30_000;
-const DEFAULT_TTS_INSTRUCTIONS =
-  "Read this article aloud in a natural, engaging tone with clear pacing and clean sentence boundaries.";
 
-export const AVAILABLE_VOICES = ["alloy", "ash", "sage", "verse"] as const;
+export const AVAILABLE_VOICES = ["alloy", "ash", "coral", "nova", "sage", "shimmer", "verse"] as const;
+
+export function buildTTSInstructions(language?: string): string {
+  const langClause = language
+    ? `in ${language}`
+    : "in the article's original language";
+  return `Read this article aloud ${langClause} in a natural, engaging tone with clear pacing and clean sentence boundaries.`;
+}
 export const VOICE_PREVIEW_TEXT =
   "This is Hear It. I turn articles into clear, natural audio you can listen to on the move.";
 
@@ -126,7 +131,7 @@ export class OpenAISpeechProvider implements SpeechProvider {
           model: this.model,
           voice: speechOptions.voice,
           input: text,
-          instructions: DEFAULT_TTS_INSTRUCTIONS,
+          instructions: buildTTSInstructions(speechOptions.language),
           response_format: "mp3",
         }),
         signal: controller.signal,

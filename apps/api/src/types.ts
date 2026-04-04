@@ -16,6 +16,7 @@ export interface ExtractedArticle {
 
 export interface SpeechOptions {
   voice: string;
+  language?: string;
 }
 
 export type AudioJobStatus =

@@ -22,8 +22,8 @@ const sampleChunks = [
     index: 0,
     chunkMedia: {
       audioData: Buffer.from("chunk-0"),
-      format: "wav" as const,
-      contentType: "audio/wav",
+      format: "mp3" as const,
+      contentType: "audio/mpeg" as const,
       durationSeconds: 8,
       sampleRateHz: 44_100,
       channelCount: 1,
@@ -33,8 +33,8 @@ const sampleChunks = [
     index: 1,
     chunkMedia: {
       audioData: Buffer.from("chunk-1"),
-      format: "pcm" as const,
-      contentType: "audio/L16",
+      format: "mp3" as const,
+      contentType: "audio/mpeg" as const,
       durationSeconds: 12,
       sampleRateHz: 44_100,
       channelCount: 1,
@@ -93,8 +93,32 @@ describe("createFfmpegMediaPackager", () => {
       const concatListPath = args[args.indexOf("-i") + 1];
       if (concatListPath?.endsWith("inputs.txt")) {
         const concatListText = await readFile(concatListPath, "utf8");
-        expect(concatListText).toContain("chunk-0000.wav");
-        expect(concatListText).toContain("chunk-0001.pcm");
+        expect(concatListText).toContain("chunk-0000.mp3");
+        expect(concatListText).toContain("chunk-0001.mp3");
+
+        const initPath = args[args.indexOf("-hls_fmp4_init_filename") + 1];
+        const segmentPattern = args[args.indexOf("-hls_segment_filename") + 1];
+        const playlistPath = args.at(-1);
+
+        if (typeof initPath === "string") {
+          await writeFile(initPath, Buffer.from("init-bytes"));
+        }
+
+        if (typeof playlistPath === "string") {
+          await writeFile(
+            playlistPath,
+            Buffer.from(
+              buildHlsEventPlaylist("job-123", sampleChunks, {
+                startupBufferPlayable: true,
+              }),
+            ),
+          );
+        }
+
+        if (typeof segmentPattern === "string") {
+          await writeFile(segmentPattern.replace("%04d", "0000"), Buffer.from("segment-0-bytes"));
+          await writeFile(segmentPattern.replace("%04d", "0001"), Buffer.from("segment-1-bytes"));
+        }
       }
       const outputPath = args.at(-1);
       if (outputPath?.endsWith("final.mp3")) {
@@ -110,7 +134,15 @@ describe("createFfmpegMediaPackager", () => {
 
     const result = await packager.packageMedia("job-123", sampleChunks);
 
-    expect(result.playlistKey).toBe("jobs/job-123/playlist.m3u8");
+    expect(result.playlist.key).toBe("jobs/job-123/playlist.m3u8");
+    expect(result.playlist.audioData.toString()).toBe(
+      buildHlsEventPlaylist("job-123", sampleChunks, { startupBufferPlayable: true }),
+    );
+    expect(result.initSegment.key).toBe("jobs/job-123/segments/init.mp4");
+    expect(result.initSegment.audioData.toString()).toBe("init-bytes");
+    expect(result.segments).toHaveLength(2);
+    expect(result.segments[0]?.key).toBe("jobs/job-123/segments/chunk-0000.m4s");
+    expect(result.segments[0]?.audioData.toString()).toBe("segment-0-bytes");
     expect(result.finalAudio.key).toBe("jobs/job-123/final.mp3");
     expect(result.finalAudio.contentType).toBe("audio/mpeg");
     expect(result.finalAudio.format).toBe("mp3");
@@ -119,38 +151,25 @@ describe("createFfmpegMediaPackager", () => {
     expect(result.finalAudio.channelCount).toBe(1);
     expect(result.finalAudio.audioData.toString()).toBe("packaged-mp3-bytes");
     expect(result.startupBuffer.isPlayable).toBe(true);
-    expect(result.playlistText).toContain("jobs/job-123/segments/chunk-0000.m4s");
     expect(calls).toHaveLength(2);
-    expect(calls[0]?.args).toEqual(expect.arrayContaining([
-      "-f",
-      "concat",
-      "-safe",
-      "0",
-      "-i",
-      expect.stringContaining("inputs.txt"),
-      "-f",
-      "hls",
-      "-hls_playlist_type",
-      "event",
-      "-hls_segment_type",
-      "fmp4",
-      "-hls_fmp4_init_filename",
-      expect.stringContaining("init.mp4"),
-      "-hls_segment_filename",
-      expect.stringContaining("chunk-%04d.m4s"),
-      expect.stringContaining("playlist.m3u8"),
-    ]));
-    expect(calls[1]?.args).toEqual(expect.arrayContaining([
-      "-f",
-      "concat",
-      "-safe",
-      "0",
-      "-i",
-      expect.stringContaining("inputs.txt"),
-      "-c:a",
-      "libmp3lame",
-      expect.stringContaining("final.mp3"),
-    ]));
+    expect(calls[0]?.args[0]).toBe("-y");
+    expect(calls[0]?.args[4]).toBe("-f");
+    expect(calls[0]?.args[5]).toBe("concat");
+    expect(calls[0]?.args[8]).toBe("-i");
+    expect(calls[0]?.args[9]).toContain("inputs.txt");
+    expect(calls[0]?.args).toContain("-hls_playlist_type");
+    expect(calls[0]?.args).toContain("event");
+    expect(calls[0]?.args).toContain("-hls_segment_type");
+    expect(calls[0]?.args).toContain("fmp4");
+    expect(calls[0]?.args).toContain("-hls_segment_filename");
+    expect(calls[0]?.args.at(-1)).toContain("playlist.m3u8");
+    expect(calls[1]?.args[4]).toBe("-f");
+    expect(calls[1]?.args[5]).toBe("concat");
+    expect(calls[1]?.args[8]).toBe("-i");
+    expect(calls[1]?.args[9]).toContain("inputs.txt");
+    expect(calls[1]?.args).toContain("-c:a");
+    expect(calls[1]?.args).toContain("libmp3lame");
+    expect(calls[1]?.args.at(-1)).toContain("final.mp3");
   });
 
   it("fails fast when no chunks are provided", async () => {
@@ -165,6 +184,34 @@ describe("createFfmpegMediaPackager", () => {
     await expect(packager.packageMedia("job-123", [])).rejects.toBeInstanceOf(
       EmptyMediaChunkInputError,
     );
+  });
+
+  it("rejects unsupported chunk formats before invoking ffmpeg", async () => {
+    const run = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: Buffer.alloc(0),
+      stderr: Buffer.alloc(0),
+    }));
+    const packager = createFfmpegMediaPackager({ run });
+
+    const unsupportedChunk = [
+      {
+        index: 0,
+        chunkMedia: {
+          audioData: Buffer.from("raw-wav"),
+          format: "wav",
+          contentType: "audio/wav",
+          durationSeconds: 8,
+          sampleRateHz: 44_100,
+          channelCount: 1,
+        },
+      },
+    ] as any;
+
+    await expect(packager.packageMedia("job-123", unsupportedChunk)).rejects.toMatchObject({
+      code: "unsupported_chunk_media_format",
+    });
+    expect(run).not.toHaveBeenCalled();
   });
 
   it("fails loudly when ffmpeg is missing", async () => {

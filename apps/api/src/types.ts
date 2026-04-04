@@ -29,6 +29,11 @@ export interface SpeechChunkMedia {
   channelCount: number;
 }
 
+export interface PackagerChunkMedia extends SpeechChunkMedia {
+  format: "mp3";
+  contentType: "audio/mpeg";
+}
+
 export interface SpeechScriptNormalization {
   whitespaceCollapsed: number;
   separatorsRemoved: number;

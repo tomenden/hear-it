@@ -6,7 +6,6 @@ import { spawn } from "node:child_process";
 import {
   buildChunkMediaKey,
   buildFinalAudioKey,
-  buildHlsEventPlaylist,
   buildInitSegmentKey,
   buildPlaylistKey,
   evaluateStartupBuffer,
@@ -37,6 +36,18 @@ export class EmptyMediaChunkInputError extends Error {
   constructor() {
     super("At least one chunk is required for media packaging.");
     this.name = "EmptyMediaChunkInputError";
+  }
+}
+
+export class UnsupportedChunkMediaFormatError extends Error {
+  readonly code = "unsupported_chunk_media_format";
+
+  constructor(
+    readonly index: number,
+    readonly format: string,
+  ) {
+    super(`Unsupported chunk media format at index ${index}: ${format}.`);
+    this.name = "UnsupportedChunkMediaFormatError";
   }
 }
 
@@ -82,6 +93,10 @@ export function createFfmpegMediaPackager(
         throw new EmptyMediaChunkInputError();
       }
 
+      for (const chunk of chunks) {
+        assertSupportedChunkMedia(chunk);
+      }
+
       const workingDir = await mkdtemp(join(tmpdir(), "hear-it-packager-"));
       try {
         const inputsDir = join(workingDir, "inputs");
@@ -99,14 +114,6 @@ export function createFfmpegMediaPackager(
         const startupBuffer = evaluateStartupBuffer(chunks, startupBufferSeconds);
         const playlistKey = buildPlaylistKey(jobId);
         const initSegmentKey = buildInitSegmentKey(jobId);
-        const playlistText = buildHlsEventPlaylist(
-          jobId,
-          chunks.map((chunk) => ({
-            index: chunk.index,
-            chunkMedia: chunk.chunkMedia,
-          })),
-          { startupBufferPlayable: startupBuffer.isPlayable },
-        );
         const hlsPlaylistPath = join(outputsDir, "playlist.m3u8");
         const hlsInitSegmentPath = join(outputsDir, "init.mp4");
         const hlsSegmentPattern = join(outputsDir, "chunk-%04d.m4s");
@@ -164,16 +171,34 @@ export function createFfmpegMediaPackager(
         ]);
 
         const finalAudioData = await readFile(finalAudioPath);
+        const playlistData = await readFile(hlsPlaylistPath);
+        const initSegmentData = await readFile(hlsInitSegmentPath);
+        const segmentArtifacts = await Promise.all(
+          chunks.map(async (chunk) => {
+            const segmentPath = join(outputsDir, `chunk-${chunk.index.toString().padStart(4, "0")}.m4s`);
+            const audioData = await readFile(segmentPath);
+            return {
+              index: chunk.index,
+              key: buildChunkMediaKey(jobId, chunk.index),
+              audioData,
+              contentType: "video/mp4" as const,
+              durationSeconds: chunk.chunkMedia.durationSeconds,
+            };
+          }),
+        );
 
         return {
-          playlistKey,
-          playlistText,
-          initSegmentKey,
-          segments: chunks.map((chunk) => ({
-            index: chunk.index,
-            key: buildChunkMediaKey(jobId, chunk.index),
-            durationSeconds: chunk.chunkMedia.durationSeconds,
-          })),
+          playlist: {
+            key: playlistKey,
+            audioData: playlistData,
+            contentType: "application/vnd.apple.mpegurl",
+          },
+          initSegment: {
+            key: initSegmentKey,
+            audioData: initSegmentData,
+            contentType: "video/mp4",
+          },
+          segments: segmentArtifacts,
           startupBuffer,
           finalAudio: {
             key: finalAudioKey,
@@ -260,6 +285,12 @@ async function stageChunkInputs(
   }
 
   return staged;
+}
+
+function assertSupportedChunkMedia(chunk: MediaChunkInput): void {
+  if (chunk.chunkMedia.format !== "mp3" || chunk.chunkMedia.contentType !== "audio/mpeg") {
+    throw new UnsupportedChunkMediaFormatError(chunk.index, chunk.chunkMedia.format);
+  }
 }
 
 function escapeConcatPath(path: string): string {

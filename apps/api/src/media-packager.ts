@@ -1,14 +1,22 @@
-import type { SpeechChunkMedia } from "./types.js";
+import type { PackagerChunkMedia } from "./types.js";
 
 export interface MediaChunkInput {
   index: number;
-  chunkMedia: SpeechChunkMedia;
+  chunkMedia: PackagerChunkMedia;
 }
 
 export interface MediaChunkOutput {
   index: number;
   key: string;
+  audioData: Buffer;
+  contentType: "video/mp4";
   durationSeconds: number;
+}
+
+export interface MediaArtifact {
+  key: string;
+  audioData: Buffer;
+  contentType: string;
 }
 
 export interface StartupBufferEvaluation {
@@ -27,9 +35,8 @@ export interface MediaPackagingFinalAudio {
 }
 
 export interface MediaPackagingResult {
-  playlistKey: string;
-  playlistText: string;
-  initSegmentKey: string;
+  playlist: MediaArtifact;
+  initSegment: MediaArtifact;
   segments: MediaChunkOutput[];
   startupBuffer: StartupBufferEvaluation;
   finalAudio: MediaPackagingFinalAudio;

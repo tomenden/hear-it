@@ -1,4 +1,10 @@
 import type { AudioJob } from "./types.js";
+import type {
+  JobEventInput,
+  JobEventListOptions,
+  JobEventRecord,
+  JobLeaseClaim,
+} from "./job-events.js";
 
 export interface AudioStorePutOptions {
   overwrite?: boolean;
@@ -16,7 +22,7 @@ export interface JobStore {
   get(jobId: string): Promise<AudioJob | null>;
   save(job: AudioJob): Promise<void>;
   /** Atomically move a queued job into processing. Returns null if it was already claimed. */
-  claimQueued(jobId: string): Promise<AudioJob | null>;
+  claimQueued(jobId: string, lease?: JobLeaseClaim): Promise<AudioJob | null>;
   /** Update specific fields on an existing job. Returns false if the job doesn't exist. */
   update(jobId: string, patch: Partial<AudioJob>): Promise<boolean>;
   /** Delete a job by ID. Returns false if the job doesn't exist. */
@@ -25,6 +31,16 @@ export interface JobStore {
   getAllForUser(userId: string): Promise<AudioJob[]>;
   getForUser(jobId: string, userId: string): Promise<AudioJob | null>;
   deleteForUser(jobId: string, userId: string): Promise<boolean>;
+  appendEvent?(jobId: string, event: JobEventInput): Promise<void>;
+  listEvents?(
+    jobId: string,
+    options?: JobEventListOptions,
+  ): Promise<JobEventRecord[]>;
+  heartbeat?(
+    jobId: string,
+    leaseOwner: string,
+    leaseExpiresAt: string,
+  ): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------

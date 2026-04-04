@@ -14,6 +14,8 @@ export interface ExtractedArticle {
   estimatedMinutes: number;
 }
 
+import type { InternalAudioState } from "./audio-playback.js";
+
 export interface SpeechOptions {
   voice: string;
 }
@@ -75,6 +77,14 @@ export interface AudioSegment {
 export interface AudioJob {
   id: string;
   status: AudioJobStatus;
+  internalState?: InternalAudioState | null;
+  displayTitle?: string | null;
+  speechScript?: string | null;
+  availableDurationSeconds?: number | null;
+  leaseOwner?: string | null;
+  leaseExpiresAt?: string | null;
+  runId?: string | null;
+  attempt?: number | null;
   article: ExtractedArticle;
   speechOptions: SpeechOptions;
   provider: string;

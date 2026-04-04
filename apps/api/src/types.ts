@@ -66,7 +66,7 @@ export interface AudioRenderResult {
   durationSeconds: number;
   audioData?: Buffer;
   contentType?: string;
-  chunkMedia?: SpeechChunkMedia;
+  chunkMedia?: PackagerChunkMedia;
 }
 
 export interface AudioSegment {

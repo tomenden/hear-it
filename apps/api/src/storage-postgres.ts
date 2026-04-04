@@ -63,6 +63,7 @@ export class PostgresJobStore implements JobStore {
           display_title TEXT,
           speech_script TEXT,
           available_duration_seconds DOUBLE PRECISION,
+          live_edge_updated_at TEXT,
           lease_owner TEXT,
           lease_expires_at TEXT,
           run_id TEXT,
@@ -141,6 +142,10 @@ export class PostgresJobStore implements JobStore {
       `;
 
       await this.sql`
+        ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS live_edge_updated_at TEXT
+      `;
+
+      await this.sql`
         ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS lease_owner TEXT
       `;
 
@@ -214,7 +219,8 @@ export class PostgresJobStore implements JobStore {
       await this.sql`
         INSERT INTO audio_jobs (
           id, status, internal_state, display_title, speech_script,
-          available_duration_seconds, lease_owner, lease_expires_at, run_id, attempt,
+          available_duration_seconds, live_edge_updated_at,
+          lease_owner, lease_expires_at, run_id, attempt,
           article, speech_options, provider,
           audio_url, playlist_url, audio_segments, duration_seconds,
           error, created_at, updated_at, user_id
@@ -225,6 +231,7 @@ export class PostgresJobStore implements JobStore {
           ${job.displayTitle ?? job.article.title},
           ${job.speechScript ?? null},
           ${job.availableDurationSeconds ?? null},
+          ${job.liveEdgeUpdatedAt ?? null},
           ${job.leaseOwner ?? null},
           ${job.leaseExpiresAt ?? null},
           ${job.runId ?? null},
@@ -247,6 +254,7 @@ export class PostgresJobStore implements JobStore {
           display_title = EXCLUDED.display_title,
           speech_script = EXCLUDED.speech_script,
           available_duration_seconds = EXCLUDED.available_duration_seconds,
+          live_edge_updated_at = EXCLUDED.live_edge_updated_at,
           lease_owner = EXCLUDED.lease_owner,
           lease_expires_at = EXCLUDED.lease_expires_at,
           run_id = EXCLUDED.run_id,
@@ -305,6 +313,7 @@ export class PostgresJobStore implements JobStore {
     const hasDisplayTitle = patch.displayTitle !== undefined;
     const hasSpeechScript = patch.speechScript !== undefined;
     const hasAvailableDurationSeconds = patch.availableDurationSeconds !== undefined;
+    const hasLiveEdgeUpdatedAt = patch.liveEdgeUpdatedAt !== undefined;
     const hasLeaseOwner = patch.leaseOwner !== undefined;
     const hasLeaseExpiresAt = patch.leaseExpiresAt !== undefined;
     const hasRunId = patch.runId !== undefined;
@@ -324,6 +333,10 @@ export class PostgresJobStore implements JobStore {
         available_duration_seconds = CASE
           WHEN ${hasAvailableDurationSeconds} THEN ${patch.availableDurationSeconds ?? null}
           ELSE available_duration_seconds
+        END,
+        live_edge_updated_at = CASE
+          WHEN ${hasLiveEdgeUpdatedAt} THEN ${patch.liveEdgeUpdatedAt ?? null}
+          ELSE live_edge_updated_at
         END,
         lease_owner = CASE WHEN ${hasLeaseOwner} THEN ${patch.leaseOwner ?? null} ELSE lease_owner END,
         lease_expires_at = CASE WHEN ${hasLeaseExpiresAt} THEN ${patch.leaseExpiresAt ?? null} ELSE lease_expires_at END,
@@ -446,6 +459,7 @@ function rowToJob(row: SqlRow): AudioJob {
       row.available_duration_seconds === undefined
         ? null
         : (row.available_duration_seconds as number | null),
+    liveEdgeUpdatedAt: (row.live_edge_updated_at as string) ?? null,
     leaseOwner: (row.lease_owner as string) ?? null,
     leaseExpiresAt: (row.lease_expires_at as string) ?? null,
     runId: (row.run_id as string) ?? null,

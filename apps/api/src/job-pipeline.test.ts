@@ -192,6 +192,95 @@ class RecordingPackager {
   }
 }
 
+class PublishThenFailSpeechProvider implements SpeechProvider {
+  readonly name = "publish-then-fail-test";
+  private callCount = 0;
+
+  async synthesize(
+    article: ExtractedArticle,
+    speechOptions: SpeechOptions,
+    context: SpeechSynthesisContext,
+  ): Promise<AudioRenderResult> {
+    return this.synthesizeText(article.textContent, speechOptions, context);
+  }
+
+  async synthesizeText(
+    _text: string,
+    _speechOptions: SpeechOptions,
+    context: SpeechSynthesisContext,
+  ): Promise<AudioRenderResult> {
+    this.callCount += 1;
+    if (this.callCount === 3) {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      throw new Error("Chunk synthesis failed after streaming was published.");
+    }
+
+    const audioData = Buffer.from(`ID3publish-${this.callCount}`);
+    const audioUrl =
+      context.audioStore && context.fileKey
+        ? await context.audioStore.put(context.fileKey, audioData, "audio/mpeg")
+        : null;
+
+    return {
+      audioUrl,
+      playlistUrl: null,
+      audioSegments: audioUrl ? [{ url: audioUrl, durationSeconds: 12 }] : [],
+      durationSeconds: 12,
+      audioData,
+      contentType: "audio/mpeg",
+      chunkMedia: {
+        audioData,
+        format: "mp3",
+        contentType: "audio/mpeg",
+        durationSeconds: 12,
+        sampleRateHz: 44_100,
+        channelCount: 1,
+      },
+    };
+  }
+}
+
+class UnsupportedChunkMediaSpeechProvider implements SpeechProvider {
+  readonly name = "unsupported-chunk-media-test";
+
+  async synthesize(
+    article: ExtractedArticle,
+    speechOptions: SpeechOptions,
+    context: SpeechSynthesisContext,
+  ): Promise<AudioRenderResult> {
+    return this.synthesizeText(article.textContent, speechOptions, context);
+  }
+
+  async synthesizeText(
+    _text: string,
+    _speechOptions: SpeechOptions,
+    context: SpeechSynthesisContext,
+  ): Promise<AudioRenderResult> {
+    const audioData = Buffer.from("RIFFfakewav");
+    const audioUrl =
+      context.audioStore && context.fileKey
+        ? await context.audioStore.put(context.fileKey, audioData, "audio/wav")
+        : null;
+
+    return {
+      audioUrl,
+      playlistUrl: null,
+      audioSegments: audioUrl ? [{ url: audioUrl, durationSeconds: 24 }] : [],
+      durationSeconds: 24,
+      audioData,
+      contentType: "audio/wav",
+      chunkMedia: {
+        audioData,
+        format: "wav",
+        contentType: "audio/wav",
+        durationSeconds: 24,
+        sampleRateHz: 44_100,
+        channelCount: 1,
+      } as any,
+    };
+  }
+}
+
 function createClaimedJob(overrides: Partial<AudioJob> = {}): AudioJob {
   const createdAt = "2026-04-05T10:00:00.000Z";
   const paragraph = (label: string) =>
@@ -472,5 +561,47 @@ describe("job pipeline", () => {
     expect(harness.getCurrentJob().status).toBe("completed");
     expect(harness.getCurrentJob().audioSegments).toHaveLength(3);
     expect(harness.getCurrentJob().availableDurationSeconds).toBe(33);
+  });
+
+  it("clears stale streaming metadata when synthesis fails after publish", async () => {
+    const harness = createPipelineHarness({
+      speechProvider: new PublishThenFailSpeechProvider(),
+      startupBufferSeconds: 20,
+    });
+
+    await harness.pipeline.processClaimedJob(harness.getCurrentJob());
+
+    expect(
+      harness.snapshots.some(
+        ({ job, playback }) =>
+          Boolean(job.playlistUrl) && playback.mode === "streaming",
+      ),
+    ).toBe(true);
+    expect(harness.getCurrentJob().status).toBe("failed");
+    expect(harness.getCurrentJob().playlistUrl).toBeNull();
+    expect(harness.getCurrentJob().audioSegments).toEqual([]);
+    expect(harness.getCurrentJob().availableDurationSeconds).toBe(0);
+    expect(harness.getCurrentJob().liveEdgeUpdatedAt).toBeNull();
+    expect(harness.getCurrentJob().audioUrl).toBeNull();
+  });
+
+  it("fails fast when a speech provider returns unsupported chunk media", async () => {
+    const harness = createPipelineHarness({
+      speechProvider: new UnsupportedChunkMediaSpeechProvider(),
+      job: createClaimedJob({
+        article: {
+          ...createClaimedJob().article,
+          textContent: Array.from({ length: 64 }, (_, index) => `wav${index}`).join(" "),
+          wordCount: 64,
+          estimatedMinutes: 1,
+        },
+      }),
+      startupBufferSeconds: 20,
+    });
+
+    await harness.pipeline.processClaimedJob(harness.getCurrentJob());
+
+    expect(harness.getCurrentJob().status).toBe("failed");
+    expect(harness.getCurrentJob().error).toContain("Unsupported chunk media");
   });
 });

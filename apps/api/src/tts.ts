@@ -2,7 +2,7 @@ import { countWords } from "./extractor.js";
 import type {
   AudioRenderResult,
   ExtractedArticle,
-  SpeechChunkMedia,
+  PackagerChunkMedia,
   SpeechOptions,
 } from "./types.js";
 import type { AudioStore } from "./storage.js";
@@ -439,7 +439,7 @@ function buildChunkMedia(
   audioData: Buffer,
   durationSeconds: number,
   inspection?: MP3AudioInspection | null,
-): SpeechChunkMedia {
+): PackagerChunkMedia {
   return {
     audioData,
     format: "mp3",

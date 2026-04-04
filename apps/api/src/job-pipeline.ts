@@ -106,6 +106,10 @@ export function createJobPipeline(options: JobPipelineOptions) {
           status: "failed",
           internalState: "failed",
           audioUrl: null,
+          playlistUrl: null,
+          audioSegments: [],
+          availableDurationSeconds: 0,
+          liveEdgeUpdatedAt: null,
           durationSeconds: null,
           error: message,
         });
@@ -447,11 +451,18 @@ function buildPackagerChunkMedia(
   audioData: Buffer,
 ): PackagerChunkMedia {
   if (result.chunkMedia) {
+    if (
+      result.chunkMedia.format !== "mp3" ||
+      result.chunkMedia.contentType !== "audio/mpeg"
+    ) {
+      throw new Error(
+        `Unsupported chunk media format: ${result.chunkMedia.format} (${result.chunkMedia.contentType}).`,
+      );
+    }
+
     return {
       ...result.chunkMedia,
       audioData,
-      format: "mp3",
-      contentType: "audio/mpeg",
     };
   }
 

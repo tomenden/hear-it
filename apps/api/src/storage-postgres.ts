@@ -93,6 +93,15 @@ export class PostgresJobStore implements JobStore {
       `;
 
       await this.sql`
+        DELETE FROM job_events
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM audio_jobs
+          WHERE audio_jobs.id = job_events.job_id
+        )
+      `;
+
+      await this.sql`
         DO $$
         BEGIN
           IF NOT EXISTS (

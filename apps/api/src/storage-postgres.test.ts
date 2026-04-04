@@ -160,6 +160,16 @@ function createSqlHarness() {
       return [nextJob];
     }
 
+    if (text.startsWith("delete from job_events where not exists")) {
+      for (let index = events.length - 1; index >= 0; index -= 1) {
+        const row = events[index];
+        if (row && !jobs.has(String(row.job_id))) {
+          events.splice(index, 1);
+        }
+      }
+      return [];
+    }
+
     if (text.startsWith("delete from job_events where job_id =") && !text.includes("exists")) {
       const jobId = values[0] as string;
       for (let index = events.length - 1; index >= 0; index -= 1) {
@@ -461,10 +471,15 @@ describe("PostgresJobStore events and leases", () => {
     await store.appendEvent("job-1", { type: "job_created", sequenceNumber: 1 });
     await store.appendEvent("job-1", { type: "chunk_ready", sequenceNumber: 2 });
 
+    const queryCountBeforeDelete = harness.queries.length;
     expect(await store.delete("job-1")).toBe(true);
     expect(await store.get("job-1")).toBeNull();
     expect(await store.listEvents("job-1")).toEqual([]);
-    expect(harness.queries.some((query) => query.includes("delete from job_events"))).toBe(false);
+    expect(
+      harness.queries
+        .slice(queryCountBeforeDelete)
+        .some((query) => query.startsWith("delete from job_events")),
+    ).toBe(false);
   });
 
   it("deletes related events when deleting a user-owned job", async () => {
@@ -477,9 +492,49 @@ describe("PostgresJobStore events and leases", () => {
     );
     await store.appendEvent("job-1", { type: "job_created", sequenceNumber: 1 });
 
+    const queryCountBeforeDelete = harness.queries.length;
     expect(await store.deleteForUser("job-1", "user-1")).toBe(true);
     expect(await store.getForUser("job-1", "user-1")).toBeNull();
     expect(await store.listEvents("job-1")).toEqual([]);
-    expect(harness.queries.some((query) => query.includes("delete from job_events"))).toBe(false);
+    expect(
+      harness.queries
+        .slice(queryCountBeforeDelete)
+        .some((query) => query.startsWith("delete from job_events")),
+    ).toBe(false);
+  });
+
+  it("cleans orphan events before retrofitting the foreign key", async () => {
+    const { store, harness } = makeJobStore();
+    harness.jobs.set("job-1", { id: "job-1", user_id: null });
+    harness.events.push(
+      {
+        id: "event-orphan",
+        job_id: "missing-job",
+        event_type: "job_created",
+        sequence_number: 1,
+        payload: null,
+        occurred_at: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        id: "event-valid",
+        job_id: "job-1",
+        event_type: "job_created",
+        sequence_number: 2,
+        payload: null,
+        occurred_at: "2026-01-01T00:01:00.000Z",
+      },
+    );
+
+    await store.init();
+
+    expect(harness.events.map((event) => event.job_id)).toEqual(["job-1"]);
+    const cleanupIndex = harness.queries.findIndex((query) =>
+      query.startsWith("delete from job_events where not exists"),
+    );
+    const fkIndex = harness.queries.findIndex((query) =>
+      query.includes("add constraint job_events_job_id_fkey"),
+    );
+    expect(cleanupIndex).toBeGreaterThanOrEqual(0);
+    expect(fkIndex).toBeGreaterThan(cleanupIndex);
   });
 });

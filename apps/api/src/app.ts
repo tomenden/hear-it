@@ -168,7 +168,10 @@ export function createApp(options: CreateAppOptions) {
   };
 
   if (options.recoverInterruptedJobsOnStartup ?? false) {
-    void audioJobService.init().then(() => audioJobService.requeueInterruptedJobs());
+    runBackgroundTask(
+      audioJobService.init().then(() => audioJobService.requeueInterruptedJobs()),
+      "startup_recovery",
+    );
   }
 
   app.use(express.json({ limit: "1mb" }));
@@ -359,7 +362,10 @@ export function createApp(options: CreateAppOptions) {
       );
       res.status(202).json({ job: serializeJob(job) });
 
-      void audioJobService.processJob(job.id);
+      runBackgroundTask(
+        audioJobService.processJob(job.id),
+        `process_job:${job.id}`,
+      );
     } catch (error) {
       const response = errorResponse(error, "Failed to create audio job.");
       res.status(response.status).json(response.body);
@@ -437,4 +443,18 @@ function resolveAvailableDurationSeconds(job: AudioJob): number {
 
 function assertNever(value: never): never {
   throw new Error(`Unhandled audio job status: ${String(value)}`);
+}
+
+function runBackgroundTask(
+  task: Promise<unknown>,
+  taskName: string,
+): void {
+  void task.catch((error) => {
+    console.error(`Background task failed: ${taskName}`, error);
+    Sentry.captureException(error, {
+      tags: {
+        backgroundTask: taskName,
+      },
+    });
+  });
 }

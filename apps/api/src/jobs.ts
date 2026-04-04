@@ -118,6 +118,15 @@ export class AudioJobService {
       return;
     }
 
+    const shouldStartFresh =
+      claimedJob.audioSegments.length === 0 &&
+      !claimedJob.audioUrl &&
+      !claimedJob.playlistUrl;
+
+    if (shouldStartFresh) {
+      await this.deleteNarrationArtifacts(jobId);
+    }
+
     const pipeline = createJobPipeline({
       audioStore: this.audioStore,
       speechProvider: this.speechProvider,

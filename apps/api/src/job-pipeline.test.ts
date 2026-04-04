@@ -281,6 +281,39 @@ class UnsupportedChunkMediaSpeechProvider implements SpeechProvider {
   }
 }
 
+class MissingChunkMediaSpeechProvider implements SpeechProvider {
+  readonly name = "missing-chunk-media-test";
+
+  async synthesize(
+    article: ExtractedArticle,
+    speechOptions: SpeechOptions,
+    context: SpeechSynthesisContext,
+  ): Promise<AudioRenderResult> {
+    return this.synthesizeText(article.textContent, speechOptions, context);
+  }
+
+  async synthesizeText(
+    _text: string,
+    _speechOptions: SpeechOptions,
+    context: SpeechSynthesisContext,
+  ): Promise<AudioRenderResult> {
+    const audioData = Buffer.from("not-mp3");
+    const audioUrl =
+      context.audioStore && context.fileKey
+        ? await context.audioStore.put(context.fileKey, audioData, "audio/wav")
+        : null;
+
+    return {
+      audioUrl,
+      playlistUrl: null,
+      audioSegments: audioUrl ? [{ url: audioUrl, durationSeconds: 24 }] : [],
+      durationSeconds: 24,
+      audioData,
+      contentType: "audio/wav",
+    };
+  }
+}
+
 function createClaimedJob(overrides: Partial<AudioJob> = {}): AudioJob {
   const createdAt = "2026-04-05T10:00:00.000Z";
   const paragraph = (label: string) =>
@@ -592,6 +625,26 @@ describe("job pipeline", () => {
         article: {
           ...createClaimedJob().article,
           textContent: Array.from({ length: 64 }, (_, index) => `wav${index}`).join(" "),
+          wordCount: 64,
+          estimatedMinutes: 1,
+        },
+      }),
+      startupBufferSeconds: 20,
+    });
+
+    await harness.pipeline.processClaimedJob(harness.getCurrentJob());
+
+    expect(harness.getCurrentJob().status).toBe("failed");
+    expect(harness.getCurrentJob().error).toContain("Unsupported chunk media");
+  });
+
+  it("fails fast when fallback chunk media is not audio/mpeg", async () => {
+    const harness = createPipelineHarness({
+      speechProvider: new MissingChunkMediaSpeechProvider(),
+      job: createClaimedJob({
+        article: {
+          ...createClaimedJob().article,
+          textContent: Array.from({ length: 64 }, (_, index) => `fallback${index}`).join(" "),
           wordCount: 64,
           estimatedMinutes: 1,
         },

@@ -466,6 +466,12 @@ function buildPackagerChunkMedia(
     };
   }
 
+  if (result.contentType && result.contentType !== "audio/mpeg") {
+    throw new Error(
+      `Unsupported chunk media format: fallback content type ${result.contentType}.`,
+    );
+  }
+
   return {
     audioData,
     format: "mp3",

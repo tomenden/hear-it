@@ -1,4 +1,9 @@
-import { buildFinalAudioKey, buildPlaylistKey } from "./media-packager.js";
+import {
+  buildFinalAudioKey,
+  buildInitSegmentKey,
+  buildJobMediaPrefix,
+  buildPlaylistKey,
+} from "./media-packager.js";
 import type { AudioStore, JobStore } from "./storage.js";
 import type { AudioJob } from "./types.js";
 
@@ -88,7 +93,9 @@ export class HlsRetentionCleaner implements MaintenanceService {
       }
 
       await this.audioStore.deletePrefix(buildHlsSegmentsPrefix(job.id));
+      await this.audioStore.deletePrefix(buildTemporaryChunksPrefix(job.id));
       await this.audioStore.delete(buildPlaylistKey(job.id));
+      await this.audioStore.delete(buildInitSegmentKey(job.id));
       await this.jobStore.update(job.id, {
         playlistUrl: null,
         liveEdgeUpdatedAt: null,
@@ -188,34 +195,62 @@ export class MaintenanceRunner {
 
     let renewalError: unknown = null;
     const renewalIntervalMs = Math.max(1, Math.floor(this.leaseDurationMs / 2));
+    let lastRenewal = Promise.resolve();
+    const recordRenewalFailure = (error: unknown) => {
+      renewalError ??=
+        error instanceof Error
+          ? error
+          : new Error("Failed to renew maintenance lease.");
+    };
     const renewLease = async () => {
-      const renewed = await this.jobStore.claimMaintenanceLease?.(
-        this.leaseOwner,
-        new Date(Date.now() + this.leaseDurationMs).toISOString(),
-        this.leaseName,
-      );
+      try {
+        const renewed = await this.jobStore.claimMaintenanceLease?.(
+          this.leaseOwner,
+          new Date(Date.now() + this.leaseDurationMs).toISOString(),
+          this.leaseName,
+        );
 
-      if (!renewed) {
-        renewalError ??= new Error("Failed to renew maintenance lease.");
+        if (!renewed) {
+          recordRenewalFailure(new Error("Failed to renew maintenance lease."));
+        }
+      } catch (error) {
+        recordRenewalFailure(error);
       }
     };
     const timer = setInterval(() => {
-      void renewLease();
+      lastRenewal = lastRenewal.then(async () => {
+        if (renewalError) {
+          return;
+        }
+        await renewLease();
+      });
     }, renewalIntervalMs);
     timer.unref?.();
 
+    let passError: unknown = null;
     try {
       for (const service of this.services) {
         if (renewalError) {
           throw renewalError;
         }
         await service.runOnce(now);
+        if (renewalError) {
+          throw renewalError;
+        }
       }
-      if (renewalError) {
-        throw renewalError;
-      }
+    } catch (error) {
+      passError = error;
     } finally {
       clearInterval(timer);
+      await lastRenewal;
+    }
+
+    if (passError) {
+      throw passError;
+    }
+
+    if (renewalError) {
+      throw renewalError;
     }
 
     return true;
@@ -269,6 +304,10 @@ export function startMaintenanceWorker(options: StartMaintenanceWorkerOptions) {
 
 function buildHlsSegmentsPrefix(jobId: string): string {
   return `jobs/${jobId}/segments`;
+}
+
+function buildTemporaryChunksPrefix(jobId: string): string {
+  return `${buildJobMediaPrefix(jobId)}/tmp`;
 }
 
 function hasLiveLease(job: AudioJob, nowIso: string): boolean {

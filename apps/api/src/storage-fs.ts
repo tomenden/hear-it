@@ -106,11 +106,14 @@ export class FileJobStore implements JobStore {
     patch: Partial<AudioJob>,
     ownership: JobOwnership,
   ): Promise<boolean> {
+    const now = new Date().toISOString();
     const existing = this.jobs.get(jobId);
     if (!existing) return false;
     if (
       existing.leaseOwner !== ownership.leaseOwner ||
-      existing.runId !== ownership.runId
+      existing.runId !== ownership.runId ||
+      !existing.leaseExpiresAt ||
+      existing.leaseExpiresAt <= now
     ) {
       return false;
     }

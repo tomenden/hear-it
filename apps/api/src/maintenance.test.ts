@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildFinalAudioKey, buildPlaylistKey } from "./media-packager.js";
+import {
+  buildFinalAudioKey,
+  buildInitSegmentKey,
+  buildPlaylistKey,
+} from "./media-packager.js";
 import {
   FinalizationRepairer,
   HlsRetentionCleaner,
@@ -22,6 +26,8 @@ class MemoryJobStore implements JobStore {
   readonly requeueAttempts: Array<{ jobId: string; expected: ExpiredLeaseSnapshot }> = [];
   maintenanceLeaseOwner: string | null = null;
   maintenanceLeaseExpiresAt: string | null = null;
+  failMaintenanceLeaseClaimAt: number | null = null;
+  maintenanceLeaseClaimError: Error = new Error("maintenance lease renewal failed");
   onRequeueAttempt?: (
     jobId: string,
     expected: ExpiredLeaseSnapshot,
@@ -97,6 +103,13 @@ class MemoryJobStore implements JobStore {
     leaseExpiresAt: string,
   ): Promise<boolean> {
     this.leaseClaims.push({ leaseOwner, leaseExpiresAt });
+    if (
+      this.failMaintenanceLeaseClaimAt !== null &&
+      this.leaseClaims.length >= this.failMaintenanceLeaseClaimAt
+    ) {
+      throw this.maintenanceLeaseClaimError;
+    }
+
     const now = new Date().toISOString();
     const leaseIsLive =
       this.maintenanceLeaseOwner !== null &&
@@ -238,6 +251,8 @@ describe("maintenance services", () => {
     const now = new Date("2026-04-05T18:00:01.000Z");
     const jobStore = new MemoryJobStore();
     const audioStore = new MemoryAudioStore();
+    audioStore.seed("jobs/job-123/tmp/chunk-0000.mp3");
+    audioStore.seed(buildInitSegmentKey("job-123"));
     await jobStore.save(
       createJob({
         status: "completed",
@@ -252,7 +267,9 @@ describe("maintenance services", () => {
     await cleaner.runOnce(now);
 
     expect(audioStore.deletedPrefixes).toContain("jobs/job-123/segments");
+    expect(audioStore.deletedPrefixes).toContain("jobs/job-123/tmp");
     expect(audioStore.deletedKeys).toContain(buildPlaylistKey("job-123"));
+    expect(audioStore.deletedKeys).toContain(buildInitSegmentKey("job-123"));
   });
 
   it("repairs a job whose final MP3 exists but state was not finalized", async () => {
@@ -420,6 +437,43 @@ describe("maintenance services", () => {
 
       resolveSlowRun();
       await firstPass;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails the pass when maintenance lease renewal throws during a long-running service", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-05T12:00:00.000Z"));
+
+    try {
+      const jobStore = new MemoryJobStore();
+      jobStore.failMaintenanceLeaseClaimAt = 2;
+      let resolveSlowRun: () => void = () => {};
+      const slowRun = new Promise<void>((resolve) => {
+        resolveSlowRun = resolve;
+      });
+      const slowService = {
+        runOnce: vi.fn(() => slowRun),
+      };
+      const skippedService = {
+        runOnce: vi.fn().mockResolvedValue(undefined),
+      };
+      const runner = new MaintenanceRunner({
+        jobStore,
+        leaseOwner: "worker-a",
+        services: [slowService, skippedService],
+        leaseDurationMs: 50,
+      });
+
+      const pass = runner.runOnce(new Date());
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(60);
+      resolveSlowRun();
+
+      await expect(pass).rejects.toThrow("maintenance lease renewal failed");
+      expect(slowService.runOnce).toHaveBeenCalledTimes(1);
+      expect(skippedService.runOnce).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

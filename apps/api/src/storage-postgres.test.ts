@@ -215,16 +215,24 @@ function createSqlHarness() {
       text.includes("where id =") &&
       text.includes("and lease_owner =") &&
       text.includes("and run_id =") &&
+      text.includes("and lease_expires_at >") &&
       !text.includes("status = 'processing'")
     ) {
-      const jobId = values[values.length - 3] as string;
-      const leaseOwner = values[values.length - 2] as string;
-      const runId = values[values.length - 1] as string;
+      const jobId = values[values.length - 4] as string;
+      const leaseOwner = values[values.length - 3] as string;
+      const runId = values[values.length - 2] as string;
+      const currentTime = values[values.length - 1] as string;
       const job = jobs.get(jobId);
-      if (!job || job.lease_owner !== leaseOwner || job.run_id !== runId) {
+      if (
+        !job ||
+        job.lease_owner !== leaseOwner ||
+        job.run_id !== runId ||
+        typeof job.lease_expires_at !== "string" ||
+        job.lease_expires_at <= currentTime
+      ) {
         return [];
       }
-      const nextJob = patchJobFromUpdate(job, values.slice(0, -3), text);
+      const nextJob = patchJobFromUpdate(job, values.slice(0, -4), text);
       jobs.set(jobId, nextJob);
       return [nextJob];
     }
@@ -573,6 +581,29 @@ describe("PostgresJobStore events and leases", () => {
     expect((await store.get("job-1"))?.leaseExpiresAt).toBe("2000-01-01T00:00:00.000Z");
   });
 
+  it("rejects owned updates after the lease already expired", async () => {
+    const { store } = makeJobStore();
+    await store.init();
+    await store.save(
+      createJob({
+        status: "processing",
+        internalState: "synthesizing",
+        leaseOwner: "worker-1",
+        leaseExpiresAt: "2000-01-01T00:00:00.000Z",
+        runId: "run-1",
+      }),
+    );
+
+    expect(
+      await store.updateOwned(
+        "job-1",
+        { internalState: "finalizing" },
+        { leaseOwner: "worker-1", runId: "run-1" },
+      ),
+    ).toBe(false);
+    expect((await store.get("job-1"))?.internalState).toBe("synthesizing");
+  });
+
   it("fences owned updates and heartbeats by run id", async () => {
     const { store } = makeJobStore();
     await store.init();
@@ -580,7 +611,7 @@ describe("PostgresJobStore events and leases", () => {
       createJob({
         status: "processing",
         leaseOwner: "worker-1",
-        leaseExpiresAt: "2026-01-01T00:05:00.000Z",
+        leaseExpiresAt: "2099-01-01T00:05:00.000Z",
         runId: "run-1",
       }),
     );
@@ -609,7 +640,7 @@ describe("PostgresJobStore events and leases", () => {
         "run-2",
       ),
     ).toBe(false);
-    expect((await store.get("job-1"))?.leaseExpiresAt).toBe("2026-01-01T00:05:00.000Z");
+    expect((await store.get("job-1"))?.leaseExpiresAt).toBe("2099-01-01T00:05:00.000Z");
   });
 
   it("requeues expired jobs only when the observed lease snapshot still matches", async () => {

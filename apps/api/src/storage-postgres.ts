@@ -413,6 +413,7 @@ export class PostgresJobStore implements JobStore {
       WHERE id = ${jobId}
         AND lease_owner = ${ownership.leaseOwner}
         AND run_id = ${ownership.runId}
+        AND lease_expires_at > ${now}
       RETURNING id
     `
       : await this.sql`

@@ -58,28 +58,23 @@ export interface JobPlaybackSource {
   liveEdgeUpdatedAt?: string | null;
 }
 
-const PROCESSING_STATES: ReadonlySet<InternalAudioState> = new Set([
-  "normalizing",
-  "chunking",
-  "synthesizing",
-  "packaging_stream",
-  "finalizing",
-]);
-
 export function mapInternalStateToPublicState(state: InternalAudioState): PublicAudioState {
-  if (state === "queued") {
-    return "queued";
+  switch (state) {
+    case "queued":
+      return "queued";
+    case "normalizing":
+    case "chunking":
+    case "synthesizing":
+    case "packaging_stream":
+    case "finalizing":
+      return "processing";
+    case "completed":
+      return "ready";
+    case "failed":
+      return "failed";
+    default:
+      return assertNever(state);
   }
-
-  if (PROCESSING_STATES.has(state)) {
-    return "processing";
-  }
-
-  if (state === "completed") {
-    return "ready";
-  }
-
-  return "failed";
 }
 
 export function mapJobToPlaybackDescriptor(job: JobPlaybackSource): PlaybackDescriptor {
@@ -101,13 +96,13 @@ export function mapJobToPlaybackDescriptor(job: JobPlaybackSource): PlaybackDesc
     };
   }
 
-  if (job.streamPlaylistUrl) {
+  if (job.streamPlaylistUrl && job.liveEdgeUpdatedAt) {
     return {
       mode: "streaming",
       isPlayable: true,
       playlistUrl: job.streamPlaylistUrl,
       availableDurationSeconds: job.availableDurationSeconds,
-      liveEdgeUpdatedAt: job.liveEdgeUpdatedAt ?? new Date(0).toISOString(),
+      liveEdgeUpdatedAt: job.liveEdgeUpdatedAt,
     };
   }
 
@@ -127,4 +122,8 @@ function buildFileName(title: string): string {
     .trim();
 
   return `${safeBaseName || "audio"}.mp3`;
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled audio playback state: ${String(value)}`);
 }

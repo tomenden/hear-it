@@ -60,4 +60,19 @@ describe("chunkSpeechScript", () => {
       "Привет мир и немного дополнительного контекста для слушателя, чтобы предложение осталось цельным и понятным.",
     );
   });
+
+  it("preserves punctuation and content when slicing an oversized sentence", () => {
+    const script =
+      "This long sentence, with commas, exclamation marks, and a question mark? keeps every punctuation mark intact while it grows long enough to require chunking, because the content should be partitioned rather than rewritten, and the original text must remain recognizable even after multiple slices.";
+
+    const chunks = chunkSpeechScript({
+      script,
+      targetSecondsPerChunk: 3,
+    });
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.map((chunk) => chunk.text).join(" ")).toBe(script);
+    expect(chunks.some((chunk) => chunk.text.includes(","))).toBe(true);
+    expect(chunks.some((chunk) => chunk.text.includes("?"))).toBe(true);
+  });
 });

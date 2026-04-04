@@ -927,6 +927,40 @@ describe("audio job service", () => {
     await expect(readFile(join(audioDir, "narrations", `job-${queuedJob.id}`, "segment-0.mp3"))).rejects.toThrow();
   });
 
+  it("fails jobs that produce no speech script chunks before writing final audio", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const { service, jobStore } = createTestContext(audioDir, jobsFilePath);
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/empty-script",
+      html: sampleHtml,
+    });
+
+    await jobStore.save({
+      ...queuedJob,
+      article: {
+        ...queuedJob.article,
+        title: null,
+        textContent: "",
+        wordCount: 0,
+        estimatedMinutes: 0,
+      },
+      updatedAt: new Date().toISOString(),
+    });
+
+    await service.processJob(queuedJob.id);
+
+    const failedJob = await service.getJob(queuedJob.id);
+    expect(failedJob?.status).toBe("failed");
+    expect(failedJob?.audioUrl).toBeNull();
+    expect(failedJob?.playlistUrl).toBeNull();
+    expect(failedJob?.audioSegments).toEqual([]);
+    expect(failedJob?.durationSeconds).toBeNull();
+    expect(failedJob?.error).toContain("No playable script content");
+    expect(await exists(join(audioDir, "narrations", `job-${queuedJob.id}`, "final.mp3"))).toBe(false);
+  });
+
   it("retries transient segment failures and still completes the job", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");

@@ -122,6 +122,20 @@ export class AudioJobService {
       script: speechScript.script,
       targetSecondsPerChunk: 20,
     }).map((chunk) => chunk.text);
+
+    if (segmentTexts.length === 0) {
+      await this.deleteNarrationArtifacts(jobId);
+      await this.updateJob(jobId, {
+        status: "failed",
+        audioUrl: null,
+        playlistUrl: null,
+        audioSegments: [],
+        durationSeconds: null,
+        error: "No playable script content was generated.",
+      });
+      return;
+    }
+
     let audioSegments: AudioJob["audioSegments"] = [...claimedJob.audioSegments];
     let combinedSegmentAudioData: Buffer[] = [];
     const canResumePersistedSegments =

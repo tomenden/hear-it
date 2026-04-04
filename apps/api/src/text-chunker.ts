@@ -146,14 +146,26 @@ function splitLongSentence(sentence: string, maxSecondsPerChunk: number): string
     1,
     Math.floor(maxSecondsPerChunk * WORDS_PER_SECOND),
   );
-  const words = sentence.match(WORD_REGEX) ?? [sentence];
+  const words = Array.from(sentence.matchAll(WORD_REGEX), (match) => ({
+    start: match.index ?? 0,
+  }));
+
   if (words.length <= maxWordsPerSlice) {
     return [sentence];
   }
 
   const slices: string[] = [];
   for (let index = 0; index < words.length; index += maxWordsPerSlice) {
-    slices.push(words.slice(index, index + maxWordsPerSlice).join(" "));
+    const start = index === 0 ? 0 : words[index]!.start;
+    const end =
+      index + maxWordsPerSlice < words.length
+        ? words[index + maxWordsPerSlice]!.start
+        : sentence.length;
+    const slice = sentence.slice(start, end).trim();
+
+    if (slice) {
+      slices.push(slice);
+    }
   }
 
   return slices;

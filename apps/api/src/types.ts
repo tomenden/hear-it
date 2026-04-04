@@ -18,6 +18,17 @@ export interface SpeechOptions {
   voice: string;
 }
 
+export type SpeechChunkFormat = "wav" | "pcm" | "mp3";
+
+export interface SpeechChunkMedia {
+  audioData: Buffer;
+  format: SpeechChunkFormat;
+  contentType: string;
+  durationSeconds: number;
+  sampleRateHz: number;
+  channelCount: number;
+}
+
 export interface SpeechScriptNormalization {
   whitespaceCollapsed: number;
   separatorsRemoved: number;
@@ -48,6 +59,7 @@ export interface AudioRenderResult {
   durationSeconds: number;
   audioData?: Buffer;
   contentType?: string;
+  chunkMedia?: SpeechChunkMedia;
 }
 
 export interface AudioSegment {

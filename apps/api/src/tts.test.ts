@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  FakeSpeechProvider,
   OpenAISpeechProvider,
   OpenAITTSTimeoutError,
   measureMP3DurationSeconds,
@@ -47,7 +48,26 @@ function buildID3Tag(footer = false): Buffer {
   return Buffer.concat([header, footerBytes]);
 }
 
-describe("openai speech provider", () => {
+describe("speech providers", () => {
+  it("returns a chunk-oriented handoff for fake speech synthesis", async () => {
+    const provider = new FakeSpeechProvider();
+
+    const result = await provider.synthesizeText(
+      "A tiny line of content.",
+      { voice: "alloy" },
+      {},
+    );
+
+    expect(result.chunkMedia).toMatchObject({
+      format: "mp3",
+      contentType: "audio/mpeg",
+      durationSeconds: result.durationSeconds,
+      sampleRateHz: 44_100,
+      channelCount: 1,
+    });
+    expect(result.chunkMedia?.audioData.toString()).toBe("fake-audio");
+  });
+
   it("measures MP3 duration from frame headers", () => {
     const header = buildMP3Header({
       versionBits: 0b11,

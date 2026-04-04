@@ -2,6 +2,7 @@ import { countWords } from "./extractor.js";
 import type {
   AudioRenderResult,
   ExtractedArticle,
+  SpeechChunkMedia,
   SpeechOptions,
 } from "./types.js";
 import type { AudioStore } from "./storage.js";
@@ -15,6 +16,8 @@ const DEFAULT_TTS_INSTRUCTIONS =
 export const AVAILABLE_VOICES = ["alloy", "ash", "sage", "verse"] as const;
 export const VOICE_PREVIEW_TEXT =
   "This is Hear It. I turn articles into clear, natural audio you can listen to on the move.";
+const DEFAULT_CHUNK_SAMPLE_RATE_HZ = 44_100;
+const DEFAULT_CHUNK_CHANNEL_COUNT = 1;
 
 export class OpenAITTSTimeoutError extends Error {
   readonly code = "tts_timeout";
@@ -77,6 +80,7 @@ export class FakeSpeechProvider implements SpeechProvider {
       durationSeconds,
       audioData,
       contentType: "audio/mpeg",
+      chunkMedia: buildChunkMedia(audioData, durationSeconds),
     };
   }
 
@@ -173,6 +177,7 @@ export class OpenAISpeechProvider implements SpeechProvider {
       durationSeconds,
       audioData: buffer,
       contentType: "audio/mpeg",
+      chunkMedia: buildChunkMedia(buffer, durationSeconds),
     };
   }
 }
@@ -402,4 +407,18 @@ export function buildAudioFileKey(
   const base = `${slugify(titleOrUrl)}--${voice}`;
   const stem = uniqueSuffix ? `${base}--${slugify(uniqueSuffix)}` : base;
   return `${stem}.mp3`;
+}
+
+function buildChunkMedia(
+  audioData: Buffer,
+  durationSeconds: number,
+): SpeechChunkMedia {
+  return {
+    audioData,
+    format: "mp3",
+    contentType: "audio/mpeg",
+    durationSeconds,
+    sampleRateHz: DEFAULT_CHUNK_SAMPLE_RATE_HZ,
+    channelCount: DEFAULT_CHUNK_CHANNEL_COUNT,
+  };
 }

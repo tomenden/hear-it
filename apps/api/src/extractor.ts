@@ -102,7 +102,7 @@ export async function extractArticle(
   if (!bodyText) {
     const err = new Error("Failed to extract article content.");
     Sentry.captureException(err, { tags: { url: input.url } });
-    trackEvent("extraction_failed", {
+    trackEvent("audio_extraction_failed", {
       url: input.url,
       domain: safeHostname(input.url),
       error: err.message,
@@ -134,7 +134,7 @@ export async function extractArticle(
       },
       extra: details,
     });
-    trackEvent("article_too_long", {
+    trackEvent("audio_article_too_long", {
       url: canonicalUrl,
       domain: safeHostname(canonicalUrl),
       title,
@@ -180,7 +180,7 @@ async function fetchHtml(url: string): Promise<string> {
         tags: { url, phase: "fetch_html" },
         extra: { timeoutMs },
       });
-      trackEvent("article_fetch_timeout", {
+      trackEvent("audio_article_fetch_timeout", {
         url,
         domain: safeHostname(url),
         timeout_ms: timeoutMs,

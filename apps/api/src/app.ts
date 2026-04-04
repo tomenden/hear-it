@@ -111,7 +111,7 @@ export function createApp(options: CreateAppOptions) {
       durationSeconds: job.durationSeconds,
       title,
       error: job.error,
-      liveEdgeUpdatedAt: job.liveEdgeUpdatedAt ?? (job.playlistUrl ? job.updatedAt : null),
+      liveEdgeUpdatedAt: job.liveEdgeUpdatedAt,
     });
     const state = mapInternalStateToPublicState(resolveInternalState(job));
     const chunksReady = job.audioSegments.length;

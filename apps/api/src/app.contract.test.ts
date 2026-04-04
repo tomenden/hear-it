@@ -160,6 +160,48 @@ describe("audio job API contract", () => {
     });
   });
 
+  it("keeps playlist-only processing jobs in preparing mode until live edge is explicit", async () => {
+    const playlistOnlyJob = buildJob({
+      id: "job-playlist-only",
+      status: "processing",
+      internalState: "packaging_stream",
+      playlistUrl: "/audio/jobs/job-playlist-only/playlist.m3u8",
+      audioSegments: [
+        { url: "/audio/jobs/job-playlist-only/chunk-0.mp3", durationSeconds: 11 },
+        { url: "/audio/jobs/job-playlist-only/chunk-1.mp3", durationSeconds: 16 },
+      ],
+      availableDurationSeconds: 27,
+      liveEdgeUpdatedAt: null,
+      updatedAt: "2026-04-05T10:03:00.000Z",
+    });
+
+    const harness = await createContractHarness([playlistOnlyJob]);
+    servers.push(harness.server);
+
+    const response = await fetch(`${harness.baseUrl}/api/jobs/${playlistOnlyJob.id}`);
+    const payload = await response.json() as { job: Record<string, unknown> };
+
+    expect(response.status).toBe(200);
+    expect(payload.job).toEqual({
+      id: "job-playlist-only",
+      title: "Readable title",
+      state: "processing",
+      playback: {
+        mode: "preparing",
+        isPlayable: false,
+        availableDurationSeconds: 0,
+        liveEdgeUpdatedAt: null,
+      },
+      progress: {
+        chunksTotal: null,
+        chunksReady: 2,
+        availableDurationSeconds: 27,
+      },
+      createdAt: "2026-04-05T10:00:00.000Z",
+      updatedAt: "2026-04-05T10:03:00.000Z",
+    });
+  });
+
   it("serializes list responses with explicit queued, ready, and failed playback contracts", async () => {
     const queuedJob = buildJob({
       id: "job-queued",

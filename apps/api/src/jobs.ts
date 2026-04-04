@@ -205,7 +205,7 @@ export class AudioJobService {
 
       const result = await pipeline.processClaimedJob(claimedJob);
       if (result.job.status === "failed" && result.job.error) {
-        trackEvent("tts_failed", {
+        trackEvent("audio_failed", {
           job_id: jobId,
           voice: claimedJob.speechOptions.voice,
           error: result.job.error,

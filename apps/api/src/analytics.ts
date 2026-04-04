@@ -37,6 +37,10 @@ function normalizeEventName(event: string): string {
     return `audio_${event.slice("narration_".length)}`;
   }
 
+  if (event.startsWith("tts_")) {
+    return `audio_${event.slice("tts_".length)}`;
+  }
+
   return event;
 }
 

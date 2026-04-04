@@ -38,6 +38,26 @@ describe("mapJobToPlaybackDescriptor", () => {
     });
   });
 
+  it("clamps preparing playback duration to zero even if backend progress exists", () => {
+    const playback = mapJobToPlaybackDescriptor({
+      state: "synthesizing",
+      streamPlaylistUrl: null,
+      finalAudioUrl: null,
+      availableDurationSeconds: 19,
+      durationSeconds: null,
+      title: "Example",
+      error: null,
+      liveEdgeUpdatedAt: "2026-04-05T12:30:00.000Z",
+    });
+
+    expect(playback).toEqual({
+      mode: "preparing",
+      isPlayable: false,
+      availableDurationSeconds: 0,
+      liveEdgeUpdatedAt: "2026-04-05T12:30:00.000Z",
+    });
+  });
+
   it("returns streaming when the playlist and live edge are present", () => {
     const playback = mapJobToPlaybackDescriptor({
       state: "packaging_stream",

@@ -109,7 +109,7 @@ export function mapJobToPlaybackDescriptor(job: JobPlaybackSource): PlaybackDesc
   return {
     mode: "preparing",
     isPlayable: false,
-    availableDurationSeconds: job.availableDurationSeconds,
+    availableDurationSeconds: 0,
     liveEdgeUpdatedAt: job.liveEdgeUpdatedAt ?? null,
   };
 }

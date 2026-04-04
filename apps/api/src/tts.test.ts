@@ -15,6 +15,7 @@ function buildMP3Header(options: {
   layerBits: number;
   bitrateIndex: number;
   sampleRateIndex: number;
+  channelModeBits?: number;
   padding?: number;
 }): Buffer {
   let header = 0xffe00000;
@@ -23,6 +24,7 @@ function buildMP3Header(options: {
   header |= 0b1 << 16;
   header |= options.bitrateIndex << 12;
   header |= options.sampleRateIndex << 10;
+  header |= (options.channelModeBits ?? 0b00) << 6;
   header |= (options.padding ?? 0) << 9;
 
   return Buffer.from([
@@ -62,10 +64,41 @@ describe("speech providers", () => {
       format: "mp3",
       contentType: "audio/mpeg",
       durationSeconds: result.durationSeconds,
-      sampleRateHz: 44_100,
-      channelCount: 1,
     });
     expect(result.chunkMedia?.audioData.toString()).toBe("fake-audio");
+  });
+
+  it("extracts sample rate and channel count from real MP3 bytes", async () => {
+    const header = buildMP3Header({
+      versionBits: 0b11,
+      layerBits: 0b01,
+      bitrateIndex: 9,
+      sampleRateIndex: 1,
+      channelModeBits: 0b11,
+    });
+    const frame = buildFrame(header, 384);
+    const audioData = Buffer.concat([frame, frame, frame, frame]);
+    globalThis.fetch = vi.fn(async () => new Response(audioData, {
+      status: 200,
+      headers: { "Content-Type": "audio/mpeg" },
+    })) as typeof fetch;
+
+    const provider = new OpenAISpeechProvider("test-api-key");
+
+    const result = await provider.synthesizeText(
+      "A tiny line of content.",
+      { voice: "alloy" },
+      {},
+    );
+
+    expect(result.chunkMedia).toMatchObject({
+      format: "mp3",
+      contentType: "audio/mpeg",
+      sampleRateHz: 48_000,
+      channelCount: 1,
+    });
+    expect(result.durationSeconds).toBeCloseTo(4 * 1152 / 48_000, 5);
+    expect(result.chunkMedia?.audioData.equals(audioData)).toBe(true);
   });
 
   it("measures MP3 duration from frame headers", () => {

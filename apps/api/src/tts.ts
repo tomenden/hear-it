@@ -168,7 +168,8 @@ export class OpenAISpeechProvider implements SpeechProvider {
         ? await context.audioStore.put(context.fileKey, buffer, "audio/mpeg")
         : null;
 
-    const durationSeconds = measureMP3DurationSeconds(buffer) ?? estimateDurationSeconds(text);
+    const mp3Inspection = inspectMP3Audio(buffer);
+    const durationSeconds = mp3Inspection?.durationSeconds ?? estimateDurationSeconds(text);
 
     return {
       audioUrl,
@@ -177,7 +178,7 @@ export class OpenAISpeechProvider implements SpeechProvider {
       durationSeconds,
       audioData: buffer,
       contentType: "audio/mpeg",
-      chunkMedia: buildChunkMedia(buffer, durationSeconds),
+      chunkMedia: buildChunkMedia(buffer, durationSeconds, mp3Inspection),
     };
   }
 }
@@ -211,6 +212,7 @@ type MP3FrameInfo = {
   frameLength: number;
   sampleRate: number;
   samplesPerFrame: number;
+  channelCount: number;
 };
 
 const MPEG1_SAMPLE_RATES = [44_100, 48_000, 32_000] as const;
@@ -235,7 +237,13 @@ const BITRATE_TABLE = {
   },
 } as const;
 
-export function measureMP3DurationSeconds(audioData: Buffer): number | null {
+export interface MP3AudioInspection {
+  sampleRateHz: number;
+  channelCount: number;
+  durationSeconds: number;
+}
+
+export function inspectMP3Audio(audioData: Buffer): MP3AudioInspection | null {
   if (audioData.length < 4) {
     return null;
   }
@@ -251,6 +259,7 @@ export function measureMP3DurationSeconds(audioData: Buffer): number | null {
     let totalSamples = 0;
     let position = offset;
     let sampleRate = firstFrame.sampleRate;
+    let channelCount = firstFrame.channelCount;
 
     while (position <= audioData.length - 4) {
       const frame = parseMP3FrameHeader(audioData.readUInt32BE(position));
@@ -262,16 +271,28 @@ export function measureMP3DurationSeconds(audioData: Buffer): number | null {
         return null;
       }
 
+      if (frame.channelCount !== channelCount) {
+        return null;
+      }
+
       totalSamples += frame.samplesPerFrame;
       position += frame.frameLength;
     }
 
     if (totalSamples > 0) {
-      return totalSamples / sampleRate;
+      return {
+        sampleRateHz: sampleRate,
+        channelCount,
+        durationSeconds: totalSamples / sampleRate,
+      };
     }
   }
 
   return null;
+}
+
+export function measureMP3DurationSeconds(audioData: Buffer): number | null {
+  return inspectMP3Audio(audioData)?.durationSeconds ?? null;
 }
 
 function leadingID3TagLength(audioData: Buffer): number {
@@ -322,12 +343,13 @@ function parseMP3FrameHeader(header: number): MP3FrameInfo | null {
   }
 
   const samplesPerFrame = resolveSamplesPerFrame(version, layer);
+  const channelCount = resolveChannelCount((header >>> 6) & 0b11);
   const frameLength = resolveFrameLength(version, layer, bitrate, sampleRate, padding);
   if (!frameLength || frameLength < 4) {
     return null;
   }
 
-  return { frameLength, sampleRate, samplesPerFrame };
+  return { frameLength, sampleRate, samplesPerFrame, channelCount };
 }
 
 function parseVersion(versionBits: number): MPEGVersion | null {
@@ -379,6 +401,10 @@ function resolveSamplesPerFrame(version: MPEGVersion, layer: MPEGLayer): number 
   return version === "1" ? 1152 : 576;
 }
 
+function resolveChannelCount(channelModeBits: number): number {
+  return channelModeBits === 0b11 ? 1 : 2;
+}
+
 function resolveFrameLength(
   version: MPEGVersion,
   layer: MPEGLayer,
@@ -412,13 +438,14 @@ export function buildAudioFileKey(
 function buildChunkMedia(
   audioData: Buffer,
   durationSeconds: number,
+  inspection?: MP3AudioInspection | null,
 ): SpeechChunkMedia {
   return {
     audioData,
     format: "mp3",
     contentType: "audio/mpeg",
     durationSeconds,
-    sampleRateHz: DEFAULT_CHUNK_SAMPLE_RATE_HZ,
-    channelCount: DEFAULT_CHUNK_CHANNEL_COUNT,
+    sampleRateHz: inspection?.sampleRateHz ?? DEFAULT_CHUNK_SAMPLE_RATE_HZ,
+    channelCount: inspection?.channelCount ?? DEFAULT_CHUNK_CHANNEL_COUNT,
   };
 }

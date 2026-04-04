@@ -12,6 +12,15 @@ import { createAuthMiddleware } from "./auth.js";
 import { createApp, createAudioJobSchema, extractRequestSchema } from "./app.js";
 import { MAX_NARRATION_CHARS } from "./extractor.js";
 import { AudioJobService } from "./jobs.js";
+import {
+  buildChunkMediaKey,
+  buildFinalAudioKey,
+  buildHlsEventPlaylist,
+  buildInitSegmentKey,
+  buildPlaylistKey,
+  type MediaChunkInput,
+  type MediaPackagingResult,
+} from "./media-packager.js";
 import { FileJobStore, FileAudioStore } from "./storage-fs.js";
 import type { AudioStore } from "./storage.js";
 import type {
@@ -263,7 +272,7 @@ class RetryableGatewayFailureSpeechProvider implements SpeechProvider {
     _speechOptions: SpeechOptions,
     context: SpeechSynthesisContext,
   ): Promise<AudioRenderResult> {
-    const match = context.fileKey?.match(/segment-(\d+)\.mp3$/);
+    const match = context.fileKey?.match(/chunk-(\d+)\.mp3$/);
     const segmentIndex = match ? Number(match[1]) : 0;
     const nextAttempt = (this.attempts.get(segmentIndex) ?? 0) + 1;
     this.attempts.set(segmentIndex, nextAttempt);
@@ -373,6 +382,55 @@ class FailingHealthAudioStore implements AudioStore {
   async deletePrefix(): Promise<void> {}
 }
 
+class TestMediaPackager {
+  async packageMedia(
+    jobId: string,
+    chunks: readonly MediaChunkInput[],
+  ): Promise<MediaPackagingResult> {
+    const bufferedSeconds = chunks.reduce(
+      (total, chunk) => total + chunk.chunkMedia.durationSeconds,
+      0,
+    );
+
+    return {
+      playlist: {
+        key: buildPlaylistKey(jobId),
+        audioData: Buffer.from(
+          buildHlsEventPlaylist(jobId, chunks, {
+            startupBufferPlayable: bufferedSeconds >= 20,
+          }),
+        ),
+        contentType: "application/vnd.apple.mpegurl",
+      },
+      initSegment: {
+        key: buildInitSegmentKey(jobId),
+        audioData: Buffer.from("init"),
+        contentType: "video/mp4",
+      },
+      segments: chunks.map((chunk) => ({
+        index: chunk.index,
+        key: buildChunkMediaKey(jobId, chunk.index),
+        audioData: Buffer.from(`segment-${chunk.index}`),
+        contentType: "video/mp4" as const,
+        durationSeconds: chunk.chunkMedia.durationSeconds,
+      })),
+      startupBuffer: {
+        bufferedSeconds,
+        isPlayable: bufferedSeconds >= 20,
+      },
+      finalAudio: {
+        key: buildFinalAudioKey(jobId),
+        audioData: Buffer.concat(chunks.map((chunk) => chunk.chunkMedia.audioData)),
+        contentType: "audio/mpeg",
+        format: "mp3",
+        durationSeconds: bufferedSeconds,
+        sampleRateHz: chunks[0]?.chunkMedia.sampleRateHz ?? 44_100,
+        channelCount: chunks[0]?.chunkMedia.channelCount ?? 1,
+      },
+    };
+  }
+}
+
 const sampleHtml = `
 <!doctype html>
 <html>
@@ -397,6 +455,7 @@ function createTestContext(audioDir: string, jobsFilePath: string) {
     jobStore,
     audioStore,
     speechProvider: new InstantSpeechProvider(),
+    mediaPackager: new TestMediaPackager(),
   });
   return { service, jobStore, audioStore };
 }
@@ -544,6 +603,7 @@ describe("audio job service", () => {
       jobStore,
       audioStore: new FailingHealthAudioStore(),
       speechProvider: new InstantSpeechProvider(),
+      mediaPackager: new TestMediaPackager(),
     });
     const app = createApp({
       audioJobService: service,
@@ -640,6 +700,7 @@ describe("audio job service", () => {
         { audioData: Buffer.from("ID3SEGMENTTWO"), durationSeconds: 13, delayMs: 5 },
         { audioData: Buffer.from("ID3SEGMENTTHREE"), durationSeconds: 17, delayMs: 5 },
       ]),
+      mediaPackager: new TestMediaPackager(),
     });
     const queuedJob = await service.createJob({
       url: "https://example.com/posts/resume-job",
@@ -694,6 +755,7 @@ describe("audio job service", () => {
         { audioData: Buffer.from("ID3SEGMENTTHREE"), durationSeconds: 17, delayMs: 250 },
         { audioData: Buffer.from("ID3SEGMENTFOUR"), durationSeconds: 19, delayMs: 250 },
       ]),
+      mediaPackager: new TestMediaPackager(),
     });
 
     const queuedJob = await service.createJob({
@@ -705,9 +767,10 @@ describe("audio job service", () => {
           <body>
             <article>
               <h1>Segmented Article</h1>
-              <p>${"First segment content. ".repeat(30)}</p>
-              <p>${"Second segment content. ".repeat(30)}</p>
-              <p>${"Third segment content. ".repeat(30)}</p>
+              <p>${Array.from({ length: 64 }, (_, index) => `first${index}`).join(" ")}</p>
+              <p>${Array.from({ length: 64 }, (_, index) => `second${index}`).join(" ")}</p>
+              <p>${Array.from({ length: 64 }, (_, index) => `third${index}`).join(" ")}</p>
+              <p>${Array.from({ length: 64 }, (_, index) => `fourth${index}`).join(" ")}</p>
             </article>
           </body>
         </html>
@@ -721,33 +784,32 @@ describe("audio job service", () => {
       (job) =>
         job !== null &&
         job.status === "processing" &&
-        job.audioSegments.length === 1 &&
+        job.audioSegments.length >= 2 &&
         typeof job.playlistUrl === "string" &&
-        job.playlistUrl.length > 0,
+        job.playlistUrl.length > 0 &&
+        (job.availableDurationSeconds ?? 0) >= 20,
     );
 
     expect(partiallyReadyJob?.durationSeconds).toBeNull();
     expect(partiallyReadyJob?.audioUrl).toBeNull();
-    expect(partiallyReadyJob?.audioSegments).toHaveLength(1);
+    expect(partiallyReadyJob?.audioSegments.length ?? 0).toBeGreaterThanOrEqual(2);
 
-    const playlistPath = join(audioDir, "narrations", `job-${queuedJob.id}`, "playlist.m3u8");
+    const playlistPath = join(audioDir, "jobs", queuedJob.id, "playlist.m3u8");
     const partialPlaylist = await readFile(playlistPath, "utf8");
     expect(partialPlaylist).toContain("#EXTM3U");
-    expect(partialPlaylist).toContain("#EXT-X-VERSION:6");
+    expect(partialPlaylist).toContain("#EXT-X-VERSION:7");
     expect(partialPlaylist).toContain("#EXT-X-START:TIME-OFFSET=0,PRECISE=YES");
-    expect(partialPlaylist).toContain("/audio/narrations/");
-    expect(partialPlaylist).not.toContain("#EXT-X-ENDLIST");
+    expect(partialPlaylist).toContain(`jobs/${queuedJob.id}/segments/chunk-0000.m4s`);
 
     await processingPromise;
 
     const completedJob = await service.getJob(queuedJob.id);
     expect(completedJob?.status).toBe("completed");
     expect(completedJob?.audioSegments.length ?? 0).toBeGreaterThan(1);
-    expect(completedJob?.playlistUrl).toBe(`/audio/narrations/job-${queuedJob.id}/playlist.m3u8`);
-    expect(completedJob?.audioUrl).toBe(`/audio/narrations/job-${queuedJob.id}/final.mp3`);
+    expect(completedJob?.playlistUrl).toBe(`/audio/jobs/${queuedJob.id}/playlist.m3u8`);
+    expect(completedJob?.audioUrl).toBe(`/audio/jobs/${queuedJob.id}/final.mp3`);
     expect(completedJob?.durationSeconds).toBeGreaterThan(11);
-    await expect(readFile(join(audioDir, "narrations", `narration-${queuedJob.id}.mp3`))).rejects.toThrow();
-    await expect(readFile(join(audioDir, "narrations", `job-${queuedJob.id}`, "final.mp3"))).resolves.toBeDefined();
+    await expect(readFile(join(audioDir, "jobs", queuedJob.id, "final.mp3"))).resolves.toBeDefined();
 
     const completedPlaylist = await readFile(playlistPath, "utf8");
     expect(completedPlaylist).toContain("#EXT-X-START:TIME-OFFSET=0,PRECISE=YES");
@@ -768,6 +830,7 @@ describe("audio job service", () => {
       jobStore,
       audioStore,
       speechProvider,
+      mediaPackager: new TestMediaPackager(),
     });
 
     const queuedJob = await service.createJob({
@@ -791,17 +854,19 @@ describe("audio job service", () => {
     const processingPromise = service.processJob(queuedJob.id);
     const secondSegmentPath = join(
       audioDir,
-      "narrations",
-      `job-${queuedJob.id}`,
-      "segment-1.mp3",
+      "jobs",
+      queuedJob.id,
+      "tmp",
+      "chunk-0001.mp3",
     );
     const firstSegmentPath = join(
       audioDir,
-      "narrations",
-      `job-${queuedJob.id}`,
-      "segment-0.mp3",
+      "jobs",
+      queuedJob.id,
+      "tmp",
+      "chunk-0000.mp3",
     );
-    const playlistPath = join(audioDir, "narrations", `job-${queuedJob.id}`, "playlist.m3u8");
+    const playlistPath = join(audioDir, "jobs", queuedJob.id, "playlist.m3u8");
 
     await waitFor(() => exists(secondSegmentPath), Boolean);
     expect(await exists(firstSegmentPath)).toBe(false);
@@ -811,13 +876,13 @@ describe("audio job service", () => {
     await processingPromise;
 
     const completedPlaylist = await readFile(playlistPath, "utf8");
-    expect(completedPlaylist).toContain(`/audio/narrations/job-${queuedJob.id}/segment-0.mp3`);
-    expect(completedPlaylist).toContain(`/audio/narrations/job-${queuedJob.id}/segment-1.mp3`);
-    expect(completedPlaylist).toContain(`/audio/narrations/job-${queuedJob.id}/segment-2.mp3`);
+    expect(completedPlaylist).toContain(`jobs/${queuedJob.id}/segments/chunk-0000.m4s`);
+    expect(completedPlaylist).toContain(`jobs/${queuedJob.id}/segments/chunk-0001.m4s`);
+    expect(completedPlaylist).toContain(`jobs/${queuedJob.id}/segments/chunk-0002.m4s`);
     expect(
-      completedPlaylist.indexOf(`/audio/narrations/job-${queuedJob.id}/segment-0.mp3`),
+      completedPlaylist.indexOf(`jobs/${queuedJob.id}/segments/chunk-0000.m4s`),
     ).toBeLessThan(
-      completedPlaylist.indexOf(`/audio/narrations/job-${queuedJob.id}/segment-1.mp3`),
+      completedPlaylist.indexOf(`jobs/${queuedJob.id}/segments/chunk-0001.m4s`),
     );
   });
 
@@ -833,6 +898,7 @@ describe("audio job service", () => {
         { audioData: Buffer.from("ID3SEGMENTTWO"), durationSeconds: 13, delayMs: 5 },
         { audioData: Buffer.from("ID3SEGMENTTHREE"), durationSeconds: 17, delayMs: 5 },
       ]),
+      mediaPackager: new TestMediaPackager(),
     });
 
     const queuedJob = await service.createJob({
@@ -856,17 +922,17 @@ describe("audio job service", () => {
     await jobStore.save({
       ...queuedJob,
       status: "processing",
-      playlistUrl: `/audio/narrations/job-${queuedJob.id}/playlist.m3u8`,
+      playlistUrl: `/audio/jobs/${queuedJob.id}/playlist.m3u8`,
       audioSegments: [
         {
-          url: `/audio/narrations/job-${queuedJob.id}/segment-0.mp3`,
+          url: `/audio/jobs/${queuedJob.id}/tmp/chunk-0000.mp3`,
           durationSeconds: 11,
         },
       ],
       updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
     });
     await audioStore.put(
-      `narrations/job-${queuedJob.id}/segment-0.mp3`,
+      `jobs/${queuedJob.id}/tmp/chunk-0000.mp3`,
       Buffer.from("ID3SEGMENTONE"),
       "audio/mpeg",
     );
@@ -880,11 +946,11 @@ describe("audio job service", () => {
     expect(completedJob?.status).toBe("completed");
     expect(completedJob?.audioSegments).toHaveLength(3);
     expect(completedJob?.audioSegments[0]?.url).toBe(
-      `/audio/narrations/job-${queuedJob.id}/segment-0.mp3`,
+      `/audio/jobs/${queuedJob.id}/tmp/chunk-0000.mp3`,
     );
     expect(completedJob?.durationSeconds).toBe(41);
     expect(completedJob?.error).toBeNull();
-    expect(completedJob?.audioUrl).toBe(`/audio/narrations/job-${queuedJob.id}/final.mp3`);
+    expect(completedJob?.audioUrl).toBe(`/audio/jobs/${queuedJob.id}/final.mp3`);
   });
 
   it("clears partial playback metadata when generation fails mid-run", async () => {
@@ -896,6 +962,7 @@ describe("audio job service", () => {
       jobStore,
       audioStore,
       speechProvider: new FailingAfterFirstSegmentSpeechProvider(),
+      mediaPackager: new TestMediaPackager(),
     });
 
     const queuedJob = await service.createJob({
@@ -975,6 +1042,7 @@ describe("audio job service", () => {
       jobStore,
       audioStore,
       speechProvider,
+      mediaPackager: new TestMediaPackager(),
     });
 
     const queuedJob = await service.createJob({
@@ -1016,6 +1084,7 @@ describe("audio job service", () => {
         { audioData: Buffer.from("ID3SEGMENTONE"), durationSeconds: 11, delayMs: 5 },
         { audioData: Buffer.from("ID3SEGMENTTWO"), durationSeconds: 13, delayMs: 5 },
       ]),
+      mediaPackager: new TestMediaPackager(),
     });
 
     const queuedJob = await service.createJob({
@@ -1039,8 +1108,8 @@ describe("audio job service", () => {
 
     const completedJob = await service.getJob(queuedJob.id);
     expect(completedJob?.status).toBe("completed");
-    expect(completedJob?.playlistUrl).toBe(`/audio/narrations/job-${queuedJob.id}/playlist.m3u8`);
-    expect(completedJob?.audioUrl).toBe(`/audio/narrations/job-${queuedJob.id}/final.mp3`);
+    expect(completedJob?.playlistUrl).toBe(`/audio/jobs/${queuedJob.id}/playlist.m3u8`);
+    expect(completedJob?.audioUrl).toBe(`/audio/jobs/${queuedJob.id}/final.mp3`);
     expect(completedJob?.audioSegments).toHaveLength(2);
   });
 
@@ -1057,6 +1126,7 @@ describe("audio job service", () => {
         { audioData: Buffer.from("ID3SEGMENTTWO"), durationSeconds: 13, delayMs: 5 },
         { audioData: Buffer.from("ID3SEGMENTTHREE"), durationSeconds: 17, delayMs: 5 },
       ]),
+      mediaPackager: new TestMediaPackager(),
     });
 
     const queuedJob = await service.createJob({

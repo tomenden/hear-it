@@ -81,6 +81,7 @@ export interface AudioJob {
   displayTitle?: string | null;
   speechScript?: string | null;
   availableDurationSeconds?: number | null;
+  liveEdgeUpdatedAt?: string | null;
   leaseOwner?: string | null;
   leaseExpiresAt?: string | null;
   runId?: string | null;

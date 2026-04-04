@@ -84,7 +84,7 @@ export class PostgresJobStore implements JobStore {
       await this.sql`
         CREATE TABLE IF NOT EXISTS job_events (
           id TEXT PRIMARY KEY,
-          job_id TEXT NOT NULL,
+          job_id TEXT NOT NULL REFERENCES audio_jobs(id) ON DELETE CASCADE,
           event_type TEXT NOT NULL,
           sequence_number INTEGER NOT NULL,
           payload JSONB,
@@ -320,6 +320,9 @@ export class PostgresJobStore implements JobStore {
   }
 
   async delete(jobId: string): Promise<boolean> {
+    await this.sql`
+      DELETE FROM job_events WHERE job_id = ${jobId}
+    `;
     const rows = await this.sql`
       DELETE FROM audio_jobs WHERE id = ${jobId} RETURNING id
     `;
@@ -345,6 +348,16 @@ export class PostgresJobStore implements JobStore {
   }
 
   async deleteForUser(jobId: string, userId: string): Promise<boolean> {
+    await this.sql`
+      DELETE FROM job_events
+      WHERE job_id = ${jobId}
+        AND EXISTS (
+          SELECT 1
+          FROM audio_jobs
+          WHERE id = ${jobId}
+            AND user_id = ${userId}
+        )
+    `;
     const rows = await this.sql`
       DELETE FROM audio_jobs WHERE id = ${jobId} AND user_id = ${userId} RETURNING id
     `;

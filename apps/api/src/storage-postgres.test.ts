@@ -160,11 +160,41 @@ function createSqlHarness() {
       return [nextJob];
     }
 
+    if (text.startsWith("delete from job_events where job_id =") && !text.includes("exists")) {
+      const jobId = values[0] as string;
+      for (let index = events.length - 1; index >= 0; index -= 1) {
+        if (events[index]?.job_id === jobId) {
+          events.splice(index, 1);
+        }
+      }
+      return [];
+    }
+
+    if (text.startsWith("delete from job_events") && text.includes("exists")) {
+      const jobId = values[0] as string;
+      const userId = values[2] as string;
+      const job = jobs.get(jobId);
+      if (!job || job.user_id !== userId) {
+        return [];
+      }
+      for (let index = events.length - 1; index >= 0; index -= 1) {
+        if (events[index]?.job_id === jobId) {
+          events.splice(index, 1);
+        }
+      }
+      return [];
+    }
+
     if (text.startsWith("delete from audio_jobs where id =") && text.includes("and user_id =")) {
       const [jobId, userId] = values as [string, string];
       const job = jobs.get(jobId);
       if (!job || job.user_id !== userId) {
         return [];
+      }
+      for (let index = events.length - 1; index >= 0; index -= 1) {
+        if (events[index]?.job_id === jobId) {
+          events.splice(index, 1);
+        }
       }
       jobs.delete(jobId);
       return [{ id: jobId }];
@@ -175,12 +205,20 @@ function createSqlHarness() {
       if (!jobs.has(jobId)) {
         return [];
       }
+      for (let index = events.length - 1; index >= 0; index -= 1) {
+        if (events[index]?.job_id === jobId) {
+          events.splice(index, 1);
+        }
+      }
       jobs.delete(jobId);
       return [{ id: jobId }];
     }
 
     if (text.startsWith("insert into job_events")) {
       const event = rowFromEventInsert(values);
+      if (!jobs.has(String(event.job_id))) {
+        throw new Error("insert or update on table \"job_events\" violates foreign key constraint");
+      }
       const existingIndex = events.findIndex(
         (row) =>
           row.job_id === event.job_id &&
@@ -259,24 +297,30 @@ function rowFromEventInsert(values: unknown[]): SqlRow {
 
 function patchJobFromUpdate(job: SqlRow, values: unknown[], text: string): SqlRow {
   if (text.includes("audio_url = case when")) {
+    let cursor = 0;
+    const read = <T>(current: T): T => {
+      const hasValue = Boolean(values[cursor++]);
+      const nextValue = values[cursor++];
+      return hasValue ? (nextValue as T) : current;
+    };
+
     return {
       ...job,
-      status: values[0] !== undefined ? values[0] : job.status,
-      internal_state: values[1] !== undefined ? values[1] : job.internal_state,
-      display_title: values[2] !== undefined ? values[2] : job.display_title,
-      speech_script: values[3] !== undefined ? values[3] : job.speech_script,
-      available_duration_seconds:
-        values[4] !== undefined ? values[4] : job.available_duration_seconds,
-      lease_owner: values[5] !== undefined ? values[5] : job.lease_owner,
-      lease_expires_at: values[6] !== undefined ? values[6] : job.lease_expires_at,
-      run_id: values[7] !== undefined ? values[7] : job.run_id,
-      attempt: values[8] !== undefined ? values[8] : job.attempt,
-      audio_url: values[9] !== undefined ? values[9] : job.audio_url,
-      playlist_url: values[10] !== undefined ? values[10] : job.playlist_url,
-      audio_segments: values[11] !== undefined ? values[11] : job.audio_segments,
-      duration_seconds: values[12] !== undefined ? values[12] : job.duration_seconds,
-      error: values[13] !== undefined ? values[13] : job.error,
-      updated_at: values[14],
+      status: read(job.status),
+      internal_state: read(job.internal_state),
+      display_title: read(job.display_title),
+      speech_script: read(job.speech_script),
+      available_duration_seconds: read(job.available_duration_seconds),
+      lease_owner: read(job.lease_owner),
+      lease_expires_at: read(job.lease_expires_at),
+      run_id: read(job.run_id),
+      attempt: read(job.attempt),
+      audio_url: read(job.audio_url),
+      playlist_url: read(job.playlist_url),
+      audio_segments: read(job.audio_segments),
+      duration_seconds: read(job.duration_seconds),
+      error: read(job.error),
+      updated_at: values[cursor],
     };
   }
 
@@ -293,15 +337,81 @@ describe("PostgresJobStore events and leases", () => {
   it("records a job_created event", async () => {
     const { store } = makeJobStore();
     await store.init();
+    await store.save(createJob());
 
-    await store.appendEvent?.("job-1", {
+    await store.appendEvent("job-1", {
       type: "job_created",
       sequenceNumber: 1,
     });
 
-    const events = await store.listEvents?.("job-1");
-    expect(events?.map((event) => event.type)).toEqual(["job_created"]);
-    expect(events?.[0]?.sequenceNumber).toBe(1);
+    const events = await store.listEvents("job-1");
+    expect(events.map((event) => event.type)).toEqual(["job_created"]);
+    expect(events[0]?.sequenceNumber).toBe(1);
+  });
+
+  it("round-trips the added job columns", async () => {
+    const { store } = makeJobStore();
+    await store.init();
+
+    await store.save(
+      createJob({
+        status: "processing",
+        internalState: "synthesizing",
+        displayTitle: "Readable Title",
+        speechScript: "Readable Title\nBody text.",
+        availableDurationSeconds: 42,
+        leaseOwner: "worker-1",
+        leaseExpiresAt: "2026-01-01T00:10:00.000Z",
+        runId: "run-1",
+        attempt: 3,
+      }),
+    );
+
+    const job = await store.get("job-1");
+    expect(job).toMatchObject({
+      status: "processing",
+      internalState: "synthesizing",
+      displayTitle: "Readable Title",
+      speechScript: "Readable Title\nBody text.",
+      availableDurationSeconds: 42,
+      leaseOwner: "worker-1",
+      leaseExpiresAt: "2026-01-01T00:10:00.000Z",
+      runId: "run-1",
+      attempt: 3,
+    });
+  });
+
+  it("deduplicates event sequences and honors limits", async () => {
+    const { store } = makeJobStore();
+    await store.init();
+    await store.save(createJob());
+
+    await store.appendEvent("job-1", {
+      type: "job_created",
+      sequenceNumber: 1,
+      payload: { phase: "first" },
+    });
+    await store.appendEvent("job-1", {
+      type: "job_created",
+      sequenceNumber: 1,
+      payload: { phase: "updated" },
+    });
+    await store.appendEvent("job-1", {
+      type: "chunk_ready",
+      sequenceNumber: 2,
+    });
+
+    const limited = await store.listEvents("job-1", { limit: 1 });
+    expect(limited).toHaveLength(1);
+    expect(limited[0]).toMatchObject({
+      type: "job_created",
+      sequenceNumber: 1,
+      payload: { phase: "updated" },
+    });
+
+    const allEvents = await store.listEvents("job-1");
+    expect(allEvents).toHaveLength(2);
+    expect(allEvents.map((event) => event.sequenceNumber)).toEqual([1, 2]);
   });
 
   it("claims a job with a lease", async () => {
@@ -344,20 +454,30 @@ describe("PostgresJobStore events and leases", () => {
     expect((await store.get("job-1"))?.leaseExpiresAt).toBe("2026-01-01T00:10:00.000Z");
   });
 
-  it("reads back recent events in order", async () => {
+  it("deletes related events when deleting a job", async () => {
     const { store } = makeJobStore();
     await store.init();
+    await store.save(createJob());
+    await store.appendEvent("job-1", { type: "job_created", sequenceNumber: 1 });
+    await store.appendEvent("job-1", { type: "chunk_ready", sequenceNumber: 2 });
 
-    await store.appendEvent?.("job-1", { type: "job_created", sequenceNumber: 1 });
-    await store.appendEvent?.("job-1", { type: "chunk_ready", sequenceNumber: 2 });
-    await store.appendEvent?.("job-1", { type: "job_completed", sequenceNumber: 3 });
+    expect(await store.delete("job-1")).toBe(true);
+    expect(await store.get("job-1")).toBeNull();
+    expect(await store.listEvents("job-1")).toEqual([]);
+  });
 
-    const events = await store.listEvents?.("job-1");
-    expect(events?.map((event) => event.type)).toEqual([
-      "job_created",
-      "chunk_ready",
-      "job_completed",
-    ]);
-    expect(events?.map((event) => event.sequenceNumber)).toEqual([1, 2, 3]);
+  it("deletes related events when deleting a user-owned job", async () => {
+    const { store } = makeJobStore();
+    await store.init();
+    await store.save(
+      createJob({
+        userId: "user-1",
+      }),
+    );
+    await store.appendEvent("job-1", { type: "job_created", sequenceNumber: 1 });
+
+    expect(await store.deleteForUser("job-1", "user-1")).toBe(true);
+    expect(await store.getForUser("job-1", "user-1")).toBeNull();
+    expect(await store.listEvents("job-1")).toEqual([]);
   });
 });

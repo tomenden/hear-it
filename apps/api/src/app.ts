@@ -68,6 +68,13 @@ interface AudioJobResponse {
   id: string;
   title: string;
   state: PublicAudioState;
+  article: {
+    url: string;
+    siteName: string | null;
+    excerpt: string | null;
+    estimatedMinutes: number;
+  };
+  voice: string;
   playback: PlaybackDescriptor;
   progress: {
     chunksTotal: number | null;
@@ -120,6 +127,13 @@ export function createApp(options: CreateAppOptions) {
       id: job.id,
       title,
       state,
+      article: {
+        url: job.article.url,
+        siteName: job.article.siteName,
+        excerpt: job.article.excerpt,
+        estimatedMinutes: job.article.estimatedMinutes,
+      },
+      voice: job.speechOptions.voice,
       playback,
       progress: {
         chunksTotal: state === "ready" ? chunksReady : null,

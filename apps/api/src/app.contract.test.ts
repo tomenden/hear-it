@@ -143,6 +143,13 @@ describe("audio job API contract", () => {
       id: "job-processing",
       title: "Readable title",
       state: "processing",
+      article: {
+        url: "https://example.com/posts/contract",
+        siteName: "Example",
+        excerpt: null,
+        estimatedMinutes: 1,
+      },
+      voice: "alloy",
       playback: {
         mode: "streaming",
         isPlayable: true,
@@ -186,6 +193,13 @@ describe("audio job API contract", () => {
       id: "job-playlist-only",
       title: "Readable title",
       state: "processing",
+      article: {
+        url: "https://example.com/posts/contract",
+        siteName: "Example",
+        excerpt: null,
+        estimatedMinutes: 1,
+      },
+      voice: "alloy",
       playback: {
         mode: "preparing",
         isPlayable: false,
@@ -253,6 +267,13 @@ describe("audio job API contract", () => {
         id: "job-failed",
         title: "Readable title",
         state: "failed",
+        article: {
+          url: "https://example.com/posts/contract",
+          siteName: "Example",
+          excerpt: null,
+          estimatedMinutes: 1,
+        },
+        voice: "alloy",
         playback: {
           mode: "failed",
           isPlayable: false,
@@ -270,6 +291,13 @@ describe("audio job API contract", () => {
         id: "job-ready",
         title: "Readable title",
         state: "ready",
+        article: {
+          url: "https://example.com/posts/contract",
+          siteName: "Example",
+          excerpt: null,
+          estimatedMinutes: 1,
+        },
+        voice: "alloy",
         playback: {
           mode: "final",
           isPlayable: true,
@@ -289,6 +317,13 @@ describe("audio job API contract", () => {
         id: "job-queued",
         title: "Readable title",
         state: "queued",
+        article: {
+          url: "https://example.com/posts/contract",
+          siteName: "Example",
+          excerpt: null,
+          estimatedMinutes: 1,
+        },
+        voice: "alloy",
         playback: {
           mode: "preparing",
           isPlayable: false,

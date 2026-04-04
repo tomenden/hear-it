@@ -9,6 +9,13 @@ import {
   ArticleTooLongError,
   extractArticle,
 } from "./extractor.js";
+import {
+  mapInternalStateToPublicState,
+  mapJobToPlaybackDescriptor,
+  type InternalAudioState,
+  type PlaybackDescriptor,
+  type PublicAudioState,
+} from "./audio-playback.js";
 import { createAuthMiddleware } from "./auth.js";
 import { AudioJobService } from "./jobs.js";
 import type { AudioStore, JobStore } from "./storage.js";
@@ -57,6 +64,20 @@ export interface CreateAppOptions {
   allowJwtSecretFallback?: boolean;
 }
 
+interface AudioJobResponse {
+  id: string;
+  title: string;
+  state: PublicAudioState;
+  playback: PlaybackDescriptor;
+  progress: {
+    chunksTotal: number | null;
+    chunksReady: number;
+    availableDurationSeconds: number;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Rate limiting uses the default in-memory store. It is intentionally simple for
 // the current single-service deployment, but counters reset on process restarts.
 const rateLimitMessage = { error: "Too many requests. Please try again later." };
@@ -80,10 +101,35 @@ const writeEndpointLimiter = rateLimit({
 export function createApp(options: CreateAppOptions) {
   const { audioJobService, jobStore, audioStore } = options;
   const app = express();
-  const serializeJob = (job: AudioJob) => ({
-    ...job,
-    audioDownloadPath: null,
-  });
+  const serializeJob = (job: AudioJob): AudioJobResponse => {
+    const title = resolveJobTitle(job);
+    const playback = mapJobToPlaybackDescriptor({
+      state: resolveInternalState(job),
+      streamPlaylistUrl: job.playlistUrl,
+      finalAudioUrl: job.audioUrl,
+      availableDurationSeconds: resolveAvailableDurationSeconds(job),
+      durationSeconds: job.durationSeconds,
+      title,
+      error: job.error,
+      liveEdgeUpdatedAt: job.liveEdgeUpdatedAt ?? (job.playlistUrl ? job.updatedAt : null),
+    });
+    const state = mapInternalStateToPublicState(resolveInternalState(job));
+    const chunksReady = job.audioSegments.length;
+
+    return {
+      id: job.id,
+      title,
+      state,
+      playback,
+      progress: {
+        chunksTotal: state === "ready" ? chunksReady : null,
+        chunksReady,
+        availableDurationSeconds: resolveAvailableDurationSeconds(job),
+      },
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+    };
+  };
   const errorResponse = (
     error: unknown,
     fallbackMessage: string,
@@ -349,4 +395,46 @@ export function createApp(options: CreateAppOptions) {
   Sentry.setupExpressErrorHandler(app);
 
   return app;
+}
+
+function resolveJobTitle(job: AudioJob): string {
+  return job.displayTitle?.trim() || job.article.title?.trim() || "Untitled audio";
+}
+
+function resolveInternalState(job: AudioJob): InternalAudioState {
+  if (job.internalState) {
+    return job.internalState;
+  }
+
+  switch (job.status) {
+    case "queued":
+      return "queued";
+    case "processing":
+      return "synthesizing";
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    default:
+      return assertNever(job.status);
+  }
+}
+
+function resolveAvailableDurationSeconds(job: AudioJob): number {
+  if (typeof job.availableDurationSeconds === "number") {
+    return job.availableDurationSeconds;
+  }
+
+  if (typeof job.durationSeconds === "number") {
+    return job.durationSeconds;
+  }
+
+  return job.audioSegments.reduce(
+    (total, segment) => total + segment.durationSeconds,
+    0,
+  );
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled audio job status: ${String(value)}`);
 }

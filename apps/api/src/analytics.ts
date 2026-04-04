@@ -24,12 +24,20 @@ export function trackEvent(
   try {
     getClient()?.capture({
       distinctId: "server",
-      event,
+      event: normalizeEventName(event),
       properties,
     });
   } catch {
     // Analytics should never break the app
   }
+}
+
+function normalizeEventName(event: string): string {
+  if (event.startsWith("narration_")) {
+    return `audio_${event.slice("narration_".length)}`;
+  }
+
+  return event;
 }
 
 export async function shutdownAnalytics(): Promise<void> {

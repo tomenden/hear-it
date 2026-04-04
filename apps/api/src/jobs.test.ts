@@ -645,7 +645,7 @@ describe("audio job service", () => {
     expect(preview.audioUrl).toBe("/audio/previews/voice-preview--alloy.mp3");
   });
 
-  it("does not expose a single-file narration download for completed jobs", async () => {
+  it("exposes the explicit final playback contract without a legacy audio download endpoint", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
     const { service, jobStore, audioStore } = createTestContext(audioDir, jobsFilePath);
@@ -663,8 +663,32 @@ describe("audio job service", () => {
     try {
       const address = server.address() as AddressInfo;
       const jobResponse = await fetch(`http://127.0.0.1:${address.port}/api/jobs/${queuedJob.id}`);
-      const jobPayload = await jobResponse.json() as { job: { audioDownloadPath: string | null } };
-      expect(jobPayload.job.audioDownloadPath).toBeNull();
+      const jobPayload = await jobResponse.json() as {
+        job: {
+          state: string;
+          playback: {
+            mode: string;
+            isPlayable: boolean;
+            audioUrl?: string;
+            durationSeconds?: number;
+            fileName?: string;
+          };
+          progress: {
+            chunksTotal: number | null;
+            chunksReady: number;
+            availableDurationSeconds: number;
+          };
+        };
+      };
+      expect(jobPayload.job.state).toBe("ready");
+      expect(jobPayload.job.playback).toMatchObject({
+        mode: "final",
+        isPlayable: true,
+        audioUrl: `/audio/jobs/${queuedJob.id}/final.mp3`,
+        fileName: "Queueing Speech Jobs.mp3",
+      });
+      expect(jobPayload.job.progress.chunksTotal).toBe(jobPayload.job.progress.chunksReady);
+      expect(jobPayload.job.progress.availableDurationSeconds).toBeGreaterThan(0);
 
       const audioResponse = await fetch(`http://127.0.0.1:${address.port}/api/jobs/${queuedJob.id}/audio`);
       expect(audioResponse.status).toBe(404);

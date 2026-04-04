@@ -94,7 +94,7 @@ export class AudioJobService {
     await this.jobStore.save(job);
 
     const domain = safeHostname(article.url);
-    trackEvent("narration_created", {
+    trackEvent("audio_created", {
       url: article.url,
       domain,
       voice: speechOptions.voice,

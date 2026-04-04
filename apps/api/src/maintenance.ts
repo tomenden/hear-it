@@ -115,9 +115,14 @@ export class FinalizationRepairer implements MaintenanceService {
 
   async runOnce(now = new Date()): Promise<void> {
     const jobs = await this.jobStore.getAll();
+    const nowIso = now.toISOString();
 
     for (const job of jobs) {
       if (job.status === "completed") {
+        continue;
+      }
+
+      if (hasLiveLease(job, nowIso)) {
         continue;
       }
 
@@ -181,8 +186,36 @@ export class MaintenanceRunner {
       return false;
     }
 
-    for (const service of this.services) {
-      await service.runOnce(now);
+    let renewalError: unknown = null;
+    const renewalIntervalMs = Math.max(1, Math.floor(this.leaseDurationMs / 2));
+    const renewLease = async () => {
+      const renewed = await this.jobStore.claimMaintenanceLease?.(
+        this.leaseOwner,
+        new Date(Date.now() + this.leaseDurationMs).toISOString(),
+        this.leaseName,
+      );
+
+      if (!renewed) {
+        renewalError ??= new Error("Failed to renew maintenance lease.");
+      }
+    };
+    const timer = setInterval(() => {
+      void renewLease();
+    }, renewalIntervalMs);
+    timer.unref?.();
+
+    try {
+      for (const service of this.services) {
+        if (renewalError) {
+          throw renewalError;
+        }
+        await service.runOnce(now);
+      }
+      if (renewalError) {
+        throw renewalError;
+      }
+    } finally {
+      clearInterval(timer);
     }
 
     return true;
@@ -236,4 +269,12 @@ export function startMaintenanceWorker(options: StartMaintenanceWorkerOptions) {
 
 function buildHlsSegmentsPrefix(jobId: string): string {
   return `jobs/${jobId}/segments`;
+}
+
+function hasLiveLease(job: AudioJob, nowIso: string): boolean {
+  return (
+    Boolean(job.leaseOwner || job.runId) &&
+    typeof job.leaseExpiresAt === "string" &&
+    job.leaseExpiresAt > nowIso
+  );
 }

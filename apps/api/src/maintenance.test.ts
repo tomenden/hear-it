@@ -20,8 +20,8 @@ class MemoryJobStore implements JobStore {
   readonly updates: Array<{ jobId: string; patch: Partial<AudioJob> }> = [];
   readonly leaseClaims: Array<{ leaseOwner: string; leaseExpiresAt: string }> = [];
   readonly requeueAttempts: Array<{ jobId: string; expected: ExpiredLeaseSnapshot }> = [];
-  maintenanceLeaseAvailable = true;
   maintenanceLeaseOwner: string | null = null;
+  maintenanceLeaseExpiresAt: string | null = null;
   onRequeueAttempt?: (
     jobId: string,
     expected: ExpiredLeaseSnapshot,
@@ -97,16 +97,18 @@ class MemoryJobStore implements JobStore {
     leaseExpiresAt: string,
   ): Promise<boolean> {
     this.leaseClaims.push({ leaseOwner, leaseExpiresAt });
-    if (
-      !this.maintenanceLeaseAvailable &&
+    const now = new Date().toISOString();
+    const leaseIsLive =
       this.maintenanceLeaseOwner !== null &&
-      this.maintenanceLeaseOwner !== leaseOwner
-    ) {
+      this.maintenanceLeaseExpiresAt !== null &&
+      this.maintenanceLeaseExpiresAt > now;
+
+    if (leaseIsLive && this.maintenanceLeaseOwner !== leaseOwner) {
       return false;
     }
 
-    this.maintenanceLeaseAvailable = false;
     this.maintenanceLeaseOwner = leaseOwner;
+    this.maintenanceLeaseExpiresAt = leaseExpiresAt;
     return true;
   }
 
@@ -265,7 +267,7 @@ describe("maintenance services", () => {
         playlistUrl: `/audio/${buildPlaylistKey("job-123")}`,
         audioUrl: null,
         leaseOwner: "worker-a",
-        leaseExpiresAt: "2026-04-05T12:05:00.000Z",
+        leaseExpiresAt: "2026-04-05T11:55:00.000Z",
         error: "stuck finalizing",
       }),
     );
@@ -284,6 +286,38 @@ describe("maintenance services", () => {
         runId: null,
         error: null,
       }),
+    });
+  });
+
+  it("does not repair a job whose final MP3 exists while the live lease is still active", async () => {
+    const now = new Date("2026-04-05T12:00:00.000Z");
+    const jobStore = new MemoryJobStore();
+    const audioStore = new MemoryAudioStore();
+    audioStore.seed(buildFinalAudioKey("job-123"));
+    await jobStore.save(
+      createJob({
+        status: "processing",
+        internalState: "finalizing",
+        audioUrl: null,
+        leaseOwner: "worker-a",
+        leaseExpiresAt: "2026-04-05T12:05:00.000Z",
+        runId: "run-a",
+        error: "stuck finalizing",
+      }),
+    );
+
+    const repairer = new FinalizationRepairer({ jobStore, audioStore });
+    await repairer.runOnce(now);
+
+    expect(jobStore.updates).toHaveLength(0);
+    expect(await jobStore.get("job-123")).toMatchObject({
+      status: "processing",
+      internalState: "finalizing",
+      audioUrl: null,
+      leaseOwner: "worker-a",
+      leaseExpiresAt: "2026-04-05T12:05:00.000Z",
+      runId: "run-a",
+      error: "stuck finalizing",
     });
   });
 
@@ -338,6 +372,54 @@ describe("maintenance services", () => {
       resolveSlowRun();
       await Promise.resolve();
       stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("renews the maintenance lease during a long pass so another runner cannot overlap", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-05T12:00:00.000Z"));
+
+    try {
+      const jobStore = new MemoryJobStore();
+      let resolveSlowRun: () => void = () => {};
+      const slowRun = new Promise<void>((resolve) => {
+        resolveSlowRun = resolve;
+      });
+      const firstService = {
+        runOnce: vi.fn(() => slowRun),
+      };
+      const secondService = {
+        runOnce: vi.fn().mockResolvedValue(undefined),
+      };
+      const firstRunner = new MaintenanceRunner({
+        jobStore,
+        leaseOwner: "worker-a",
+        services: [firstService],
+        leaseDurationMs: 50,
+      });
+      const secondRunner = new MaintenanceRunner({
+        jobStore,
+        leaseOwner: "worker-b",
+        services: [secondService],
+        leaseDurationMs: 50,
+      });
+
+      const firstPass = firstRunner.runOnce(new Date());
+      await Promise.resolve();
+
+      await vi.advanceTimersByTimeAsync(120);
+      const secondPass = await secondRunner.runOnce(new Date());
+
+      expect(firstService.runOnce).toHaveBeenCalledTimes(1);
+      expect(secondPass).toBe(false);
+      expect(secondService.runOnce).not.toHaveBeenCalled();
+      expect(jobStore.maintenanceLeaseOwner).toBe("worker-a");
+      expect(jobStore.leaseClaims.length).toBeGreaterThan(2);
+
+      resolveSlowRun();
+      await firstPass;
     } finally {
       vi.useRealTimers();
     }

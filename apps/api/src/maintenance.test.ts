@@ -173,6 +173,8 @@ class MemoryJobStore implements JobStore {
 class MemoryAudioStore implements AudioStore {
   readonly deletedKeys: string[] = [];
   readonly deletedPrefixes: string[] = [];
+  readonly headKeys: string[] = [];
+  onHead?: (key: string) => Promise<void> | void;
   private readonly blobs = new Map<string, string>();
 
   async check(): Promise<void> {}
@@ -184,6 +186,8 @@ class MemoryAudioStore implements AudioStore {
   }
 
   async head(key: string): Promise<string | null> {
+    this.headKeys.push(key);
+    await this.onHead?.(key);
     return this.blobs.get(key) ?? null;
   }
 
@@ -467,13 +471,73 @@ describe("maintenance services", () => {
       });
 
       const pass = runner.runOnce(new Date());
+      const passFailure = expect(pass).rejects.toThrow("maintenance lease renewal failed");
       await Promise.resolve();
       await vi.advanceTimersByTimeAsync(60);
       resolveSlowRun();
 
-      await expect(pass).rejects.toThrow("maintenance lease renewal failed");
+      await passFailure;
       expect(slowService.runOnce).toHaveBeenCalledTimes(1);
       expect(skippedService.runOnce).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("aborts a maintenance scan after lease loss so later jobs are not mutated", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-05T12:00:00.000Z"));
+
+    try {
+      const jobStore = new MemoryJobStore();
+      const audioStore = new MemoryAudioStore();
+      jobStore.failMaintenanceLeaseClaimAt = 2;
+      await jobStore.save(
+        createJob({
+          id: "job-1",
+          status: "processing",
+          internalState: "synthesizing",
+          leaseOwner: "worker-a",
+          leaseExpiresAt: "2026-04-05T11:59:00.000Z",
+          runId: "run-a",
+        }),
+      );
+      await jobStore.save(
+        createJob({
+          id: "job-2",
+          status: "processing",
+          internalState: "synthesizing",
+          leaseOwner: "worker-a",
+          leaseExpiresAt: "2026-04-05T11:59:00.000Z",
+          runId: "run-b",
+        }),
+      );
+      audioStore.onHead = async (key) => {
+        if (key === buildFinalAudioKey("job-1")) {
+          await new Promise((resolve) => setTimeout(resolve, 60));
+        }
+      };
+
+      const runner = new MaintenanceRunner({
+        jobStore,
+        leaseOwner: "worker-a",
+        leaseDurationMs: 50,
+        services: [new JobReconciler({ jobStore, audioStore })],
+      });
+
+      const pass = runner.runOnce(new Date());
+      const passFailure = expect(pass).rejects.toThrow("maintenance lease renewal failed");
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(60);
+
+      await passFailure;
+      expect(audioStore.headKeys).toEqual([buildFinalAudioKey("job-1")]);
+      expect(await jobStore.get("job-2")).toMatchObject({
+        status: "processing",
+        leaseOwner: "worker-a",
+        leaseExpiresAt: "2026-04-05T11:59:00.000Z",
+        runId: "run-b",
+      });
     } finally {
       vi.useRealTimers();
     }

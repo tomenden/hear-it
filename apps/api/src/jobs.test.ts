@@ -490,6 +490,19 @@ class LeaseTakeoverJobStore extends FileJobStore {
   }
 }
 
+class FlakyInitJobStore extends FileJobStore {
+  private failedOnce = false;
+
+  override async init(): Promise<void> {
+    if (!this.failedOnce) {
+      this.failedOnce = true;
+      throw new Error("transient init failure");
+    }
+
+    await super.init();
+  }
+}
+
 async function waitFor<T>(
   action: () => Promise<T>,
   predicate: (value: T) => boolean,
@@ -586,6 +599,29 @@ describe("audio job service", () => {
     expect(persistedJob?.status).toBe("completed");
     expect(await secondService.listJobs()).toHaveLength(1);
     expect(persistedJob?.audioSegments.length ?? 0).toBeGreaterThan(0);
+  });
+
+  it("retries initialization after a transient init failure", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const audioStore = new FileAudioStore(audioDir, "/audio");
+    const jobStore = new FlakyInitJobStore(jobsFilePath);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider: new InstantSpeechProvider(),
+      mediaPackager: new TestMediaPackager(),
+    });
+
+    await expect(service.init()).rejects.toThrow("transient init failure");
+    await expect(service.init()).resolves.toBeUndefined();
+
+    const job = await service.createJob({
+      url: "https://example.com/posts/retry-init",
+      html: sampleHtml,
+    });
+
+    expect(job.status).toBe("queued");
   });
 
   it("creates a cached voice preview", async () => {

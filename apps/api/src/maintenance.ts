@@ -13,7 +13,11 @@ const DEFAULT_MAINTENANCE_LEASE_MS = 55_000;
 const DEFAULT_MAINTENANCE_LEASE_NAME = "maintenance";
 
 export interface MaintenanceService {
-  runOnce(now?: Date): Promise<void>;
+  runOnce(now?: Date, context?: MaintenanceRunContext): Promise<void>;
+}
+
+export interface MaintenanceRunContext {
+  shouldAbort(): boolean;
 }
 
 export interface JobReconcilerOptions {
@@ -30,10 +34,17 @@ export class JobReconciler implements MaintenanceService {
     this.audioStore = options.audioStore;
   }
 
-  async runOnce(now = new Date()): Promise<void> {
+  async runOnce(
+    now = new Date(),
+    context?: MaintenanceRunContext,
+  ): Promise<void> {
     const jobs = await this.jobStore.getAll();
 
     for (const job of jobs) {
+      if (context?.shouldAbort()) {
+        break;
+      }
+
       if (job.status !== "processing") {
         continue;
       }
@@ -43,6 +54,9 @@ export class JobReconciler implements MaintenanceService {
       }
 
       const repairedAudioUrl = await this.audioStore.head(buildFinalAudioKey(job.id));
+      if (context?.shouldAbort()) {
+        break;
+      }
       if (repairedAudioUrl) {
         continue;
       }
@@ -74,10 +88,17 @@ export class HlsRetentionCleaner implements MaintenanceService {
     this.retentionMs = options.retentionMs ?? DEFAULT_HLS_RETENTION_MS;
   }
 
-  async runOnce(now = new Date()): Promise<void> {
+  async runOnce(
+    now = new Date(),
+    context?: MaintenanceRunContext,
+  ): Promise<void> {
     const jobs = await this.jobStore.getAll();
 
     for (const job of jobs) {
+      if (context?.shouldAbort()) {
+        break;
+      }
+
       if (job.status !== "completed" || !job.playlistUrl) {
         continue;
       }
@@ -120,11 +141,18 @@ export class FinalizationRepairer implements MaintenanceService {
     this.audioStore = options.audioStore;
   }
 
-  async runOnce(now = new Date()): Promise<void> {
+  async runOnce(
+    now = new Date(),
+    context?: MaintenanceRunContext,
+  ): Promise<void> {
     const jobs = await this.jobStore.getAll();
     const nowIso = now.toISOString();
 
     for (const job of jobs) {
+      if (context?.shouldAbort()) {
+        break;
+      }
+
       if (job.status === "completed") {
         continue;
       }
@@ -134,6 +162,9 @@ export class FinalizationRepairer implements MaintenanceService {
       }
 
       const finalAudioUrl = await this.audioStore.head(buildFinalAudioKey(job.id));
+      if (context?.shouldAbort()) {
+        break;
+      }
       if (!finalAudioUrl) {
         continue;
       }
@@ -176,9 +207,14 @@ export class MaintenanceRunner {
   }
 
   async runOnce(now = new Date()): Promise<boolean> {
+    let renewalError: unknown = null;
+    const context: MaintenanceRunContext = {
+      shouldAbort: () => renewalError !== null,
+    };
+
     if (!this.jobStore.claimMaintenanceLease) {
       for (const service of this.services) {
-        await service.runOnce(now);
+        await service.runOnce(now, context);
       }
       return true;
     }
@@ -193,7 +229,6 @@ export class MaintenanceRunner {
       return false;
     }
 
-    let renewalError: unknown = null;
     const renewalIntervalMs = Math.max(1, Math.floor(this.leaseDurationMs / 2));
     let lastRenewal = Promise.resolve();
     const recordRenewalFailure = (error: unknown) => {
@@ -233,7 +268,7 @@ export class MaintenanceRunner {
         if (renewalError) {
           throw renewalError;
         }
-        await service.runOnce(now);
+        await service.runOnce(now, context);
         if (renewalError) {
           throw renewalError;
         }

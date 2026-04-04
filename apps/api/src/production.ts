@@ -39,27 +39,22 @@ const app = createApp({
   supabaseJwtSecret: process.env.SUPABASE_JWT_SECRET,
 });
 
-void audioJobService
-  .init()
-  .then(() =>
-    startMaintenanceWorker({
-      jobStore,
-      leaseOwner: maintenanceLeaseOwner,
-      intervalMs: Number(process.env.MAINTENANCE_INTERVAL_MS ?? 60_000),
-      leaseDurationMs: Number(process.env.MAINTENANCE_LEASE_MS ?? 55_000),
-      services: [
-        new FinalizationRepairer({ jobStore, audioStore }),
-        new JobReconciler({ jobStore, audioStore }),
-        new HlsRetentionCleaner({ jobStore, audioStore }),
-      ],
-      onError: (error) => {
-        console.error("Maintenance worker failed", error);
-      },
-    }),
-  )
-  .catch((error) => {
-    console.error("Failed to start maintenance worker", error);
-  });
+await audioJobService.init();
+
+startMaintenanceWorker({
+  jobStore,
+  leaseOwner: maintenanceLeaseOwner,
+  intervalMs: Number(process.env.MAINTENANCE_INTERVAL_MS ?? 60_000),
+  leaseDurationMs: Number(process.env.MAINTENANCE_LEASE_MS ?? 55_000),
+  services: [
+    new FinalizationRepairer({ jobStore, audioStore }),
+    new JobReconciler({ jobStore, audioStore }),
+    new HlsRetentionCleaner({ jobStore, audioStore }),
+  ],
+  onError: (error) => {
+    console.error("Maintenance worker failed", error);
+  },
+});
 
 app.listen(port, () => {
   console.log(`Hear It API listening on http://0.0.0.0:${port}`);

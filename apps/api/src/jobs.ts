@@ -57,7 +57,10 @@ export class AudioJobService {
 
   async init(): Promise<void> {
     if (!this.initPromise) {
-      this.initPromise = this.jobStore.init();
+      this.initPromise = this.jobStore.init().catch((error) => {
+        this.initPromise = null;
+        throw error;
+      });
     }
     await this.initPromise;
   }

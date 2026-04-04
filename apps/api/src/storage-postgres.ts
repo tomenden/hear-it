@@ -93,6 +93,25 @@ export class PostgresJobStore implements JobStore {
       `;
 
       await this.sql`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1
+            FROM pg_constraint c
+            JOIN pg_class t ON t.oid = c.conrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+            WHERE c.conname = 'job_events_job_id_fkey'
+              AND n.nspname = current_schema()
+              AND t.relname = 'job_events'
+          ) THEN
+            ALTER TABLE job_events
+            ADD CONSTRAINT job_events_job_id_fkey
+            FOREIGN KEY (job_id) REFERENCES audio_jobs(id) ON DELETE CASCADE;
+          END IF;
+        END $$;
+      `;
+
+      await this.sql`
         CREATE SEQUENCE IF NOT EXISTS audio_jobs_id_seq
       `;
 
@@ -320,9 +339,6 @@ export class PostgresJobStore implements JobStore {
   }
 
   async delete(jobId: string): Promise<boolean> {
-    await this.sql`
-      DELETE FROM job_events WHERE job_id = ${jobId}
-    `;
     const rows = await this.sql`
       DELETE FROM audio_jobs WHERE id = ${jobId} RETURNING id
     `;
@@ -348,16 +364,6 @@ export class PostgresJobStore implements JobStore {
   }
 
   async deleteForUser(jobId: string, userId: string): Promise<boolean> {
-    await this.sql`
-      DELETE FROM job_events
-      WHERE job_id = ${jobId}
-        AND EXISTS (
-          SELECT 1
-          FROM audio_jobs
-          WHERE id = ${jobId}
-            AND user_id = ${userId}
-        )
-    `;
     const rows = await this.sql`
       DELETE FROM audio_jobs WHERE id = ${jobId} AND user_id = ${userId} RETURNING id
     `;

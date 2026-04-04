@@ -455,7 +455,7 @@ describe("PostgresJobStore events and leases", () => {
   });
 
   it("deletes related events when deleting a job", async () => {
-    const { store } = makeJobStore();
+    const { store, harness } = makeJobStore();
     await store.init();
     await store.save(createJob());
     await store.appendEvent("job-1", { type: "job_created", sequenceNumber: 1 });
@@ -464,10 +464,11 @@ describe("PostgresJobStore events and leases", () => {
     expect(await store.delete("job-1")).toBe(true);
     expect(await store.get("job-1")).toBeNull();
     expect(await store.listEvents("job-1")).toEqual([]);
+    expect(harness.queries.some((query) => query.includes("delete from job_events"))).toBe(false);
   });
 
   it("deletes related events when deleting a user-owned job", async () => {
-    const { store } = makeJobStore();
+    const { store, harness } = makeJobStore();
     await store.init();
     await store.save(
       createJob({
@@ -479,5 +480,6 @@ describe("PostgresJobStore events and leases", () => {
     expect(await store.deleteForUser("job-1", "user-1")).toBe(true);
     expect(await store.getForUser("job-1", "user-1")).toBeNull();
     expect(await store.listEvents("job-1")).toEqual([]);
+    expect(harness.queries.some((query) => query.includes("delete from job_events"))).toBe(false);
   });
 });

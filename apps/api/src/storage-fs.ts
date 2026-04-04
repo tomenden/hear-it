@@ -10,6 +10,7 @@ import type {
   ExpiredLeaseSnapshot,
   JobOwnership,
   JobStore,
+  ObservedJobLeaseSnapshot,
 } from "./storage.js";
 
 // ---------------------------------------------------------------------------
@@ -114,6 +115,34 @@ export class FileJobStore implements JobStore {
       existing.runId !== ownership.runId ||
       !existing.leaseExpiresAt ||
       existing.leaseExpiresAt <= now
+    ) {
+      return false;
+    }
+
+    this.jobs.set(jobId, {
+      ...existing,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    });
+    await this.persist();
+    return true;
+  }
+
+  async updateIfLeaseSnapshotMatches(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    snapshot: ObservedJobLeaseSnapshot,
+  ): Promise<boolean> {
+    const existing = this.jobs.get(jobId);
+    if (!existing) {
+      return false;
+    }
+
+    if (
+      existing.status !== snapshot.status ||
+      existing.leaseOwner !== snapshot.leaseOwner ||
+      existing.leaseExpiresAt !== snapshot.leaseExpiresAt ||
+      existing.runId !== snapshot.runId
     ) {
       return false;
     }

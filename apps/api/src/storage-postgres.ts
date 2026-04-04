@@ -4,7 +4,12 @@ import postgres, { type JSONValue } from "postgres";
 
 import type { JobEventInput, JobEventListOptions, JobEventRecord, JobLeaseClaim } from "./job-events.js";
 import type { AudioJob } from "./types.js";
-import type { ExpiredLeaseSnapshot, JobOwnership, JobStore } from "./storage.js";
+import type {
+  ExpiredLeaseSnapshot,
+  JobOwnership,
+  JobStore,
+  ObservedJobLeaseSnapshot,
+} from "./storage.js";
 
 type SqlRow = Record<string, unknown>;
 
@@ -332,6 +337,14 @@ export class PostgresJobStore implements JobStore {
     return this.patchJob(jobId, patch, ownership);
   }
 
+  async updateIfLeaseSnapshotMatches(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    snapshot: ObservedJobLeaseSnapshot,
+  ): Promise<boolean> {
+    return this.patchJob(jobId, patch, undefined, snapshot);
+  }
+
   async requeueExpiredLease(
     jobId: string,
     snapshot: ExpiredLeaseSnapshot,
@@ -361,6 +374,7 @@ export class PostgresJobStore implements JobStore {
     jobId: string,
     patch: Partial<AudioJob>,
     ownership?: JobOwnership,
+    snapshot?: ObservedJobLeaseSnapshot,
   ): Promise<boolean> {
     const now = new Date().toISOString();
     const hasStatus = patch.status !== undefined;
@@ -414,6 +428,44 @@ export class PostgresJobStore implements JobStore {
         AND lease_owner = ${ownership.leaseOwner}
         AND run_id = ${ownership.runId}
         AND lease_expires_at > ${now}
+      RETURNING id
+    `
+      : snapshot
+        ? await this.sql`
+      UPDATE audio_jobs SET
+        status = CASE WHEN ${hasStatus} THEN ${patch.status ?? null} ELSE status END,
+        internal_state = CASE WHEN ${hasInternalState} THEN ${patch.internalState ?? null} ELSE internal_state END,
+        display_title = CASE WHEN ${hasDisplayTitle} THEN ${patch.displayTitle ?? null} ELSE display_title END,
+        speech_script = CASE WHEN ${hasSpeechScript} THEN ${patch.speechScript ?? null} ELSE speech_script END,
+        available_duration_seconds = CASE
+          WHEN ${hasAvailableDurationSeconds} THEN ${patch.availableDurationSeconds ?? null}
+          ELSE available_duration_seconds
+        END,
+        live_edge_updated_at = CASE
+          WHEN ${hasLiveEdgeUpdatedAt} THEN ${patch.liveEdgeUpdatedAt ?? null}
+          ELSE live_edge_updated_at
+        END,
+        lease_owner = CASE WHEN ${hasLeaseOwner} THEN ${patch.leaseOwner ?? null} ELSE lease_owner END,
+        lease_expires_at = CASE WHEN ${hasLeaseExpiresAt} THEN ${patch.leaseExpiresAt ?? null} ELSE lease_expires_at END,
+        run_id = CASE WHEN ${hasRunId} THEN ${patch.runId ?? null} ELSE run_id END,
+        attempt = CASE WHEN ${hasAttempt} THEN ${patch.attempt ?? 0} ELSE attempt END,
+        audio_url = CASE WHEN ${hasAudioUrl} THEN ${patch.audioUrl ?? null} ELSE audio_url END,
+        playlist_url = CASE WHEN ${hasPlaylistUrl} THEN ${patch.playlistUrl ?? null} ELSE playlist_url END,
+        audio_segments = CASE
+          WHEN ${hasAudioSegments} THEN ${this.sql.json((patch.audioSegments ?? []) as unknown as JSONValue)}
+          ELSE audio_segments
+        END,
+        duration_seconds = CASE
+          WHEN ${hasDurationSeconds} THEN ${patch.durationSeconds ?? null}
+          ELSE duration_seconds
+        END,
+        error = CASE WHEN ${hasError} THEN ${patch.error ?? null} ELSE error END,
+        updated_at = ${now}
+      WHERE id = ${jobId}
+        AND status = ${snapshot.status}
+        AND lease_owner IS NOT DISTINCT FROM ${snapshot.leaseOwner}
+        AND lease_expires_at IS NOT DISTINCT FROM ${snapshot.leaseExpiresAt}
+        AND run_id IS NOT DISTINCT FROM ${snapshot.runId}
       RETURNING id
     `
       : await this.sql`

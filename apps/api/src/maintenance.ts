@@ -23,15 +23,18 @@ export interface MaintenanceRunContext {
 export interface JobReconcilerOptions {
   jobStore: JobStore;
   audioStore: AudioStore;
+  onJobQueued?: (jobId: string) => Promise<void> | void;
 }
 
 export class JobReconciler implements MaintenanceService {
   private readonly jobStore: JobStore;
   private readonly audioStore: AudioStore;
+  private readonly onJobQueued?: (jobId: string) => Promise<void> | void;
 
   constructor(options: JobReconcilerOptions) {
     this.jobStore = options.jobStore;
     this.audioStore = options.audioStore;
+    this.onJobQueued = options.onJobQueued;
   }
 
   async runOnce(
@@ -43,6 +46,11 @@ export class JobReconciler implements MaintenanceService {
     for (const job of jobs) {
       if (context?.shouldAbort()) {
         break;
+      }
+
+      if (job.status === "queued") {
+        await this.onJobQueued?.(job.id);
+        continue;
       }
 
       if (job.status !== "processing") {
@@ -61,12 +69,16 @@ export class JobReconciler implements MaintenanceService {
         continue;
       }
 
-      await this.jobStore.requeueExpiredLease(job.id, {
+      const requeued = await this.jobStore.requeueExpiredLease(job.id, {
         leaseOwner: job.leaseOwner ?? null,
         runId: job.runId ?? null,
         leaseExpiresAt: job.leaseExpiresAt,
         now: now.toISOString(),
       });
+
+      if (requeued) {
+        await this.onJobQueued?.(job.id);
+      }
     }
   }
 }
@@ -169,7 +181,9 @@ export class FinalizationRepairer implements MaintenanceService {
         continue;
       }
 
-      await this.jobStore.update(job.id, {
+      await this.jobStore.updateIfLeaseSnapshotMatches(
+        job.id,
+        {
         status: "completed",
         internalState: "completed",
         audioUrl: finalAudioUrl,
@@ -178,7 +192,14 @@ export class FinalizationRepairer implements MaintenanceService {
         runId: null,
         error: null,
         updatedAt: now.toISOString(),
-      });
+        },
+        {
+          status: job.status,
+          leaseOwner: job.leaseOwner ?? null,
+          leaseExpiresAt: job.leaseExpiresAt ?? null,
+          runId: job.runId ?? null,
+        },
+      );
     }
   }
 }

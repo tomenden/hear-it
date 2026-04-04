@@ -29,6 +29,11 @@ const audioJobService = new AudioJobService({ jobStore, audioStore });
 const maintenanceLeaseOwner =
   process.env.MAINTENANCE_LEASE_OWNER?.trim() ||
   `api-${process.pid}-${randomUUID().slice(0, 8)}`;
+const kickQueuedJob = (jobId: string) => {
+  void audioJobService.processJob(jobId).catch((error) => {
+    console.error(`Failed to kick queued job ${jobId}`, error);
+  });
+};
 
 const app = createApp({
   audioJobService,
@@ -48,7 +53,7 @@ startMaintenanceWorker({
   leaseDurationMs: Number(process.env.MAINTENANCE_LEASE_MS ?? 55_000),
   services: [
     new FinalizationRepairer({ jobStore, audioStore }),
-    new JobReconciler({ jobStore, audioStore }),
+    new JobReconciler({ jobStore, audioStore, onJobQueued: kickQueuedJob }),
     new HlsRetentionCleaner({ jobStore, audioStore }),
   ],
   onError: (error) => {

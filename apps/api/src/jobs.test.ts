@@ -382,6 +382,19 @@ class FailingHealthAudioStore implements AudioStore {
   async deletePrefix(): Promise<void> {}
 }
 
+class CleanupFailingAudioStore extends FileAudioStore {
+  private failed = false;
+
+  override async deletePrefix(prefix: string): Promise<void> {
+    if (!this.failed) {
+      this.failed = true;
+      throw new Error(`Cleanup failed for ${prefix}`);
+    }
+
+    await super.deletePrefix(prefix);
+  }
+}
+
 class TestMediaPackager {
   async packageMedia(
     jobId: string,
@@ -805,6 +818,42 @@ describe("audio job service", () => {
     expect(stillProcessingJob?.status).toBe("processing");
     expect(stillProcessingJob?.audioSegments).toHaveLength(1);
     expect(stillProcessingJob?.durationSeconds).toBeNull();
+  });
+
+  it("marks a fresh-start job failed if artifact cleanup throws before synthesis begins", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const audioStore = new CleanupFailingAudioStore(audioDir, "/audio");
+    const jobStore = new FileJobStore(jobsFilePath);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider: new InstantSpeechProvider(),
+      mediaPackager: new TestMediaPackager(),
+      leaseOwner: "test-worker",
+      leaseDurationMs: 60_000,
+      heartbeatIntervalMs: 0,
+    });
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/cleanup-failure",
+      html: sampleHtml,
+    });
+
+    await expect(service.processJob(queuedJob.id)).resolves.toBeUndefined();
+
+    expect(await service.getJob(queuedJob.id)).toMatchObject({
+      status: "failed",
+      internalState: "failed",
+      audioUrl: null,
+      playlistUrl: null,
+      audioSegments: [],
+      durationSeconds: null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      runId: null,
+      error: expect.stringContaining("Cleanup failed for jobs/"),
+    });
   });
 
   it("claims jobs with a lease and heartbeats them while processing", async () => {

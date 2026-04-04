@@ -157,7 +157,32 @@ export class AudioJobService {
 
     try {
       if (shouldStartFresh) {
-        await this.deleteNarrationArtifacts(jobId);
+        try {
+          await this.deleteNarrationArtifacts(jobId);
+        } catch (error) {
+          const cleanupFailed = await this.updateOwnedJob(
+            jobId,
+            {
+              status: "failed",
+              internalState: "failed",
+              audioUrl: null,
+              playlistUrl: null,
+              audioSegments: [],
+              availableDurationSeconds: 0,
+              liveEdgeUpdatedAt: null,
+              durationSeconds: null,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Failed to clean up previous narration artifacts.",
+            },
+            ownership,
+          );
+          if (!cleanupFailed) {
+            leaseState.lost = true;
+          }
+          return;
+        }
       }
 
       const pipeline = createJobPipeline({

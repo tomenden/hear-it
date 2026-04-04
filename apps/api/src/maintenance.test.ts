@@ -16,6 +16,7 @@ import type {
   AudioStore,
   ExpiredLeaseSnapshot,
   JobOwnership,
+  ObservedJobLeaseSnapshot,
   JobStore,
 } from "./storage.js";
 import type { AudioJob } from "./types.js";
@@ -74,6 +75,28 @@ class MemoryJobStore implements JobStore {
     patch: Partial<AudioJob>,
     _ownership: JobOwnership,
   ): Promise<boolean> {
+    return this.update(jobId, patch);
+  }
+
+  async updateIfLeaseSnapshotMatches(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    snapshot: ObservedJobLeaseSnapshot,
+  ): Promise<boolean> {
+    const existing = this.jobs.get(jobId);
+    if (!existing) {
+      return false;
+    }
+
+    if (
+      existing.status !== snapshot.status ||
+      existing.leaseOwner !== snapshot.leaseOwner ||
+      existing.leaseExpiresAt !== snapshot.leaseExpiresAt ||
+      existing.runId !== snapshot.runId
+    ) {
+      return false;
+    }
+
     return this.update(jobId, patch);
   }
 
@@ -251,6 +274,47 @@ describe("maintenance services", () => {
     });
   });
 
+  it("kicks queued jobs so maintenance can restart recovery safely", async () => {
+    const now = new Date("2026-04-05T12:00:00.000Z");
+    const jobStore = new MemoryJobStore();
+    const audioStore = new MemoryAudioStore();
+    const onJobQueued = vi.fn().mockResolvedValue(undefined);
+    await jobStore.save(
+      createJob({
+        status: "queued",
+        internalState: "queued",
+      }),
+    );
+
+    const reconciler = new JobReconciler({ jobStore, audioStore, onJobQueued });
+    await reconciler.runOnce(now);
+
+    expect(onJobQueued).toHaveBeenCalledTimes(1);
+    expect(onJobQueued).toHaveBeenCalledWith("job-123");
+  });
+
+  it("kicks a job after maintenance requeues an expired lease", async () => {
+    const now = new Date("2026-04-05T12:00:00.000Z");
+    const jobStore = new MemoryJobStore();
+    const audioStore = new MemoryAudioStore();
+    const onJobQueued = vi.fn().mockResolvedValue(undefined);
+    await jobStore.save(
+      createJob({
+        status: "processing",
+        internalState: "synthesizing",
+        leaseOwner: "worker-a",
+        leaseExpiresAt: "2026-04-05T11:59:00.000Z",
+        runId: "run-a",
+      }),
+    );
+
+    const reconciler = new JobReconciler({ jobStore, audioStore, onJobQueued });
+    await reconciler.runOnce(now);
+
+    expect(onJobQueued).toHaveBeenCalledTimes(1);
+    expect(onJobQueued).toHaveBeenCalledWith("job-123");
+  });
+
   it("cleans expired HLS assets after the retention window", async () => {
     const now = new Date("2026-04-05T18:00:01.000Z");
     const jobStore = new MemoryJobStore();
@@ -338,6 +402,51 @@ describe("maintenance services", () => {
       leaseOwner: "worker-a",
       leaseExpiresAt: "2026-04-05T12:05:00.000Z",
       runId: "run-a",
+      error: "stuck finalizing",
+    });
+  });
+
+  it("does not repair a job after a new runner claims it during the finalization scan", async () => {
+    const now = new Date("2026-04-05T12:00:00.000Z");
+    const jobStore = new MemoryJobStore();
+    const audioStore = new MemoryAudioStore();
+    audioStore.seed(buildFinalAudioKey("job-123"));
+    await jobStore.save(
+      createJob({
+        status: "processing",
+        internalState: "finalizing",
+        audioUrl: null,
+        leaseOwner: "worker-a",
+        leaseExpiresAt: "2026-04-05T11:55:00.000Z",
+        runId: "run-a",
+        error: "stuck finalizing",
+      }),
+    );
+    audioStore.onHead = async () => {
+      const claimed = await jobStore.get("job-123");
+      if (!claimed) {
+        return;
+      }
+
+      await jobStore.save({
+        ...claimed,
+        leaseOwner: "worker-b",
+        leaseExpiresAt: "2026-04-05T12:05:00.000Z",
+        runId: "run-b",
+        updatedAt: "2026-04-05T12:00:30.000Z",
+      });
+    };
+
+    const repairer = new FinalizationRepairer({ jobStore, audioStore });
+    await repairer.runOnce(now);
+
+    expect(await jobStore.get("job-123")).toMatchObject({
+      status: "processing",
+      internalState: "finalizing",
+      audioUrl: null,
+      leaseOwner: "worker-b",
+      leaseExpiresAt: "2026-04-05T12:05:00.000Z",
+      runId: "run-b",
       error: "stuck finalizing",
     });
   });

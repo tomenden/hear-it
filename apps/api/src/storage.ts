@@ -22,6 +22,13 @@ export interface ExpiredLeaseSnapshot {
   now: string;
 }
 
+export interface ObservedJobLeaseSnapshot {
+  status: AudioJob["status"];
+  leaseOwner: string | null;
+  leaseExpiresAt: string | null;
+  runId: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Job Store — persists AudioJob records
 // ---------------------------------------------------------------------------
@@ -42,6 +49,11 @@ export interface JobStore {
     jobId: string,
     patch: Partial<AudioJob>,
     ownership: JobOwnership,
+  ): Promise<boolean>;
+  updateIfLeaseSnapshotMatches(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    snapshot: ObservedJobLeaseSnapshot,
   ): Promise<boolean>;
   requeueExpiredLease(
     jobId: string,

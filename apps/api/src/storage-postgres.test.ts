@@ -213,6 +213,36 @@ function createSqlHarness() {
     if (
       text.startsWith("update audio_jobs set") &&
       text.includes("where id =") &&
+      text.includes("and status =") &&
+      text.includes("and lease_owner is not distinct from") &&
+      text.includes("and lease_expires_at is not distinct from") &&
+      text.includes("and run_id is not distinct from")
+    ) {
+      const jobId = values[values.length - 5] as string;
+      const status = values[values.length - 4] as string;
+      const leaseOwner = values[values.length - 3] as string | null;
+      const leaseExpiresAt = values[values.length - 2] as string | null;
+      const runId = values[values.length - 1] as string | null;
+      const job = jobs.get(jobId);
+
+      if (
+        !job ||
+        job.status !== status ||
+        job.lease_owner !== leaseOwner ||
+        job.lease_expires_at !== leaseExpiresAt ||
+        job.run_id !== runId
+      ) {
+        return [];
+      }
+
+      const nextJob = patchJobFromUpdate(job, values.slice(0, -5), text);
+      jobs.set(jobId, nextJob);
+      return [nextJob];
+    }
+
+    if (
+      text.startsWith("update audio_jobs set") &&
+      text.includes("where id =") &&
       text.includes("and lease_owner =") &&
       text.includes("and run_id =") &&
       text.includes("and lease_expires_at >") &&
@@ -681,6 +711,73 @@ describe("PostgresJobStore events and leases", () => {
       leaseExpiresAt: null,
       runId: null,
       error: "Job re-queued after lease expiry.",
+    });
+  });
+
+  it("updates only when the observed lease snapshot still matches", async () => {
+    const { store } = makeJobStore();
+    await store.init();
+    await store.save(
+      createJob({
+        status: "processing",
+        internalState: "finalizing",
+        leaseOwner: "worker-1",
+        leaseExpiresAt: "2000-01-01T00:00:00.000Z",
+        runId: "run-1",
+        error: "stuck finalizing",
+      }),
+    );
+
+    expect(
+      await store.updateIfLeaseSnapshotMatches(
+        "job-1",
+        {
+          status: "completed",
+          internalState: "completed",
+          audioUrl: "/audio/jobs/job-1/final.mp3",
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          runId: null,
+          error: null,
+        },
+        {
+          status: "processing",
+          leaseOwner: "worker-1",
+          leaseExpiresAt: "2000-01-01T00:00:00.000Z",
+          runId: "run-2",
+        },
+      ),
+    ).toBe(false);
+
+    expect(
+      await store.updateIfLeaseSnapshotMatches(
+        "job-1",
+        {
+          status: "completed",
+          internalState: "completed",
+          audioUrl: "/audio/jobs/job-1/final.mp3",
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          runId: null,
+          error: null,
+        },
+        {
+          status: "processing",
+          leaseOwner: "worker-1",
+          leaseExpiresAt: "2000-01-01T00:00:00.000Z",
+          runId: "run-1",
+        },
+      ),
+    ).toBe(true);
+
+    expect(await store.get("job-1")).toMatchObject({
+      status: "completed",
+      internalState: "completed",
+      audioUrl: "/audio/jobs/job-1/final.mp3",
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      runId: null,
+      error: null,
     });
   });
 

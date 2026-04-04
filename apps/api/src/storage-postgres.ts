@@ -94,6 +94,15 @@ export class PostgresJobStore implements JobStore {
       `;
 
       await this.sql`
+        CREATE TABLE IF NOT EXISTS maintenance_leases (
+          lease_name TEXT PRIMARY KEY,
+          lease_owner TEXT NOT NULL,
+          lease_expires_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `;
+
+      await this.sql`
         DELETE FROM job_events
         WHERE NOT EXISTS (
           SELECT 1
@@ -193,6 +202,11 @@ export class PostgresJobStore implements JobStore {
       await this.sql`
         CREATE INDEX IF NOT EXISTS idx_job_events_job_id_created_at
         ON job_events(job_id, occurred_at DESC)
+      `;
+
+      await this.sql`
+        CREATE INDEX IF NOT EXISTS idx_maintenance_leases_expires_at
+        ON maintenance_leases(lease_expires_at)
       `;
     } catch (error) {
       captureDatabaseFailure("db_init", error);
@@ -432,6 +446,35 @@ export class PostgresJobStore implements JobStore {
         `;
 
     return rows.map(rowToEvent);
+  }
+
+  async claimMaintenanceLease(
+    leaseOwner: string,
+    leaseExpiresAt: string,
+    leaseName = "maintenance",
+  ): Promise<boolean> {
+    const now = new Date().toISOString();
+    const rows = await this.sql`
+      INSERT INTO maintenance_leases (
+        lease_name,
+        lease_owner,
+        lease_expires_at,
+        updated_at
+      ) VALUES (
+        ${leaseName},
+        ${leaseOwner},
+        ${leaseExpiresAt},
+        ${now}
+      )
+      ON CONFLICT (lease_name) DO UPDATE SET
+        lease_owner = EXCLUDED.lease_owner,
+        lease_expires_at = EXCLUDED.lease_expires_at,
+        updated_at = EXCLUDED.updated_at
+      WHERE maintenance_leases.lease_expires_at <= ${now}
+         OR maintenance_leases.lease_owner = EXCLUDED.lease_owner
+      RETURNING lease_name
+    `;
+    return rows.length > 0;
   }
 
   async heartbeat(jobId: string, leaseOwner: string, leaseExpiresAt: string): Promise<boolean> {

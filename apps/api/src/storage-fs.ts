@@ -12,6 +12,11 @@ import type { AudioStore, AudioStorePutOptions, JobStore } from "./storage.js";
 export class FileJobStore implements JobStore {
   private readonly jobs = new Map<string, AudioJob>();
   private readonly filePath: string;
+  private maintenanceLease: {
+    leaseOwner: string;
+    leaseExpiresAt: string;
+    leaseName: string;
+  } | null = null;
 
   constructor(filePath?: string) {
     this.filePath = resolve(
@@ -113,6 +118,29 @@ export class FileJobStore implements JobStore {
     if (!job || job.userId !== userId) return false;
     this.jobs.delete(jobId);
     await this.persist();
+    return true;
+  }
+
+  async claimMaintenanceLease(
+    leaseOwner: string,
+    leaseExpiresAt: string,
+    leaseName = "maintenance",
+  ): Promise<boolean> {
+    const currentLease = this.maintenanceLease;
+    if (
+      currentLease &&
+      currentLease.leaseName === leaseName &&
+      currentLease.leaseOwner !== leaseOwner &&
+      currentLease.leaseExpiresAt > new Date().toISOString()
+    ) {
+      return false;
+    }
+
+    this.maintenanceLease = {
+      leaseOwner,
+      leaseExpiresAt,
+      leaseName,
+    };
     return true;
   }
 

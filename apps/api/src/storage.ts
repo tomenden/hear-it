@@ -36,6 +36,11 @@ export interface JobStore {
     jobId: string,
     options?: JobEventListOptions,
   ): Promise<JobEventRecord[]>;
+  claimMaintenanceLease?(
+    leaseOwner: string,
+    leaseExpiresAt: string,
+    leaseName?: string,
+  ): Promise<boolean>;
   heartbeat?(
     jobId: string,
     leaseOwner: string,

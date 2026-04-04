@@ -266,7 +266,10 @@ export class FileJobStore implements JobStore {
 
     this.jobs.set(jobId, {
       ...existing,
-      leaseExpiresAt,
+      leaseExpiresAt:
+        existing.leaseExpiresAt > leaseExpiresAt
+          ? existing.leaseExpiresAt
+          : leaseExpiresAt,
       updatedAt: new Date().toISOString(),
     });
     await this.persist();

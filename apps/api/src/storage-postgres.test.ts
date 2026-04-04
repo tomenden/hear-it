@@ -128,19 +128,20 @@ function createSqlHarness() {
 
     if (
       text.startsWith("update audio_jobs") &&
-      text.includes("set lease_expires_at =") &&
+      text.includes("set lease_expires_at = case") &&
       text.includes("where id =") &&
       text.includes("and lease_owner =") &&
       text.includes("and run_id =") &&
       text.includes("and lease_expires_at >") &&
       text.includes("status = 'processing'")
     ) {
-      const leaseExpiresAt = values[0] as string;
-      const updatedAt = values[1] as string;
-      const jobId = values[2] as string;
-      const leaseOwner = values[3] as string;
-      const runId = values[4] as string;
-      const currentTime = values[5] as string;
+      const proposedLeaseExpiresAt = values[0] as string;
+      const leaseExpiresAt = values[1] as string;
+      const updatedAt = values[2] as string;
+      const jobId = values[3] as string;
+      const leaseOwner = values[4] as string;
+      const runId = values[5] as string;
+      const currentTime = values[6] as string;
       const job = jobs.get(jobId);
       if (
         !job ||
@@ -154,7 +155,11 @@ function createSqlHarness() {
       }
       const nextJob = {
         ...job,
-        lease_expires_at: leaseExpiresAt,
+        lease_expires_at:
+          typeof job.lease_expires_at === "string" &&
+          job.lease_expires_at > proposedLeaseExpiresAt
+            ? job.lease_expires_at
+            : leaseExpiresAt,
         updated_at: updatedAt,
       };
       jobs.set(jobId, nextJob);
@@ -580,12 +585,35 @@ describe("PostgresJobStore events and leases", () => {
     const updated = await store.heartbeat?.(
       "job-1",
       "worker-1",
-      "2026-01-01T00:10:00.000Z",
+      "2099-01-01T00:10:00.000Z",
       "run-1",
     );
 
     expect(updated).toBe(true);
-    expect((await store.get("job-1"))?.leaseExpiresAt).toBe("2026-01-01T00:10:00.000Z");
+    expect((await store.get("job-1"))?.leaseExpiresAt).toBe("2099-01-01T00:10:00.000Z");
+  });
+
+  it("does not let a delayed heartbeat shorten an active lease", async () => {
+    const { store } = makeJobStore();
+    await store.init();
+    await store.save(
+      createJob({
+        status: "processing",
+        leaseOwner: "worker-1",
+        leaseExpiresAt: "2099-01-01T00:10:00.000Z",
+        runId: "run-1",
+      }),
+    );
+
+    const updated = await store.heartbeat?.(
+      "job-1",
+      "worker-1",
+      "2099-01-01T00:08:00.000Z",
+      "run-1",
+    );
+
+    expect(updated).toBe(true);
+    expect((await store.get("job-1"))?.leaseExpiresAt).toBe("2099-01-01T00:10:00.000Z");
   });
 
   it("rejects a late heartbeat after the lease already expired", async () => {

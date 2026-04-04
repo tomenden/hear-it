@@ -820,6 +820,58 @@ describe("audio job service", () => {
     expect(stillProcessingJob?.durationSeconds).toBeNull();
   });
 
+  it("does not let a delayed file-store heartbeat shorten an active lease", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const jobStore = new FileJobStore(jobsFilePath);
+    await jobStore.init();
+    await jobStore.save({
+      id: "job-1",
+      status: "processing",
+      internalState: "synthesizing",
+      displayTitle: null,
+      speechScript: null,
+      availableDurationSeconds: 0,
+      liveEdgeUpdatedAt: null,
+      leaseOwner: "worker-1",
+      leaseExpiresAt: "2099-01-01T00:10:00.000Z",
+      runId: "run-1",
+      attempt: 1,
+      article: {
+        url: "https://example.com/file-heartbeat",
+        title: "File heartbeat",
+        byline: null,
+        siteName: null,
+        excerpt: null,
+        textContent: "body",
+        wordCount: 1,
+        estimatedMinutes: 1,
+      },
+      speechOptions: { voice: "alloy" },
+      provider: "test-provider",
+      audioUrl: null,
+      playlistUrl: null,
+      audioSegments: [],
+      durationSeconds: null,
+      error: null,
+      createdAt: "2026-04-05T12:00:00.000Z",
+      updatedAt: "2026-04-05T12:00:00.000Z",
+      userId: null,
+    });
+
+    const updated = await jobStore.heartbeat?.(
+      "job-1",
+      "worker-1",
+      "2099-01-01T00:08:00.000Z",
+      "run-1",
+    );
+
+    expect(updated).toBe(true);
+    expect((await jobStore.get("job-1"))?.leaseExpiresAt).toBe(
+      "2099-01-01T00:10:00.000Z",
+    );
+  });
+
   it("marks a fresh-start job failed if artifact cleanup throws before synthesis begins", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");

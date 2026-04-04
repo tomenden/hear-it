@@ -616,7 +616,10 @@ export class PostgresJobStore implements JobStore {
     const now = new Date().toISOString();
     const rows = await this.sql`
       UPDATE audio_jobs
-      SET lease_expires_at = ${leaseExpiresAt},
+      SET lease_expires_at = CASE
+            WHEN lease_expires_at > ${leaseExpiresAt} THEN lease_expires_at
+            ELSE ${leaseExpiresAt}
+          END,
           updated_at = ${now}
       WHERE id = ${jobId}
         AND lease_owner = ${leaseOwner}

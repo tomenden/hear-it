@@ -132,6 +132,7 @@ function createSqlHarness() {
       text.includes("where id =") &&
       text.includes("and lease_owner =") &&
       text.includes("and run_id =") &&
+      text.includes("and lease_expires_at >") &&
       text.includes("status = 'processing'")
     ) {
       const leaseExpiresAt = values[0] as string;
@@ -139,18 +140,70 @@ function createSqlHarness() {
       const jobId = values[2] as string;
       const leaseOwner = values[3] as string;
       const runId = values[4] as string;
+      const currentTime = values[5] as string;
       const job = jobs.get(jobId);
       if (
         !job ||
         job.status !== "processing" ||
         job.lease_owner !== leaseOwner ||
-        job.run_id !== runId
+        job.run_id !== runId ||
+        typeof job.lease_expires_at !== "string" ||
+        job.lease_expires_at <= currentTime
       ) {
         return [];
       }
       const nextJob = {
         ...job,
         lease_expires_at: leaseExpiresAt,
+        updated_at: updatedAt,
+      };
+      jobs.set(jobId, nextJob);
+      return [nextJob];
+    }
+
+    if (
+      text.startsWith("update audio_jobs set") &&
+      text.includes("status = 'queued'") &&
+      text.includes("internal_state = 'queued'") &&
+      text.includes("lease_owner = null") &&
+      text.includes("lease_expires_at = null") &&
+      text.includes("run_id = null") &&
+      text.includes("where id =") &&
+      text.includes("status = 'processing'") &&
+      text.includes("lease_owner is not distinct from") &&
+      text.includes("run_id is not distinct from") &&
+      text.includes("lease_expires_at =") &&
+      text.includes("lease_expires_at <=")
+    ) {
+      const errorMessage = values[0] as string;
+      const updatedAt = values[1] as string;
+      const jobId = values[2] as string;
+      const leaseOwner = values[3] as string | null;
+      const runId = values[4] as string | null;
+      const expectedLeaseExpiresAt = values[5] as string;
+      const currentTime = values[6] as string;
+      const job = jobs.get(jobId);
+
+      if (
+        !job ||
+        job.status !== "processing" ||
+        job.lease_owner !== leaseOwner ||
+        job.run_id !== runId ||
+        job.lease_expires_at !== expectedLeaseExpiresAt ||
+        typeof job.lease_expires_at !== "string" ||
+        job.lease_expires_at > currentTime
+      ) {
+        return [];
+      }
+
+      const nextJob = {
+        ...job,
+        status: "queued",
+        internal_state: "queued",
+        lease_owner: null,
+        lease_expires_at: null,
+        run_id: null,
+        error: errorMessage,
         updated_at: updatedAt,
       };
       jobs.set(jobId, nextJob);
@@ -481,7 +534,7 @@ describe("PostgresJobStore events and leases", () => {
       createJob({
         status: "processing",
         leaseOwner: "worker-1",
-        leaseExpiresAt: "2026-01-01T00:05:00.000Z",
+        leaseExpiresAt: "2099-01-01T00:05:00.000Z",
         runId: "run-1",
       }),
     );
@@ -495,6 +548,29 @@ describe("PostgresJobStore events and leases", () => {
 
     expect(updated).toBe(true);
     expect((await store.get("job-1"))?.leaseExpiresAt).toBe("2026-01-01T00:10:00.000Z");
+  });
+
+  it("rejects a late heartbeat after the lease already expired", async () => {
+    const { store } = makeJobStore();
+    await store.init();
+    await store.save(
+      createJob({
+        status: "processing",
+        leaseOwner: "worker-1",
+        leaseExpiresAt: "2000-01-01T00:00:00.000Z",
+        runId: "run-1",
+      }),
+    );
+
+    const updated = await store.heartbeat?.(
+      "job-1",
+      "worker-1",
+      "2026-01-01T00:10:00.000Z",
+      "run-1",
+    );
+
+    expect(updated).toBe(false);
+    expect((await store.get("job-1"))?.leaseExpiresAt).toBe("2000-01-01T00:00:00.000Z");
   });
 
   it("fences owned updates and heartbeats by run id", async () => {
@@ -534,6 +610,47 @@ describe("PostgresJobStore events and leases", () => {
       ),
     ).toBe(false);
     expect((await store.get("job-1"))?.leaseExpiresAt).toBe("2026-01-01T00:05:00.000Z");
+  });
+
+  it("requeues expired jobs only when the observed lease snapshot still matches", async () => {
+    const { store } = makeJobStore();
+    await store.init();
+    await store.save(
+      createJob({
+        status: "processing",
+        internalState: "synthesizing",
+        leaseOwner: "worker-1",
+        leaseExpiresAt: "2000-01-01T00:00:00.000Z",
+        runId: "run-1",
+      }),
+    );
+
+    expect(
+      await store.requeueExpiredLease("job-1", {
+        leaseOwner: "worker-1",
+        runId: "run-2",
+        leaseExpiresAt: "2000-01-01T00:00:00.000Z",
+        now: "2026-01-01T00:00:00.000Z",
+      }),
+    ).toBe(false);
+
+    expect(
+      await store.requeueExpiredLease("job-1", {
+        leaseOwner: "worker-1",
+        runId: "run-1",
+        leaseExpiresAt: "2000-01-01T00:00:00.000Z",
+        now: "2026-01-01T00:00:00.000Z",
+      }),
+    ).toBe(true);
+
+    expect(await store.get("job-1")).toMatchObject({
+      status: "queued",
+      internalState: "queued",
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      runId: null,
+      error: "Job re-queued after lease expiry.",
+    });
   });
 
   it("deletes related events when deleting a job", async () => {

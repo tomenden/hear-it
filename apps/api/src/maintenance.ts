@@ -42,14 +42,11 @@ export class JobReconciler implements MaintenanceService {
         continue;
       }
 
-      await this.jobStore.update(job.id, {
-        status: "queued",
-        internalState: "queued",
-        leaseOwner: null,
-        leaseExpiresAt: null,
-        runId: null,
-        error: "Job re-queued after lease expiry.",
-        updatedAt: now.toISOString(),
+      await this.jobStore.requeueExpiredLease(job.id, {
+        leaseOwner: job.leaseOwner ?? null,
+        runId: job.runId ?? null,
+        leaseExpiresAt: job.leaseExpiresAt,
+        now: now.toISOString(),
       });
     }
   }

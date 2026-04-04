@@ -15,6 +15,13 @@ export interface JobOwnership {
   runId: string;
 }
 
+export interface ExpiredLeaseSnapshot {
+  leaseOwner: string | null;
+  runId: string | null;
+  leaseExpiresAt: string;
+  now: string;
+}
+
 // ---------------------------------------------------------------------------
 // Job Store — persists AudioJob records
 // ---------------------------------------------------------------------------
@@ -35,6 +42,10 @@ export interface JobStore {
     jobId: string,
     patch: Partial<AudioJob>,
     ownership: JobOwnership,
+  ): Promise<boolean>;
+  requeueExpiredLease(
+    jobId: string,
+    snapshot: ExpiredLeaseSnapshot,
   ): Promise<boolean>;
   /** Delete a job by ID. Returns false if the job doesn't exist. */
   delete(jobId: string): Promise<boolean>;

@@ -4,7 +4,7 @@ import postgres, { type JSONValue } from "postgres";
 
 import type { JobEventInput, JobEventListOptions, JobEventRecord, JobLeaseClaim } from "./job-events.js";
 import type { AudioJob } from "./types.js";
-import type { JobOwnership, JobStore } from "./storage.js";
+import type { ExpiredLeaseSnapshot, JobOwnership, JobStore } from "./storage.js";
 
 type SqlRow = Record<string, unknown>;
 
@@ -332,6 +332,31 @@ export class PostgresJobStore implements JobStore {
     return this.patchJob(jobId, patch, ownership);
   }
 
+  async requeueExpiredLease(
+    jobId: string,
+    snapshot: ExpiredLeaseSnapshot,
+  ): Promise<boolean> {
+    const rows = await this.sql`
+      UPDATE audio_jobs
+      SET
+        status = 'queued',
+        internal_state = 'queued',
+        lease_owner = null,
+        lease_expires_at = null,
+        run_id = null,
+        error = ${"Job re-queued after lease expiry."},
+        updated_at = ${snapshot.now}
+      WHERE id = ${jobId}
+        AND status = 'processing'
+        AND lease_owner IS NOT DISTINCT FROM ${snapshot.leaseOwner}
+        AND run_id IS NOT DISTINCT FROM ${snapshot.runId}
+        AND lease_expires_at = ${snapshot.leaseExpiresAt}
+        AND lease_expires_at <= ${snapshot.now}
+      RETURNING id
+    `;
+    return rows.length > 0;
+  }
+
   private async patchJob(
     jobId: string,
     patch: Partial<AudioJob>,
@@ -535,13 +560,15 @@ export class PostgresJobStore implements JobStore {
     leaseExpiresAt: string,
     runId: string,
   ): Promise<boolean> {
+    const now = new Date().toISOString();
     const rows = await this.sql`
       UPDATE audio_jobs
       SET lease_expires_at = ${leaseExpiresAt},
-          updated_at = ${new Date().toISOString()}
+          updated_at = ${now}
       WHERE id = ${jobId}
         AND lease_owner = ${leaseOwner}
         AND run_id = ${runId}
+        AND lease_expires_at > ${now}
         AND status = 'processing'
       RETURNING id
     `;

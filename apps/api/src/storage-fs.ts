@@ -7,6 +7,7 @@ import type { AudioJob } from "./types.js";
 import type {
   AudioStore,
   AudioStorePutOptions,
+  ExpiredLeaseSnapshot,
   JobOwnership,
   JobStore,
 } from "./storage.js";
@@ -123,6 +124,39 @@ export class FileJobStore implements JobStore {
     return true;
   }
 
+  async requeueExpiredLease(
+    jobId: string,
+    snapshot: ExpiredLeaseSnapshot,
+  ): Promise<boolean> {
+    const existing = this.jobs.get(jobId);
+    if (!existing || existing.status !== "processing") {
+      return false;
+    }
+
+    if (
+      existing.leaseOwner !== snapshot.leaseOwner ||
+      existing.runId !== snapshot.runId ||
+      existing.leaseExpiresAt !== snapshot.leaseExpiresAt ||
+      !existing.leaseExpiresAt ||
+      existing.leaseExpiresAt > snapshot.now
+    ) {
+      return false;
+    }
+
+    this.jobs.set(jobId, {
+      ...existing,
+      status: "queued",
+      internalState: "queued",
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      runId: null,
+      error: "Job re-queued after lease expiry.",
+      updatedAt: snapshot.now,
+    });
+    await this.persist();
+    return true;
+  }
+
   async delete(jobId: string): Promise<boolean> {
     if (!this.jobs.has(jobId)) return false;
     this.jobs.delete(jobId);
@@ -183,12 +217,18 @@ export class FileJobStore implements JobStore {
     leaseExpiresAt: string,
     runId: string,
   ): Promise<boolean> {
+    const now = new Date().toISOString();
     const existing = this.jobs.get(jobId);
     if (!existing || existing.status !== "processing") {
       return false;
     }
 
-    if (existing.leaseOwner !== leaseOwner || existing.runId !== runId) {
+    if (
+      existing.leaseOwner !== leaseOwner ||
+      existing.runId !== runId ||
+      !existing.leaseExpiresAt ||
+      existing.leaseExpiresAt <= now
+    ) {
       return false;
     }
 

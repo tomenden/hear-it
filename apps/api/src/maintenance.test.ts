@@ -8,14 +8,24 @@ import {
   MaintenanceRunner,
   startMaintenanceWorker,
 } from "./maintenance.js";
-import type { AudioStore, JobOwnership, JobStore } from "./storage.js";
+import type {
+  AudioStore,
+  ExpiredLeaseSnapshot,
+  JobOwnership,
+  JobStore,
+} from "./storage.js";
 import type { AudioJob } from "./types.js";
 
 class MemoryJobStore implements JobStore {
   readonly updates: Array<{ jobId: string; patch: Partial<AudioJob> }> = [];
   readonly leaseClaims: Array<{ leaseOwner: string; leaseExpiresAt: string }> = [];
+  readonly requeueAttempts: Array<{ jobId: string; expected: ExpiredLeaseSnapshot }> = [];
   maintenanceLeaseAvailable = true;
   maintenanceLeaseOwner: string | null = null;
+  onRequeueAttempt?: (
+    jobId: string,
+    expected: ExpiredLeaseSnapshot,
+  ) => Promise<void> | void;
   private readonly jobs = new Map<string, AudioJob>();
 
   async init(): Promise<void> {}
@@ -108,6 +118,41 @@ class MemoryJobStore implements JobStore {
   ): Promise<boolean> {
     return true;
   }
+
+  async requeueExpiredLease(
+    jobId: string,
+    expected: ExpiredLeaseSnapshot,
+  ): Promise<boolean> {
+    this.requeueAttempts.push({ jobId, expected });
+    await this.onRequeueAttempt?.(jobId, expected);
+
+    const existing = this.jobs.get(jobId);
+    if (!existing || existing.status !== "processing") {
+      return false;
+    }
+
+    if (
+      existing.leaseOwner !== expected.leaseOwner ||
+      existing.runId !== expected.runId ||
+      existing.leaseExpiresAt !== expected.leaseExpiresAt ||
+      !existing.leaseExpiresAt ||
+      existing.leaseExpiresAt > expected.now
+    ) {
+      return false;
+    }
+
+    this.jobs.set(jobId, {
+      ...existing,
+      status: "queued",
+      internalState: "queued",
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      runId: null,
+      error: "Job re-queued after lease expiry.",
+      updatedAt: expected.now,
+    });
+    return true;
+  }
 }
 
 class MemoryAudioStore implements AudioStore {
@@ -168,16 +213,22 @@ describe("maintenance services", () => {
     const reconciler = new JobReconciler({ jobStore, audioStore });
     await reconciler.runOnce(now);
 
-    expect(jobStore.updates).toContainEqual({
+    expect(jobStore.requeueAttempts).toContainEqual({
       jobId: "job-123",
-      patch: expect.objectContaining({
-        status: "queued",
-        internalState: "queued",
-        leaseOwner: null,
-        leaseExpiresAt: null,
-        runId: null,
-        error: "Job re-queued after lease expiry.",
-      }),
+      expected: {
+        leaseOwner: "worker-a",
+        runId: "run-a",
+        leaseExpiresAt: "2026-04-05T11:59:00.000Z",
+        now: "2026-04-05T12:00:00.000Z",
+      },
+    });
+    expect(await jobStore.get("job-123")).toMatchObject({
+      status: "queued",
+      internalState: "queued",
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      runId: null,
+      error: "Job re-queued after lease expiry.",
     });
   });
 
@@ -290,6 +341,44 @@ describe("maintenance services", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("does not overwrite a renewed lease when maintenance races with a live runner", async () => {
+    const now = new Date("2026-04-05T12:00:00.000Z");
+    const jobStore = new MemoryJobStore();
+    const audioStore = new MemoryAudioStore();
+    await jobStore.save(
+      createJob({
+        status: "processing",
+        internalState: "synthesizing",
+        leaseOwner: "worker-a",
+        leaseExpiresAt: "2026-04-05T11:59:00.000Z",
+        runId: "run-a",
+      }),
+    );
+    jobStore.onRequeueAttempt = async () => {
+      await jobStore.save(
+        createJob({
+          status: "processing",
+          internalState: "synthesizing",
+          leaseOwner: "worker-a",
+          leaseExpiresAt: "2026-04-05T12:05:00.000Z",
+          runId: "run-a",
+          updatedAt: "2026-04-05T12:00:00.000Z",
+        }),
+      );
+    };
+
+    const reconciler = new JobReconciler({ jobStore, audioStore });
+    await reconciler.runOnce(now);
+
+    expect(jobStore.requeueAttempts).toHaveLength(1);
+    expect(await jobStore.get("job-123")).toMatchObject({
+      status: "processing",
+      leaseOwner: "worker-a",
+      leaseExpiresAt: "2026-04-05T12:05:00.000Z",
+      runId: "run-a",
+    });
   });
 });
 

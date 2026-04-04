@@ -15,7 +15,9 @@ final class AppSettings {
 
     var apiBaseURLString: String {
         didSet {
-            defaults.set(Self.normalizeBaseURLString(apiBaseURLString), forKey: Key.apiBaseURL)
+            let normalized = Self.normalizeBaseURLString(apiBaseURLString)
+            defaults.set(normalized, forKey: Key.apiBaseURL)
+            sharedDefaults?.set(normalized, forKey: Key.apiBaseURL)
         }
     }
 
@@ -47,6 +49,7 @@ final class AppSettings {
         self.apiBaseURLString = defaults.string(forKey: Key.apiBaseURL) ?? Self.defaultBaseURLString
         self.selectedVoiceID = defaults.string(forKey: Key.selectedVoiceID) ?? "alloy"
         self.lastPresentedJobID = defaults.string(forKey: Key.lastPresentedJobID)
+        sharedDefaults?.set(Self.normalizeBaseURLString(apiBaseURLString), forKey: Key.apiBaseURL)
         sharedDefaults?.set(selectedVoiceID, forKey: Key.selectedVoiceID)
     }
 

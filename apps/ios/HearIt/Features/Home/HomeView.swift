@@ -92,6 +92,9 @@ struct HomeView: View {
                     .foregroundStyle(AppTheme.Colors.textPrimary)
                     .tint(AppTheme.Colors.accentGreen)
                     .padding(.horizontal, 16)
+                    .onChange(of: model.urlInput) { _, _ in
+                        model.invalidatePreviewIfNeededForCurrentURL()
+                    }
             }
             .frame(minHeight: AppTheme.Layout.controlHeight)
             .background(

@@ -10,31 +10,35 @@ struct MiniPlayerView: View {
 
     var body: some View {
         if let job = currentJob {
-            Button {
-                model.openPlayer(for: job.id)
-            } label: {
-                HStack(spacing: 12) {
-                    coverArt
-                    trackInfo(for: job)
-                    playPauseButton
-                    closeButton
+            HStack(spacing: 12) {
+                Button {
+                    model.openPlayer(for: job.id)
+                } label: {
+                    HStack(spacing: 12) {
+                        coverArt
+                        trackInfo(for: job)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .padding(.leading, 10)
-                .padding(.trailing, 12)
-                .padding(.vertical, 10)
-                .frame(height: 64)
-                .background(
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(.white)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 18)
-                                .stroke(AppTheme.Colors.miniPlayerBorder, lineWidth: 1)
-                        }
-                        .shadow(color: Color.black.opacity(0.08), radius: 10, y: 6)
-                )
-                .padding(.horizontal, 14)
+                .buttonStyle(.plain)
+
+                playPauseButton
+                closeButton
             }
-            .buttonStyle(.plain)
+            .padding(.leading, 10)
+            .padding(.trailing, 12)
+            .padding(.vertical, 10)
+            .frame(height: 64)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(.white)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(AppTheme.Colors.miniPlayerBorder, lineWidth: 1)
+                    }
+                    .shadow(color: Color.black.opacity(0.08), radius: 10, y: 6)
+            )
+            .padding(.horizontal, 14)
         }
     }
 

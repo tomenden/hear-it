@@ -7,6 +7,7 @@ import {
   VOICE_PREVIEW_TEXT,
   buildAudioFileKey,
   createSpeechProvider,
+  measureMP3DurationSeconds,
   type SpeechProvider,
 } from "./tts.js";
 import type { AudioStore, JobStore } from "./storage.js";
@@ -98,7 +99,7 @@ export class AudioJobService {
       ? await this.jobStore.getForUser(jobId, userId)
       : await this.jobStore.get(jobId);
     if (existingJob) {
-      await this.deleteNarrationArtifacts(jobId, existingJob.audioSegments.length);
+      await this.deleteNarrationArtifacts(jobId);
     }
     if (userId) return this.jobStore.deleteForUser(jobId, userId);
     return this.jobStore.delete(jobId);
@@ -111,9 +112,25 @@ export class AudioJobService {
       return;
     }
 
-    const hadPersistedSegments = claimedJob.audioSegments.length > 0;
-    if (!hadPersistedSegments) {
-      await this.deleteNarrationArtifacts(jobId, 0);
+    const segmentTexts = chunkNarrationText(claimedJob.article.textContent);
+    let audioSegments: AudioJob["audioSegments"] = [...claimedJob.audioSegments];
+    let combinedSegmentAudioData: Buffer[] = [];
+    const canResumePersistedSegments =
+      audioSegments.length > 0 && audioSegments.length <= segmentTexts.length;
+
+    if (canResumePersistedSegments) {
+      try {
+        const restoredSegments = await this.restorePersistedSegments(jobId, audioSegments);
+        audioSegments = restoredSegments.audioSegments;
+        combinedSegmentAudioData = restoredSegments.combinedAudioData;
+      } catch {
+        audioSegments = [];
+        combinedSegmentAudioData = [];
+      }
+    }
+
+    if (audioSegments.length === 0) {
+      await this.deleteNarrationArtifacts(jobId);
       await this.updateJob(jobId, {
         error: null,
         audioUrl: null,
@@ -124,14 +141,11 @@ export class AudioJobService {
     }
 
     try {
-      const segmentTexts = chunkNarrationText(
-        claimedJob.article.textContent,
-      );
-      const audioSegments: AudioJob["audioSegments"] = [...claimedJob.audioSegments];
       const playlistKey = buildNarrationPlaylistKey(jobId);
-      let playlistUrl: string | null = claimedJob.playlistUrl;
+      let playlistUrl: string | null = audioSegments.length > 0 ? claimedJob.playlistUrl : null;
       const nextSegmentIndex = { value: audioSegments.length };
       const pendingSegments = new Map<number, AudioJob["audioSegments"][number]>();
+      const pendingCombinedAudioData = new Map<number, Buffer>();
       let nextPlaylistIndex = audioSegments.length;
       let playlistWrite = Promise.resolve();
       let workerError: unknown = null;
@@ -140,7 +154,9 @@ export class AudioJobService {
           let didAdvance = false;
           while (pendingSegments.has(nextPlaylistIndex)) {
             audioSegments.push(pendingSegments.get(nextPlaylistIndex)!);
+            combinedSegmentAudioData.push(pendingCombinedAudioData.get(nextPlaylistIndex)!);
             pendingSegments.delete(nextPlaylistIndex);
+            pendingCombinedAudioData.delete(nextPlaylistIndex);
             nextPlaylistIndex += 1;
             didAdvance = true;
           }
@@ -158,6 +174,7 @@ export class AudioJobService {
 
           await this.updateJob(jobId, {
             status: "processing",
+            audioUrl: null,
             playlistUrl,
             audioSegments: [...audioSegments],
             durationSeconds: null,
@@ -194,6 +211,7 @@ export class AudioJobService {
               url: result.audioUrl,
               durationSeconds: result.durationSeconds,
             });
+            pendingCombinedAudioData.set(index, stripLeadingID3Tag(result.audioData));
             await queuePlaylistFlush();
           } catch (error) {
             workerError ??= error;
@@ -219,6 +237,12 @@ export class AudioJobService {
         "application/vnd.apple.mpegurl",
         { overwrite: true },
       );
+      const finalAudioUrl = await this.audioStore.put(
+        buildNarrationFinalAudioKey(jobId),
+        Buffer.concat(combinedSegmentAudioData),
+        "audio/mpeg",
+        { overwrite: true },
+      );
       const durationSeconds = audioSegments.reduce(
         (total, segment) => total + segment.durationSeconds,
         0,
@@ -226,14 +250,16 @@ export class AudioJobService {
 
       await this.updateJob(jobId, {
         status: "completed",
-        audioUrl: null,
+        audioUrl: finalAudioUrl,
         playlistUrl,
         audioSegments,
         durationSeconds,
+        error: null,
       });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Speech generation failed.";
+      await this.deleteNarrationArtifacts(jobId);
       Sentry.captureException(error, {
         tags: {
           jobId,
@@ -306,10 +332,14 @@ export class AudioJobService {
 
     for (const job of jobs) {
       if (job.status === "processing") {
+        // Reset interrupted mid-processing jobs back to queued before retrying.
         await this.updateJob(job.id, {
           status: "queued",
           error: "Job resumed after server restart.",
         });
+        void this.processJob(job.id);
+      } else if (job.status === "queued") {
+        // Pick up jobs that were saved but never claimed before the server restarted.
         void this.processJob(job.id);
       }
     }
@@ -321,13 +351,38 @@ export class AudioJobService {
 
   private async deleteNarrationArtifacts(
     jobId: string,
-    segmentCount: number,
   ): Promise<void> {
-    await this.audioStore.delete(buildNarrationPlaylistKey(jobId));
+    await this.audioStore.deletePrefix(buildNarrationJobDirectory(jobId));
+  }
 
-    for (let index = 0; index < segmentCount; index += 1) {
-      await this.audioStore.delete(buildNarrationSegmentKey(jobId, index));
+  private async restorePersistedSegments(
+    jobId: string,
+    persistedSegments: AudioJob["audioSegments"],
+  ): Promise<{
+    audioSegments: AudioJob["audioSegments"];
+    combinedAudioData: Buffer[];
+  }> {
+    const combinedAudioData: Buffer[] = [];
+    const restoredSegments: AudioJob["audioSegments"] = [];
+
+    for (let index = 0; index < persistedSegments.length; index += 1) {
+      const storedAudioData = await this.audioStore.get(buildNarrationSegmentKey(jobId, index));
+      if (!storedAudioData) {
+        throw new Error(`Missing audio data for persisted segment ${index}.`);
+      }
+
+      combinedAudioData.push(stripLeadingID3Tag(storedAudioData));
+      restoredSegments.push({
+        ...persistedSegments[index]!,
+        durationSeconds:
+          measureMP3DurationSeconds(storedAudioData) ?? persistedSegments[index]!.durationSeconds,
+      });
     }
+
+    return {
+      audioSegments: restoredSegments,
+      combinedAudioData,
+    };
   }
 }
 
@@ -476,11 +531,19 @@ export function chunkNarrationText(text: string, maxChars = MAX_SEGMENT_CHARS): 
 }
 
 function buildNarrationPlaylistKey(jobId: string): string {
-  return `narrations/job-${jobId}/playlist.m3u8`;
+  return `${buildNarrationJobDirectory(jobId)}/playlist.m3u8`;
 }
 
 function buildNarrationSegmentKey(jobId: string, index: number): string {
-  return `narrations/job-${jobId}/segment-${index}.mp3`;
+  return `${buildNarrationJobDirectory(jobId)}/segment-${index}.mp3`;
+}
+
+function buildNarrationFinalAudioKey(jobId: string): string {
+  return `${buildNarrationJobDirectory(jobId)}/final.mp3`;
+}
+
+function buildNarrationJobDirectory(jobId: string): string {
+  return `narrations/job-${jobId}`;
 }
 
 function buildPlaylist(
@@ -493,10 +556,11 @@ function buildPlaylist(
   );
   const lines = [
     "#EXTM3U",
-    "#EXT-X-VERSION:3",
+    "#EXT-X-VERSION:6",
     "#EXT-X-TARGETDURATION:" + targetDuration,
     "#EXT-X-MEDIA-SEQUENCE:0",
     "#EXT-X-PLAYLIST-TYPE:EVENT",
+    "#EXT-X-START:TIME-OFFSET=0,PRECISE=YES",
   ];
 
   for (const segment of audioSegments) {
@@ -509,4 +573,29 @@ function buildPlaylist(
   }
 
   return lines.join("\n") + "\n";
+}
+
+function stripLeadingID3Tag(audioData: Buffer): Buffer {
+  if (
+    audioData.length < 10 ||
+    audioData[0] !== 0x49 ||
+    audioData[1] !== 0x44 ||
+    audioData[2] !== 0x33
+  ) {
+    return audioData;
+  }
+
+  const flags = audioData[5] ?? 0;
+  const footerLength = (flags & 0x10) !== 0 ? 10 : 0;
+  const offset = Math.min(10 + synchsafeInteger(audioData.subarray(6, 10)) + footerLength, audioData.length);
+  return audioData.subarray(offset);
+}
+
+function synchsafeInteger(bytes: Buffer): number {
+  return (
+    ((bytes[0] ?? 0) << 21) |
+    ((bytes[1] ?? 0) << 14) |
+    ((bytes[2] ?? 0) << 7) |
+    (bytes[3] ?? 0)
+  );
 }

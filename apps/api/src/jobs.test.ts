@@ -326,8 +326,28 @@ class StrictDuplicateKeyAudioStore implements AudioStore {
     return this.blobs.has(key) ? `/audio/${key}` : null;
   }
 
+  async get(key: string): Promise<Buffer | null> {
+    return this.blobs.get(key) ?? null;
+  }
+
   async delete(key: string): Promise<void> {
     this.blobs.delete(key);
+  }
+
+  async deletePrefix(prefix: string): Promise<void> {
+    for (const key of Array.from(this.blobs.keys())) {
+      if (key === prefix || key.startsWith(`${prefix}/`)) {
+        this.blobs.delete(key);
+      }
+    }
+  }
+
+  seed(key: string, data: Buffer) {
+    this.blobs.set(key, data);
+  }
+
+  has(key: string): boolean {
+    return this.blobs.has(key);
   }
 }
 
@@ -344,7 +364,13 @@ class FailingHealthAudioStore implements AudioStore {
     return null;
   }
 
+  async get(): Promise<Buffer | null> {
+    return null;
+  }
+
   async delete(): Promise<void> {}
+
+  async deletePrefix(): Promise<void> {}
 }
 
 const sampleHtml = `
@@ -423,7 +449,7 @@ describe("audio job service", () => {
 
     const completedJob = await service.getJob(queuedJob.id);
     expect(completedJob?.status).toBe("completed");
-    expect(completedJob?.audioUrl).toBeNull();
+    expect(completedJob?.audioUrl).toContain("final.mp3");
     expect(completedJob?.playlistUrl).toContain("playlist.m3u8");
     expect(completedJob?.audioSegments.length ?? 0).toBeGreaterThan(0);
     expect(completedJob?.durationSeconds).toBeGreaterThan(0);
@@ -707,6 +733,8 @@ describe("audio job service", () => {
     const playlistPath = join(audioDir, "narrations", `job-${queuedJob.id}`, "playlist.m3u8");
     const partialPlaylist = await readFile(playlistPath, "utf8");
     expect(partialPlaylist).toContain("#EXTM3U");
+    expect(partialPlaylist).toContain("#EXT-X-VERSION:6");
+    expect(partialPlaylist).toContain("#EXT-X-START:TIME-OFFSET=0,PRECISE=YES");
     expect(partialPlaylist).toContain("/audio/narrations/");
     expect(partialPlaylist).not.toContain("#EXT-X-ENDLIST");
 
@@ -716,11 +744,13 @@ describe("audio job service", () => {
     expect(completedJob?.status).toBe("completed");
     expect(completedJob?.audioSegments.length ?? 0).toBeGreaterThan(1);
     expect(completedJob?.playlistUrl).toBe(`/audio/narrations/job-${queuedJob.id}/playlist.m3u8`);
-    expect(completedJob?.audioUrl).toBeNull();
+    expect(completedJob?.audioUrl).toBe(`/audio/narrations/job-${queuedJob.id}/final.mp3`);
     expect(completedJob?.durationSeconds).toBeGreaterThan(11);
     await expect(readFile(join(audioDir, "narrations", `narration-${queuedJob.id}.mp3`))).rejects.toThrow();
+    await expect(readFile(join(audioDir, "narrations", `job-${queuedJob.id}`, "final.mp3"))).resolves.toBeDefined();
 
     const completedPlaylist = await readFile(playlistPath, "utf8");
+    expect(completedPlaylist).toContain("#EXT-X-START:TIME-OFFSET=0,PRECISE=YES");
     expect(completedPlaylist).toContain("#EXT-X-ENDLIST");
   });
 
@@ -835,6 +865,11 @@ describe("audio job service", () => {
       ],
       updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
     });
+    await audioStore.put(
+      `narrations/job-${queuedJob.id}/segment-0.mp3`,
+      Buffer.from("ID3SEGMENTONE"),
+      "audio/mpeg",
+    );
 
     await service.requeueInterruptedJobs();
     const completedJob = await waitFor(
@@ -848,6 +883,8 @@ describe("audio job service", () => {
       `/audio/narrations/job-${queuedJob.id}/segment-0.mp3`,
     );
     expect(completedJob?.durationSeconds).toBe(41);
+    expect(completedJob?.error).toBeNull();
+    expect(completedJob?.audioUrl).toBe(`/audio/narrations/job-${queuedJob.id}/final.mp3`);
   });
 
   it("clears partial playback metadata when generation fails mid-run", async () => {
@@ -886,6 +923,8 @@ describe("audio job service", () => {
     expect(failedJob?.audioSegments).toEqual([]);
     expect(failedJob?.durationSeconds).toBeNull();
     expect(failedJob?.error).toContain("failed after the first playable chunk");
+    await expect(readFile(join(audioDir, "narrations", `job-${queuedJob.id}`, "playlist.m3u8"))).rejects.toThrow();
+    await expect(readFile(join(audioDir, "narrations", `job-${queuedJob.id}`, "segment-0.mp3"))).rejects.toThrow();
   });
 
   it("retries transient segment failures and still completes the job", async () => {
@@ -967,7 +1006,52 @@ describe("audio job service", () => {
     const completedJob = await service.getJob(queuedJob.id);
     expect(completedJob?.status).toBe("completed");
     expect(completedJob?.playlistUrl).toBe(`/audio/narrations/job-${queuedJob.id}/playlist.m3u8`);
+    expect(completedJob?.audioUrl).toBe(`/audio/narrations/job-${queuedJob.id}/final.mp3`);
     expect(completedJob?.audioSegments).toHaveLength(2);
+  });
+
+  it("clears orphaned segment objects before retrying a fresh queued job", async () => {
+    const audioStore = new StrictDuplicateKeyAudioStore();
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const jobStore = new FileJobStore(jobsFilePath);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider: new DelayedSegmentSpeechProvider([
+        { audioData: Buffer.from("ID3SEGMENTONE"), durationSeconds: 11, delayMs: 5 },
+        { audioData: Buffer.from("ID3SEGMENTTWO"), durationSeconds: 13, delayMs: 5 },
+        { audioData: Buffer.from("ID3SEGMENTTHREE"), durationSeconds: 17, delayMs: 5 },
+      ]),
+    });
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/retry-orphaned-job",
+      html: `
+        <!doctype html>
+        <html>
+          <head><title>Retry Orphaned Segments</title></head>
+          <body>
+            <article>
+              <h1>Retry Orphaned Segments</h1>
+              <p>${"First segment content. ".repeat(30)}</p>
+              <p>${"Second segment content. ".repeat(30)}</p>
+              <p>${"Third segment content. ".repeat(30)}</p>
+            </article>
+          </body>
+        </html>
+      `,
+    });
+
+    const orphanedKey = `narrations/job-${queuedJob.id}/segment-2.mp3`;
+    audioStore.seed(orphanedKey, Buffer.from("ORPHANED"));
+
+    await service.processJob(queuedJob.id);
+
+    const completedJob = await service.getJob(queuedJob.id);
+    expect(completedJob?.status).toBe("completed");
+    expect(completedJob?.audioSegments).toHaveLength(3);
+    expect(audioStore.has(orphanedKey)).toBe(true);
   });
 
   it("rejects oversized articles before creating a job", async () => {

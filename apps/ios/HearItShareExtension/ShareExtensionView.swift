@@ -21,16 +21,19 @@ struct ShareExtensionView: View {
                 case .loading:
                     ProgressView()
                         .tint(.white)
-                    Text("Creating narration...")
+                    Text("Creating audio...")
                         .foregroundStyle(.white)
                         .font(.headline)
                 case .success:
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 48))
                         .foregroundStyle(.green)
-                    Text("Narration started!")
+                    Text("Creating your audio")
                         .foregroundStyle(.white)
                         .font(.headline)
+                    Text("Open Hear It to listen")
+                        .foregroundStyle(.white.opacity(0.8))
+                        .font(.subheadline)
                 case .error(let message):
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 48))
@@ -45,14 +48,14 @@ struct ShareExtensionView: View {
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
         }
         .task {
-            await submitNarration()
+            await submitAudio()
         }
     }
 
-    private func submitNarration() async {
+    private func submitAudio() async {
         // Handle invalid URL
         guard let url else {
-            state = .error("This link can't\nbe narrated.")
+            state = .error("This link can't\nbe converted.")
             try? await Task.sleep(for: .seconds(2))
             onDismiss()
             return
@@ -61,6 +64,9 @@ struct ShareExtensionView: View {
         // Read voice from shared UserDefaults
         let sharedDefaults = UserDefaults(suiteName: "group.com.tome.hearit")
         let voiceID = sharedDefaults?.string(forKey: "hear-it.selected-voice-id") ?? "alloy"
+        let configuredBaseURL = (sharedDefaults?.string(forKey: "hear-it.api-base-url") ?? "https://hear-it.onrender.com")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
 
         // Read auth token from shared Keychain
         guard let token = SharedKeychain.loadToken() else {
@@ -71,7 +77,12 @@ struct ShareExtensionView: View {
         }
 
         // Build request
-        let apiURL = URL(string: "https://hear-it.onrender.com/api/jobs")!
+        guard let apiURL = URL(string: "\(configuredBaseURL)/api/jobs") else {
+            state = .error("Invalid server URL.\nOpen Hear It settings.")
+            try? await Task.sleep(for: .seconds(2))
+            onDismiss()
+            return
+        }
         var request = URLRequest(url: apiURL)
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

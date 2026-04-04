@@ -58,6 +58,11 @@ struct AudioJob: Codable, Hashable, Identifiable {
     }
 
     func playbackURL(relativeTo baseURL: URL) -> URL? {
+        if status == .completed,
+           let audioURL = HearItAPIClient.resolveURL(audioUrl, relativeTo: baseURL) {
+            return audioURL
+        }
+
         if let playlistUrl {
             return HearItAPIClient.resolveURL(playlistUrl, relativeTo: baseURL)
         }

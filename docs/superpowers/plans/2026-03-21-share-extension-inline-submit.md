@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the "open main app" Share Extension with an in-extension flow that submits narration jobs directly via API, so users never leave their current app.
+**Goal:** Replace the "open main app" Share Extension with an in-extension flow that submits audio jobs directly via API, so users never leave their current app.
 
 **Architecture:** App Group shares voice preference (UserDefaults) and auth token (Keychain) between main app and extension. Extension makes a single POST to `/api/jobs` and shows a brief loading/success/error UI.
 
@@ -328,7 +328,7 @@ struct ShareExtensionView: View {
                 case .loading:
                     ProgressView()
                         .tint(.white)
-                    Text("Creating narration...")
+                    Text("Creating audio...")
                         .foregroundStyle(.white)
                         .font(.headline)
                 case .success:
@@ -550,7 +550,7 @@ Expected: `BUILD SUCCEEDED`
 
 ```bash
 git add apps/ios/HearItShareExtension/ShareViewController.swift apps/ios/HearIt.xcodeproj
-git commit -m "feat: rewrite ShareViewController to submit narrations inline"
+git commit -m "feat: rewrite ShareViewController to submit audio jobs inline"
 ```
 
 ---
@@ -646,8 +646,8 @@ Test manually:
 1. Open the main app, sign in, select a voice — this seeds shared UserDefaults and Keychain
 2. Open Chrome/Safari on the phone
 3. Share a URL → tap "Hear It"
-4. Should see "Creating narration..." briefly, then "Narration started!" with checkmark
-5. Open main app → narration should appear in the library
+4. Should see "Creating audio..." briefly, then "Audio started!" with checkmark
+5. Open main app → audio job should appear in the library
 
 - [ ] **Step 4: Test error states**
 

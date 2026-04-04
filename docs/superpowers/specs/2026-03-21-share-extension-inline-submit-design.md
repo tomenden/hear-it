@@ -1,13 +1,13 @@
-# Share Extension Inline Narration Submit
+# Share Extension Inline Audio Submit
 
 ## Overview
 
-Replace the current "open main app" Share Extension behavior with an in-extension flow that submits narration jobs directly. The user shares a URL, the extension submits it with their last-used voice, and dismisses with a brief success confirmation. The user never leaves their current app.
+Replace the current "open main app" Share Extension behavior with an in-extension flow that submits audio jobs directly. The user shares a URL, the extension submits it with their last-used voice, and dismisses with a brief success confirmation. The user never leaves their current app.
 
 ## Flow
 
 1. User taps Share > Hear It from any app (Chrome, Safari, WhatsApp, etc.)
-2. Extension appears with a brief loading state ("Creating narration...")
+2. Extension appears with a brief loading state ("Creating audio...")
 3. Extension reads the last-used voice from shared UserDefaults (falls back to "alloy")
 4. Extension reads auth token from shared Keychain
 5. Extension POSTs to `/api/jobs` with the URL and voice ID
@@ -57,8 +57,8 @@ Replace the current `UIViewController` with a SwiftUI-based extension view.
 
 ### States
 
-- **Loading**: Spinner + "Creating narration..." text
-- **Success**: Checkmark + "Narration started!" text, auto-dismiss after 1.5s
+- **Loading**: Spinner + "Creating audio..." text
+- **Success**: Checkmark + "Audio started!" text, auto-dismiss after 1.5s
 - **Error (auth)**: "Please open Hear It and sign in" text, auto-dismiss after 2s
 - **Error (network/other)**: "Couldn't connect. Try again." text, auto-dismiss after 2s
 
@@ -113,7 +113,7 @@ Remove the `com.tome.hearit://share` deep link handler from `AppModel.handleInco
 ## Known Limitations
 
 - If the user hasn't opened the main app recently, the stored auth token may be expired. The extension will show "Please open Hear It and sign in."
-- Sharing the same URL twice quickly will create duplicate narrations. Acceptable for now.
+- Sharing the same URL twice quickly will create duplicate audio jobs. Acceptable for now.
 - Render.com cold starts may cause timeouts on first share after server idle.
 
 ## Out of Scope

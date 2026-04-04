@@ -23,6 +23,13 @@ final class AppModel {
         case failed(String)
     }
 
+    private struct ServerSnapshot {
+        let baseURL: URL
+        let config: ServerConfig
+        let voices: [VoiceChoice]
+        let jobs: [AudioJob]
+    }
+
     var selectedTab: RootTab = .home
     var settings: AppSettings
     var player: AudioPlayerController
@@ -39,36 +46,41 @@ final class AppModel {
     var isCreatingNarration = false
     var isRefreshingPreview = false
     var isRefreshingLibrary = false
+    var isSavingBaseURL = false
+    var settingsMessage: InlineMessage?
     var libraryFilter: LibraryFilter = .all
     var playerPresentation: PlayerPresentation?
     var jobPendingDeletion: AudioJob?
 
     let authManager: AuthManager
-    @ObservationIgnored private var apiClient: HearItAPIClient
+    @ObservationIgnored private var apiClient: any HearItAPIProviding
     @ObservationIgnored private let localAudioStore: LocalNarrationAudioStore
     @ObservationIgnored private let previewMode: Bool
     @ObservationIgnored private var hasBootstrapped = false
     @ObservationIgnored private var pollingTask: Task<Void, Never>?
     @ObservationIgnored private var narrationDownloadTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var jobsRequestGeneration = 0
+    @ObservationIgnored private var serverStateRequestGeneration = 0
 
     init(
         settings: AppSettings = AppSettings(),
-        apiClient: HearItAPIClient = HearItAPIClient(),
+        apiClient: any HearItAPIProviding = HearItAPIClient(),
         localAudioStore: LocalNarrationAudioStore = LocalNarrationAudioStore(),
         player: AudioPlayerController = AudioPlayerController(),
         authManager: AuthManager = AuthManager(),
         previewMode: Bool = false
     ) {
         self.settings = settings
-        self.apiClient = apiClient
         self.localAudioStore = localAudioStore
         self.player = player
         self.authManager = authManager
         self.previewMode = previewMode
 
-        self.apiClient.tokenProvider = { [authManager] in
+        var configuredAPIClient = apiClient
+        configuredAPIClient.tokenProvider = { [authManager] in
             await authManager.accessToken
         }
+        self.apiClient = configuredAPIClient
     }
 
     var selectedVoice: VoiceChoice {
@@ -138,6 +150,7 @@ final class AppModel {
     }
 
     func openSettings() {
+        settingsMessage = nil
         settingsPresented = true
     }
 
@@ -153,57 +166,105 @@ final class AppModel {
         let cleaned = pastedValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         urlInput = cleaned
+        invalidatePreviewIfNeededForCurrentURL()
         homeMessage = InlineMessage(text: "Pasted a URL from your clipboard.", kind: .success)
     }
 
-    func saveBaseURL(_ draftValue: String) async {
-        settings.apiBaseURLString = draftValue
-        settingsPresented = false
-        await refreshServerState(showLoadingState: true)
+    func invalidatePreviewIfNeededForCurrentURL() {
+        let normalizedInput = urlInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard previewArticle?.url != normalizedInput else { return }
+        previewArticle = nil
+        previewMessage = nil
     }
 
-    func refreshServerState(showLoadingState: Bool) async {
-        guard !previewMode else { return }
+    @discardableResult
+    func saveBaseURL(_ draftValue: String) async -> Bool {
+        let normalizedBaseURL = AppSettings.normalizeBaseURLString(draftValue)
+        guard let baseURL = Self.baseURL(from: normalizedBaseURL) else {
+            settingsMessage = InlineMessage(text: "Enter a valid http or https base URL.", kind: .error)
+            return false
+        }
+
+        isSavingBaseURL = true
+        defer { isSavingBaseURL = false }
+        settingsMessage = InlineMessage(text: "Checking connection…", kind: .neutral)
+
+        let requestGeneration = nextServerStateRequestGeneration()
+        invalidateJobsRequests()
+
+        do {
+            let snapshot = try await fetchServerSnapshot(baseURL: baseURL, reportJobErrors: true)
+            guard isLatestServerStateRequest(requestGeneration) else { return false }
+
+            settings.apiBaseURLString = normalizedBaseURL
+            applyServerSnapshot(snapshot)
+            homeMessage = InlineMessage(
+                text: "Connected to \(snapshot.baseURL.host ?? snapshot.baseURL.absoluteString).",
+                kind: .success
+            )
+            settingsMessage = nil
+            return true
+        } catch HearItAPIClient.APIError.unauthorized {
+            guard isLatestServerStateRequest(requestGeneration) else { return false }
+            await signOut()
+            return false
+        } catch {
+            guard isLatestServerStateRequest(requestGeneration) else { return false }
+            settingsMessage = InlineMessage(text: error.localizedDescription, kind: .error)
+            return false
+        }
+    }
+
+    @discardableResult
+    func refreshServerState(showLoadingState: Bool) async -> Bool {
+        guard !previewMode else { return false }
         guard let baseURL = settings.apiBaseURL else {
             connectionState = .needsConfiguration
             serverConfig = nil
             availableVoices = []
             previewArticle = nil
+            settingsMessage = nil
             homeMessage = InlineMessage(
                 text: "Set your Hear It API URL in Settings before testing on iPhone.",
                 kind: .neutral
             )
-            return
+            return false
         }
+
+        let requestGeneration = nextServerStateRequestGeneration()
+        invalidateJobsRequests()
 
         if showLoadingState {
             connectionState = .loading
         }
 
         do {
-            async let loadedConfig = apiClient.fetchConfig(baseURL: baseURL)
-            async let loadedVoices = apiClient.fetchVoices(baseURL: baseURL)
-            async let loadedJobs = apiClient.fetchJobs(baseURL: baseURL)
+            let snapshot = try await fetchServerSnapshot(baseURL: baseURL, reportJobErrors: true)
+            guard isLatestServerStateRequest(requestGeneration) else { return false }
 
-            serverConfig = try await loadedConfig
-            availableVoices = VoiceChoice.catalog(from: try await loadedVoices)
-            applyVoiceFallbackIfNeeded()
-            applyJobs(try await loadedJobs)
-            connectionState = .connected
+            applyServerSnapshot(snapshot)
+            settingsMessage = nil
 
             if showLoadingState {
                 homeMessage = InlineMessage(
-                    text: "Connected to \(baseURL.host ?? baseURL.absoluteString).",
+                    text: "Connected to \(snapshot.baseURL.host ?? snapshot.baseURL.absoluteString).",
                     kind: .success
                 )
             }
+            return true
         } catch HearItAPIClient.APIError.unauthorized {
+            guard isLatestServerStateRequest(requestGeneration) else { return false }
             await signOut()
+            return false
         } catch {
+            guard isLatestServerStateRequest(requestGeneration) else { return false }
             connectionState = .failed(error.localizedDescription)
+            serverConfig = nil
+            availableVoices = []
             if showLoadingState {
                 homeMessage = InlineMessage(text: error.localizedDescription, kind: .error)
             }
+            return false
         }
     }
 
@@ -224,12 +285,14 @@ final class AppModel {
         }
 
         isRefreshingPreview = true
+        invalidatePreviewIfNeededForCurrentURL()
         previewMessage = InlineMessage(text: "Reviewing article…", kind: .neutral)
 
         do {
             previewArticle = try await apiClient.extractArticle(articleURL: articleURL, baseURL: baseURL)
             previewMessage = InlineMessage(text: "Article preview ready.", kind: .success)
         } catch {
+            previewArticle = nil
             previewMessage = InlineMessage(text: error.localizedDescription, kind: .error)
         }
 
@@ -268,6 +331,7 @@ final class AppModel {
                 baseURL: baseURL
             )
             previewArticle = job.article
+            invalidateJobsRequests()
             applyUpsert(job)
             urlInput = ""
             voiceSelectionPresented = false
@@ -291,23 +355,31 @@ final class AppModel {
     func refreshJobs(silent: Bool = false) async {
         guard !previewMode else { return }
         guard let baseURL = settings.apiBaseURL else { return }
+        let requestGeneration = nextJobsRequestGeneration()
 
         if !silent {
             isRefreshingLibrary = true
         }
 
         defer {
-            isRefreshingLibrary = false
+            if !silent, isLatestJobsRequest(requestGeneration) {
+                isRefreshingLibrary = false
+            }
         }
 
         do {
-            applyJobs(try await apiClient.fetchJobs(baseURL: baseURL, reportErrors: !silent))
+            let updatedJobs = try await apiClient.fetchJobs(baseURL: baseURL, reportErrors: !silent)
+            guard isLatestJobsRequest(requestGeneration) else { return }
+            applyJobs(updatedJobs)
+            connectionState = .connected
             if !silent {
                 homeMessage = InlineMessage(text: "Library refreshed.", kind: .success)
             }
         } catch HearItAPIClient.APIError.unauthorized {
             await signOut()
         } catch {
+            guard isLatestJobsRequest(requestGeneration) else { return }
+            connectionState = .failed(error.localizedDescription)
             if !silent {
                 homeMessage = InlineMessage(text: error.localizedDescription, kind: .error)
             }
@@ -318,6 +390,7 @@ final class AppModel {
         guard !previewMode else { return }
         guard let job = jobPendingDeletion else { return }
         guard let baseURL = settings.apiBaseURL else { return }
+        invalidateJobsRequests()
 
         narrationDownloadTasks[job.id]?.cancel()
         narrationDownloadTasks[job.id] = nil
@@ -371,17 +444,27 @@ final class AppModel {
             return
         }
 
-        if player.loadedJobID == jobID,
-           let currentSource = player.loadedSourceURL,
-           !currentSource.isFileURL {
+        if let currentSourceURL = player.loadedSourceURL,
+           player.loadedJobID == jobID,
+           let baseURL = settings.apiBaseURL,
+           job.status == .completed,
+           let streamingURL = HearItAPIClient.resolveURL(job.playlistUrl, relativeTo: baseURL),
+           currentSourceURL == streamingURL {
             player.updateKnownDuration(knownPlaybackDuration)
             return
         }
 
         if let playbackURL = localAudioStore.playbackURLIfExists(forJobID: jobID) {
+            #if DEBUG
+            print("[HearIt][Player] Loading local file: \(playbackURL)")
+            #endif
             player.load(url: playbackURL, for: jobID, knownDuration: knownPlaybackDuration)
             return
         }
+
+        #if DEBUG
+        print("[HearIt][Player] No local file for \(jobID), status=\(job.status)")
+        #endif
 
         if job.status == .completed {
             ensureNarrationAudioDownloadRequested(for: job)
@@ -389,10 +472,16 @@ final class AppModel {
 
         guard let baseURL = settings.apiBaseURL,
               let playbackURL = job.playbackURL(relativeTo: baseURL) else {
+            #if DEBUG
+            print("[HearIt][Player] No playback URL — unloading")
+            #endif
             player.unload()
             return
         }
 
+        #if DEBUG
+        print("[HearIt][Player] Loading remote URL: \(playbackURL)")
+        #endif
         player.load(
             url: playbackURL,
             for: jobID,
@@ -486,23 +575,23 @@ final class AppModel {
             }
 
             do {
-                var cachedSegments: [LocalNarrationAudioStore.StoredSegment] = []
-                for (index, segment) in job.audioSegments.enumerated() {
-                    guard let segmentURL = HearItAPIClient.resolveURL(segment.url, relativeTo: baseURL) else {
-                        throw CacheError.invalidSegmentURL(segment.url)
+                if let finalAudioURL = HearItAPIClient.resolveURL(job.audioUrl, relativeTo: baseURL) {
+                    do {
+                        let audioData = try await apiClient.downloadAudioData(from: finalAudioURL)
+                        _ = try await localAudioStore.saveAudioFile(forJobID: job.id, audioData: audioData)
+                    } catch {
+                        guard !job.audioSegments.isEmpty else {
+                            throw error
+                        }
+                        try await cacheNarrationSegments(for: job, baseURL: baseURL)
                     }
-
-                    cachedSegments.append(LocalNarrationAudioStore.StoredSegment(
-                        fileName: "segment-\(index).mp3",
-                        durationSeconds: segment.durationSeconds,
-                        audioData: try await apiClient.downloadAudioData(from: segmentURL)
-                    ))
+                } else {
+                    try await cacheNarrationSegments(for: job, baseURL: baseURL)
                 }
-                _ = try await localAudioStore.savePlaylistBundle(forJobID: job.id, segments: cachedSegments)
 
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    if playerPresentation?.jobID == job.id {
+                    if playerPresentation?.jobID == job.id, !player.isPlaying {
                         preparePlayer(for: job.id)
                     }
                 }
@@ -598,6 +687,76 @@ final class AppModel {
         jobs.insert(job, at: 0)
         settings.lastPresentedJobID = job.id
         ensureNarrationAudioDownloadRequested(for: job)
+    }
+
+    private func cacheNarrationSegments(for job: AudioJob, baseURL: URL) async throws {
+        var cachedSegments: [LocalNarrationAudioStore.StoredSegment] = []
+        for (index, segment) in job.audioSegments.enumerated() {
+            guard let segmentURL = HearItAPIClient.resolveURL(segment.url, relativeTo: baseURL) else {
+                throw CacheError.invalidSegmentURL(segment.url)
+            }
+
+            cachedSegments.append(LocalNarrationAudioStore.StoredSegment(
+                fileName: "segment-\(index).mp3",
+                durationSeconds: segment.durationSeconds,
+                audioData: try await apiClient.downloadAudioData(from: segmentURL)
+            ))
+        }
+
+        _ = try await localAudioStore.savePlaylistBundle(forJobID: job.id, segments: cachedSegments)
+    }
+
+    private func fetchServerSnapshot(baseURL: URL, reportJobErrors: Bool) async throws -> ServerSnapshot {
+        async let loadedConfig = apiClient.fetchConfig(baseURL: baseURL)
+        async let loadedVoices = apiClient.fetchVoices(baseURL: baseURL)
+        async let loadedJobs = apiClient.fetchJobs(baseURL: baseURL, reportErrors: reportJobErrors)
+
+        return ServerSnapshot(
+            baseURL: baseURL,
+            config: try await loadedConfig,
+            voices: VoiceChoice.catalog(from: try await loadedVoices),
+            jobs: try await loadedJobs
+        )
+    }
+
+    private func applyServerSnapshot(_ snapshot: ServerSnapshot) {
+        serverConfig = snapshot.config
+        availableVoices = snapshot.voices
+        applyVoiceFallbackIfNeeded()
+        applyJobs(snapshot.jobs)
+        connectionState = .connected
+    }
+
+    private func nextJobsRequestGeneration() -> Int {
+        jobsRequestGeneration += 1
+        return jobsRequestGeneration
+    }
+
+    private func isLatestJobsRequest(_ generation: Int) -> Bool {
+        generation == jobsRequestGeneration
+    }
+
+    private func invalidateJobsRequests() {
+        jobsRequestGeneration += 1
+    }
+
+    private func nextServerStateRequestGeneration() -> Int {
+        serverStateRequestGeneration += 1
+        return serverStateRequestGeneration
+    }
+
+    private func isLatestServerStateRequest(_ generation: Int) -> Bool {
+        generation == serverStateRequestGeneration
+    }
+
+    private static func baseURL(from rawValue: String) -> URL? {
+        guard let url = URL(string: rawValue),
+              let scheme = url.scheme,
+              ["http", "https"].contains(scheme.lowercased()) else {
+            return nil
+        }
+
+        return url
     }
 
     private func playbackDuration(for job: AudioJob) -> Double? {

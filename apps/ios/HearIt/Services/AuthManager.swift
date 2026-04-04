@@ -98,9 +98,9 @@ final class AuthManager {
     }
 
     func signOut() async throws {
-        try await client.auth.signOut()
         SharedKeychain.deleteToken()
         state = .signedOut
+        try await client.auth.signOut()
     }
 
     var accessToken: String? {

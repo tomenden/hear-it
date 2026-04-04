@@ -164,7 +164,7 @@ export class OpenAISpeechProvider implements SpeechProvider {
         ? await context.audioStore.put(context.fileKey, buffer, "audio/mpeg")
         : null;
 
-    const durationSeconds = estimateDurationSeconds(text);
+    const durationSeconds = measureMP3DurationSeconds(buffer) ?? estimateDurationSeconds(text);
 
     return {
       audioUrl,
@@ -197,6 +197,201 @@ function slugify(value: string): string {
 
 function estimateDurationSeconds(text: string): number {
   return Math.max(1, Math.ceil(countWords(text) / 2.7));
+}
+
+type MPEGVersion = "1" | "2" | "2.5";
+type MPEGLayer = "1" | "2" | "3";
+
+type MP3FrameInfo = {
+  frameLength: number;
+  sampleRate: number;
+  samplesPerFrame: number;
+};
+
+const MPEG1_SAMPLE_RATES = [44_100, 48_000, 32_000] as const;
+const MPEG2_SAMPLE_RATES = [22_050, 24_000, 16_000] as const;
+const MPEG25_SAMPLE_RATES = [11_025, 12_000, 8_000] as const;
+
+const BITRATE_TABLE = {
+  "1": {
+    "1": [0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448],
+    "2": [0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384],
+    "3": [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320],
+  },
+  "2": {
+    "1": [0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256],
+    "2": [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160],
+    "3": [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160],
+  },
+  "2.5": {
+    "1": [0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256],
+    "2": [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160],
+    "3": [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160],
+  },
+} as const;
+
+export function measureMP3DurationSeconds(audioData: Buffer): number | null {
+  if (audioData.length < 4) {
+    return null;
+  }
+
+  const startOffset = leadingID3TagLength(audioData);
+
+  for (let offset = startOffset; offset <= audioData.length - 4; offset += 1) {
+    const firstFrame = parseMP3FrameHeader(audioData.readUInt32BE(offset));
+    if (!firstFrame || offset + firstFrame.frameLength > audioData.length) {
+      continue;
+    }
+
+    let totalSamples = 0;
+    let position = offset;
+    let sampleRate = firstFrame.sampleRate;
+
+    while (position <= audioData.length - 4) {
+      const frame = parseMP3FrameHeader(audioData.readUInt32BE(position));
+      if (!frame || position + frame.frameLength > audioData.length) {
+        break;
+      }
+
+      if (frame.sampleRate !== sampleRate) {
+        return null;
+      }
+
+      totalSamples += frame.samplesPerFrame;
+      position += frame.frameLength;
+    }
+
+    if (totalSamples > 0) {
+      return totalSamples / sampleRate;
+    }
+  }
+
+  return null;
+}
+
+function leadingID3TagLength(audioData: Buffer): number {
+  if (
+    audioData.length < 10 ||
+    audioData[0] !== 0x49 ||
+    audioData[1] !== 0x44 ||
+    audioData[2] !== 0x33
+  ) {
+    return 0;
+  }
+
+  const flags = audioData[5] ?? 0;
+  const footerLength = (flags & 0x10) !== 0 ? 10 : 0;
+  return Math.min(10 + synchsafeInteger(audioData.subarray(6, 10)) + footerLength, audioData.length);
+}
+
+function synchsafeInteger(bytes: Buffer): number {
+  return (
+    ((bytes[0] ?? 0) << 21) |
+    ((bytes[1] ?? 0) << 14) |
+    ((bytes[2] ?? 0) << 7) |
+    (bytes[3] ?? 0)
+  );
+}
+
+function parseMP3FrameHeader(header: number): MP3FrameInfo | null {
+  if (((header & 0xffe00000) >>> 0) !== 0xffe00000) {
+    return null;
+  }
+
+  const versionBits = (header >>> 19) & 0b11;
+  const layerBits = (header >>> 17) & 0b11;
+  const bitrateIndex = (header >>> 12) & 0b1111;
+  const sampleRateIndex = (header >>> 10) & 0b11;
+  const padding = (header >>> 9) & 0b1;
+
+  const version = parseVersion(versionBits);
+  const layer = parseLayer(layerBits);
+  if (!version || !layer || bitrateIndex === 0 || bitrateIndex === 0b1111 || sampleRateIndex === 0b11) {
+    return null;
+  }
+
+  const bitrate = BITRATE_TABLE[version][layer][bitrateIndex];
+  const sampleRate = resolveSampleRate(version, sampleRateIndex);
+  if (!bitrate || !sampleRate) {
+    return null;
+  }
+
+  const samplesPerFrame = resolveSamplesPerFrame(version, layer);
+  const frameLength = resolveFrameLength(version, layer, bitrate, sampleRate, padding);
+  if (!frameLength || frameLength < 4) {
+    return null;
+  }
+
+  return { frameLength, sampleRate, samplesPerFrame };
+}
+
+function parseVersion(versionBits: number): MPEGVersion | null {
+  switch (versionBits) {
+    case 0b11:
+      return "1";
+    case 0b10:
+      return "2";
+    case 0b00:
+      return "2.5";
+    default:
+      return null;
+  }
+}
+
+function parseLayer(layerBits: number): MPEGLayer | null {
+  switch (layerBits) {
+    case 0b11:
+      return "1";
+    case 0b10:
+      return "2";
+    case 0b01:
+      return "3";
+    default:
+      return null;
+  }
+}
+
+function resolveSampleRate(version: MPEGVersion, sampleRateIndex: number): number | null {
+  switch (version) {
+    case "1":
+      return MPEG1_SAMPLE_RATES[sampleRateIndex] ?? null;
+    case "2":
+      return MPEG2_SAMPLE_RATES[sampleRateIndex] ?? null;
+    case "2.5":
+      return MPEG25_SAMPLE_RATES[sampleRateIndex] ?? null;
+  }
+}
+
+function resolveSamplesPerFrame(version: MPEGVersion, layer: MPEGLayer): number {
+  if (layer === "1") {
+    return 384;
+  }
+
+  if (layer === "2") {
+    return 1152;
+  }
+
+  return version === "1" ? 1152 : 576;
+}
+
+function resolveFrameLength(
+  version: MPEGVersion,
+  layer: MPEGLayer,
+  bitrateKbps: number,
+  sampleRate: number,
+  padding: number,
+): number {
+  const bitrate = bitrateKbps * 1000;
+
+  if (layer === "1") {
+    return Math.floor((12 * bitrate) / sampleRate + padding) * 4;
+  }
+
+  if (layer === "3" && version !== "1") {
+    return Math.floor((72 * bitrate) / sampleRate) + padding;
+  }
+
+  return Math.floor((144 * bitrate) / sampleRate) + padding;
 }
 
 export function buildAudioFileKey(

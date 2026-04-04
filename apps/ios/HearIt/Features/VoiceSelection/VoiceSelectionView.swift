@@ -36,6 +36,23 @@ struct VoiceSelectionView: View {
                     .padding(AppTheme.Layout.screenPadding)
                 }
             }
+            .overlay {
+                if model.isCreatingNarration {
+                    ZStack {
+                        Color.black.opacity(0.4).ignoresSafeArea()
+                        VStack(spacing: 14) {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .scaleEffect(1.3)
+                                .tint(.white)
+                            Text("Creating your audio…")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: model.isCreatingNarration)
             .navigationTitle("Choose a Voice")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

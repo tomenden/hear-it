@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import type { AudioJob } from "./types.js";
@@ -170,11 +170,34 @@ export class FileAudioStore implements AudioStore {
     }
   }
 
+  async get(key: string): Promise<Buffer | null> {
+    try {
+      return await readFile(join(this.outputDir, key));
+    } catch (error) {
+      const code =
+        error instanceof Error && "code" in error
+          ? (error as NodeJS.ErrnoException).code
+          : null;
+      if (code === "ENOENT") {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   async delete(key: string): Promise<void> {
     try {
       await unlink(join(this.outputDir, key));
     } catch {
       // Ignore — file may already be gone.
+    }
+  }
+
+  async deletePrefix(prefix: string): Promise<void> {
+    try {
+      await rm(join(this.outputDir, prefix), { recursive: true, force: true });
+    } catch {
+      // Ignore — directory may already be gone.
     }
   }
 

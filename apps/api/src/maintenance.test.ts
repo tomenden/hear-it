@@ -8,7 +8,7 @@ import {
   MaintenanceRunner,
   startMaintenanceWorker,
 } from "./maintenance.js";
-import type { AudioStore, JobStore } from "./storage.js";
+import type { AudioStore, JobOwnership, JobStore } from "./storage.js";
 import type { AudioJob } from "./types.js";
 
 class MemoryJobStore implements JobStore {
@@ -53,6 +53,14 @@ class MemoryJobStore implements JobStore {
     return true;
   }
 
+  async updateOwned(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    _ownership: JobOwnership,
+  ): Promise<boolean> {
+    return this.update(jobId, patch);
+  }
+
   async delete(_jobId: string): Promise<boolean> {
     return false;
   }
@@ -89,6 +97,15 @@ class MemoryJobStore implements JobStore {
 
     this.maintenanceLeaseAvailable = false;
     this.maintenanceLeaseOwner = leaseOwner;
+    return true;
+  }
+
+  async heartbeat(
+    _jobId: string,
+    _leaseOwner: string,
+    _leaseExpiresAt: string,
+    _runId: string,
+  ): Promise<boolean> {
     return true;
   }
 }

@@ -4,7 +4,7 @@ import postgres, { type JSONValue } from "postgres";
 
 import type { JobEventInput, JobEventListOptions, JobEventRecord, JobLeaseClaim } from "./job-events.js";
 import type { AudioJob } from "./types.js";
-import type { JobStore } from "./storage.js";
+import type { JobOwnership, JobStore } from "./storage.js";
 
 type SqlRow = Record<string, unknown>;
 
@@ -321,6 +321,22 @@ export class PostgresJobStore implements JobStore {
   }
 
   async update(jobId: string, patch: Partial<AudioJob>): Promise<boolean> {
+    return this.patchJob(jobId, patch);
+  }
+
+  async updateOwned(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    ownership: JobOwnership,
+  ): Promise<boolean> {
+    return this.patchJob(jobId, patch, ownership);
+  }
+
+  private async patchJob(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    ownership?: JobOwnership,
+  ): Promise<boolean> {
     const now = new Date().toISOString();
     const hasStatus = patch.status !== undefined;
     const hasInternalState = patch.internalState !== undefined;
@@ -338,7 +354,43 @@ export class PostgresJobStore implements JobStore {
     const hasDurationSeconds = patch.durationSeconds !== undefined;
     const hasError = patch.error !== undefined;
 
-    const rows = await this.sql`
+    const rows = ownership
+      ? await this.sql`
+      UPDATE audio_jobs SET
+        status = CASE WHEN ${hasStatus} THEN ${patch.status ?? null} ELSE status END,
+        internal_state = CASE WHEN ${hasInternalState} THEN ${patch.internalState ?? null} ELSE internal_state END,
+        display_title = CASE WHEN ${hasDisplayTitle} THEN ${patch.displayTitle ?? null} ELSE display_title END,
+        speech_script = CASE WHEN ${hasSpeechScript} THEN ${patch.speechScript ?? null} ELSE speech_script END,
+        available_duration_seconds = CASE
+          WHEN ${hasAvailableDurationSeconds} THEN ${patch.availableDurationSeconds ?? null}
+          ELSE available_duration_seconds
+        END,
+        live_edge_updated_at = CASE
+          WHEN ${hasLiveEdgeUpdatedAt} THEN ${patch.liveEdgeUpdatedAt ?? null}
+          ELSE live_edge_updated_at
+        END,
+        lease_owner = CASE WHEN ${hasLeaseOwner} THEN ${patch.leaseOwner ?? null} ELSE lease_owner END,
+        lease_expires_at = CASE WHEN ${hasLeaseExpiresAt} THEN ${patch.leaseExpiresAt ?? null} ELSE lease_expires_at END,
+        run_id = CASE WHEN ${hasRunId} THEN ${patch.runId ?? null} ELSE run_id END,
+        attempt = CASE WHEN ${hasAttempt} THEN ${patch.attempt ?? 0} ELSE attempt END,
+        audio_url = CASE WHEN ${hasAudioUrl} THEN ${patch.audioUrl ?? null} ELSE audio_url END,
+        playlist_url = CASE WHEN ${hasPlaylistUrl} THEN ${patch.playlistUrl ?? null} ELSE playlist_url END,
+        audio_segments = CASE
+          WHEN ${hasAudioSegments} THEN ${this.sql.json((patch.audioSegments ?? []) as unknown as JSONValue)}
+          ELSE audio_segments
+        END,
+        duration_seconds = CASE
+          WHEN ${hasDurationSeconds} THEN ${patch.durationSeconds ?? null}
+          ELSE duration_seconds
+        END,
+        error = CASE WHEN ${hasError} THEN ${patch.error ?? null} ELSE error END,
+        updated_at = ${now}
+      WHERE id = ${jobId}
+        AND lease_owner = ${ownership.leaseOwner}
+        AND run_id = ${ownership.runId}
+      RETURNING id
+    `
+      : await this.sql`
       UPDATE audio_jobs SET
         status = CASE WHEN ${hasStatus} THEN ${patch.status ?? null} ELSE status END,
         internal_state = CASE WHEN ${hasInternalState} THEN ${patch.internalState ?? null} ELSE internal_state END,
@@ -477,13 +529,19 @@ export class PostgresJobStore implements JobStore {
     return rows.length > 0;
   }
 
-  async heartbeat(jobId: string, leaseOwner: string, leaseExpiresAt: string): Promise<boolean> {
+  async heartbeat(
+    jobId: string,
+    leaseOwner: string,
+    leaseExpiresAt: string,
+    runId: string,
+  ): Promise<boolean> {
     const rows = await this.sql`
       UPDATE audio_jobs
       SET lease_expires_at = ${leaseExpiresAt},
           updated_at = ${new Date().toISOString()}
       WHERE id = ${jobId}
         AND lease_owner = ${leaseOwner}
+        AND run_id = ${runId}
         AND status = 'processing'
       RETURNING id
     `;

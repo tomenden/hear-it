@@ -41,6 +41,7 @@ export interface JobPipelineOptions {
     snapshot: AudioJob,
     playback: PlaybackDescriptor,
   ) => Promise<void> | void;
+  shouldAbort?: () => boolean;
 }
 
 export interface JobPipelineResult {
@@ -54,6 +55,12 @@ type SynthesizedChunk = {
   url: string;
   media: PackagerChunkMedia;
 };
+
+export class LostJobLeaseError extends Error {
+  constructor() {
+    super("Job lease lost.");
+  }
+}
 
 export function createJobPipeline(options: JobPipelineOptions) {
   const audioStore = options.audioStore;
@@ -70,6 +77,7 @@ export function createJobPipeline(options: JobPipelineOptions) {
     options.packagingRetryCount ?? DEFAULT_PACKAGING_RETRY_COUNT;
   const now = options.now ?? (() => new Date());
   const sleep = options.sleep ?? defaultSleep;
+  const shouldAbort = options.shouldAbort ?? (() => false);
 
   return {
     async processClaimedJob(job: AudioJob): Promise<JobPipelineResult> {
@@ -81,8 +89,14 @@ export function createJobPipeline(options: JobPipelineOptions) {
       let publishPromise = Promise.resolve();
       let nextChunkIndex = 0;
       let workerPromises: Promise<void>[] = [];
+      const throwIfAborted = () => {
+        if (shouldAbort()) {
+          throw new LostJobLeaseError();
+        }
+      };
 
       const emitUpdate = async (patch: Partial<AudioJob>) => {
+        throwIfAborted();
         currentJob = {
           ...currentJob,
           ...patch,
@@ -94,6 +108,13 @@ export function createJobPipeline(options: JobPipelineOptions) {
       };
 
       const failJob = async (error: unknown) => {
+        if (error instanceof LostJobLeaseError) {
+          return {
+            job: currentJob,
+            playback: snapshotPlayback(currentJob),
+          };
+        }
+
         const message =
           error instanceof Error ? error.message : "Speech generation failed.";
         Sentry.captureException(error, {
@@ -128,6 +149,7 @@ export function createJobPipeline(options: JobPipelineOptions) {
       };
 
       try {
+        throwIfAborted();
         await emitUpdate({
           status: "processing",
           internalState: "normalizing",
@@ -186,6 +208,7 @@ export function createJobPipeline(options: JobPipelineOptions) {
         });
 
         const publishStreamingArtifacts = async (force = false) => {
+          throwIfAborted();
           const contiguousChunks = getContiguousChunks(synthesizedChunks);
           if (contiguousChunks.length === 0) {
             return;
@@ -228,6 +251,7 @@ export function createJobPipeline(options: JobPipelineOptions) {
           lastPackagedChunkCount = contiguousChunks.length;
           lastPackagingResult = packagingResult;
 
+          throwIfAborted();
           await audioStore.put(
             packagingResult.initSegment.key,
             packagingResult.initSegment.audioData,
@@ -236,11 +260,13 @@ export function createJobPipeline(options: JobPipelineOptions) {
           );
 
           for (const segment of packagingResult.segments) {
+            throwIfAborted();
             await audioStore.put(segment.key, segment.audioData, segment.contentType, {
               overwrite: true,
             });
           }
 
+          throwIfAborted();
           playlistUrl = await audioStore.put(
             packagingResult.playlist.key,
             packagingResult.playlist.audioData,
@@ -260,6 +286,7 @@ export function createJobPipeline(options: JobPipelineOptions) {
 
         const runWorker = async () => {
           while (true) {
+            throwIfAborted();
             const index = nextChunkIndex;
             nextChunkIndex += 1;
 
@@ -289,6 +316,7 @@ export function createJobPipeline(options: JobPipelineOptions) {
               },
             );
 
+            throwIfAborted();
             synthesizedChunks.set(index, synthesized);
             publishPromise = publishPromise.then(() => publishStreamingArtifacts());
             await publishPromise;
@@ -333,6 +361,7 @@ export function createJobPipeline(options: JobPipelineOptions) {
               );
 
         if (!playlistUrl) {
+          throwIfAborted();
           await audioStore.put(
             finalPackagingResult.initSegment.key,
             finalPackagingResult.initSegment.audioData,
@@ -341,11 +370,13 @@ export function createJobPipeline(options: JobPipelineOptions) {
           );
 
           for (const segment of finalPackagingResult.segments) {
+            throwIfAborted();
             await audioStore.put(segment.key, segment.audioData, segment.contentType, {
               overwrite: true,
             });
           }
 
+          throwIfAborted();
           playlistUrl = await audioStore.put(
             finalPackagingResult.playlist.key,
             finalPackagingResult.playlist.audioData,
@@ -354,6 +385,7 @@ export function createJobPipeline(options: JobPipelineOptions) {
           );
         }
 
+        throwIfAborted();
         const finalAudioUrl = await audioStore.put(
           buildFinalAudioKey(currentJob.id),
           finalPackagingResult.finalAudio.audioData,

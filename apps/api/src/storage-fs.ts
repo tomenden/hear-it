@@ -4,7 +4,12 @@ import { dirname, join, resolve } from "node:path";
 
 import type { JobLeaseClaim } from "./job-events.js";
 import type { AudioJob } from "./types.js";
-import type { AudioStore, AudioStorePutOptions, JobStore } from "./storage.js";
+import type {
+  AudioStore,
+  AudioStorePutOptions,
+  JobOwnership,
+  JobStore,
+} from "./storage.js";
 
 // ---------------------------------------------------------------------------
 // File-system JobStore  (same behaviour as before — JSON file on disk)
@@ -95,6 +100,29 @@ export class FileJobStore implements JobStore {
     return true;
   }
 
+  async updateOwned(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    ownership: JobOwnership,
+  ): Promise<boolean> {
+    const existing = this.jobs.get(jobId);
+    if (!existing) return false;
+    if (
+      existing.leaseOwner !== ownership.leaseOwner ||
+      existing.runId !== ownership.runId
+    ) {
+      return false;
+    }
+
+    this.jobs.set(jobId, {
+      ...existing,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    });
+    await this.persist();
+    return true;
+  }
+
   async delete(jobId: string): Promise<boolean> {
     if (!this.jobs.has(jobId)) return false;
     this.jobs.delete(jobId);
@@ -153,13 +181,14 @@ export class FileJobStore implements JobStore {
     jobId: string,
     leaseOwner: string,
     leaseExpiresAt: string,
+    runId: string,
   ): Promise<boolean> {
     const existing = this.jobs.get(jobId);
     if (!existing || existing.status !== "processing") {
       return false;
     }
 
-    if (existing.leaseOwner !== leaseOwner) {
+    if (existing.leaseOwner !== leaseOwner || existing.runId !== runId) {
       return false;
     }
 

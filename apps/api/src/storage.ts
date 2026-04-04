@@ -10,6 +10,11 @@ export interface AudioStorePutOptions {
   overwrite?: boolean;
 }
 
+export interface JobOwnership {
+  leaseOwner: string;
+  runId: string;
+}
+
 // ---------------------------------------------------------------------------
 // Job Store — persists AudioJob records
 // ---------------------------------------------------------------------------
@@ -25,6 +30,12 @@ export interface JobStore {
   claimQueued(jobId: string, lease?: JobLeaseClaim): Promise<AudioJob | null>;
   /** Update specific fields on an existing job. Returns false if the job doesn't exist. */
   update(jobId: string, patch: Partial<AudioJob>): Promise<boolean>;
+  /** Update a leased job only if the current owner/run still matches. */
+  updateOwned(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    ownership: JobOwnership,
+  ): Promise<boolean>;
   /** Delete a job by ID. Returns false if the job doesn't exist. */
   delete(jobId: string): Promise<boolean>;
   nextId(): Promise<string>;
@@ -45,6 +56,7 @@ export interface JobStore {
     jobId: string,
     leaseOwner: string,
     leaseExpiresAt: string,
+    runId: string,
   ): Promise<boolean>;
 }
 

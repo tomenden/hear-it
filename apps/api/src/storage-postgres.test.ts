@@ -131,14 +131,21 @@ function createSqlHarness() {
       text.includes("set lease_expires_at =") &&
       text.includes("where id =") &&
       text.includes("and lease_owner =") &&
+      text.includes("and run_id =") &&
       text.includes("status = 'processing'")
     ) {
       const leaseExpiresAt = values[0] as string;
       const updatedAt = values[1] as string;
       const jobId = values[2] as string;
       const leaseOwner = values[3] as string;
+      const runId = values[4] as string;
       const job = jobs.get(jobId);
-      if (!job || job.status !== "processing" || job.lease_owner !== leaseOwner) {
+      if (
+        !job ||
+        job.status !== "processing" ||
+        job.lease_owner !== leaseOwner ||
+        job.run_id !== runId
+      ) {
         return [];
       }
       const nextJob = {
@@ -146,6 +153,25 @@ function createSqlHarness() {
         lease_expires_at: leaseExpiresAt,
         updated_at: updatedAt,
       };
+      jobs.set(jobId, nextJob);
+      return [nextJob];
+    }
+
+    if (
+      text.startsWith("update audio_jobs set") &&
+      text.includes("where id =") &&
+      text.includes("and lease_owner =") &&
+      text.includes("and run_id =") &&
+      !text.includes("status = 'processing'")
+    ) {
+      const jobId = values[values.length - 3] as string;
+      const leaseOwner = values[values.length - 2] as string;
+      const runId = values[values.length - 1] as string;
+      const job = jobs.get(jobId);
+      if (!job || job.lease_owner !== leaseOwner || job.run_id !== runId) {
+        return [];
+      }
+      const nextJob = patchJobFromUpdate(job, values.slice(0, -3), text);
       jobs.set(jobId, nextJob);
       return [nextJob];
     }
@@ -456,6 +482,7 @@ describe("PostgresJobStore events and leases", () => {
         status: "processing",
         leaseOwner: "worker-1",
         leaseExpiresAt: "2026-01-01T00:05:00.000Z",
+        runId: "run-1",
       }),
     );
 
@@ -463,10 +490,50 @@ describe("PostgresJobStore events and leases", () => {
       "job-1",
       "worker-1",
       "2026-01-01T00:10:00.000Z",
+      "run-1",
     );
 
     expect(updated).toBe(true);
     expect((await store.get("job-1"))?.leaseExpiresAt).toBe("2026-01-01T00:10:00.000Z");
+  });
+
+  it("fences owned updates and heartbeats by run id", async () => {
+    const { store } = makeJobStore();
+    await store.init();
+    await store.save(
+      createJob({
+        status: "processing",
+        leaseOwner: "worker-1",
+        leaseExpiresAt: "2026-01-01T00:05:00.000Z",
+        runId: "run-1",
+      }),
+    );
+
+    expect(
+      await store.updateOwned("job-1", { internalState: "finalizing" }, {
+        leaseOwner: "worker-1",
+        runId: "run-1",
+      }),
+    ).toBe(true);
+    expect((await store.get("job-1"))?.internalState).toBe("finalizing");
+
+    expect(
+      await store.updateOwned("job-1", { status: "completed" }, {
+        leaseOwner: "worker-1",
+        runId: "run-2",
+      }),
+    ).toBe(false);
+    expect((await store.get("job-1"))?.status).toBe("processing");
+
+    expect(
+      await store.heartbeat?.(
+        "job-1",
+        "worker-1",
+        "2026-01-01T00:10:00.000Z",
+        "run-2",
+      ),
+    ).toBe(false);
+    expect((await store.get("job-1"))?.leaseExpiresAt).toBe("2026-01-01T00:05:00.000Z");
   });
 
   it("deletes related events when deleting a job", async () => {

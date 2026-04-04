@@ -4,8 +4,8 @@ import { trackEvent } from "./analytics.js";
 import { extractArticle } from "./extractor.js";
 import type { FfmpegMediaPackager } from "./ffmpeg-media-packager.js";
 import { createFfmpegMediaPackager } from "./ffmpeg-media-packager.js";
-import { createJobPipeline } from "./job-pipeline.js";
-import type { AudioStore, JobStore } from "./storage.js";
+import { createJobPipeline, LostJobLeaseError } from "./job-pipeline.js";
+import type { AudioStore, JobOwnership, JobStore } from "./storage.js";
 import {
   AVAILABLE_VOICES,
   DEFAULT_SPEECH_OPTIONS,
@@ -140,7 +140,12 @@ export class AudioJobService {
       return;
     }
 
-    const stopHeartbeat = this.startLeaseHeartbeat(jobId);
+    const ownership: JobOwnership = {
+      leaseOwner: this.leaseOwner,
+      runId,
+    };
+    const leaseState = { lost: false };
+    const stopHeartbeat = this.startLeaseHeartbeat(jobId, ownership, leaseState);
 
     const shouldStartFresh =
       claimedJob.audioSegments.length === 0 &&
@@ -156,8 +161,17 @@ export class AudioJobService {
         audioStore: this.audioStore,
         speechProvider: this.speechProvider,
         mediaPackager: this.mediaPackager,
+        shouldAbort: () => leaseState.lost,
         onJobUpdate: async (patch) => {
-          await this.updateJob(jobId, patch);
+          if (leaseState.lost) {
+            throw new LostJobLeaseError();
+          }
+
+          const updated = await this.updateOwnedJob(jobId, patch, ownership);
+          if (!updated) {
+            leaseState.lost = true;
+            throw new LostJobLeaseError();
+          }
         },
       });
 
@@ -171,11 +185,17 @@ export class AudioJobService {
       }
     } finally {
       stopHeartbeat();
-      await this.jobStore.update(jobId, {
-        leaseOwner: null,
-        leaseExpiresAt: null,
-        runId: null,
-      });
+      if (!leaseState.lost) {
+        await this.updateOwnedJob(
+          jobId,
+          {
+            leaseOwner: null,
+            leaseExpiresAt: null,
+            runId: null,
+          },
+          ownership,
+        );
+      }
     }
   }
 
@@ -232,6 +252,14 @@ export class AudioJobService {
     await this.jobStore.update(jobId, patch);
   }
 
+  private async updateOwnedJob(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    ownership: JobOwnership,
+  ) {
+    return this.jobStore.updateOwned(jobId, patch, ownership);
+  }
+
   private async deleteNarrationArtifacts(jobId: string): Promise<void> {
     const pipeline = createJobPipeline({
       audioStore: this.audioStore,
@@ -241,17 +269,31 @@ export class AudioJobService {
     await pipeline.deleteJobArtifacts(jobId);
   }
 
-  private startLeaseHeartbeat(jobId: string): () => void {
+  private startLeaseHeartbeat(
+    jobId: string,
+    ownership: JobOwnership,
+    leaseState: { lost: boolean },
+  ): () => void {
     if (!this.jobStore.heartbeat || this.heartbeatIntervalMs <= 0) {
       return () => {};
     }
 
     const timer = setInterval(() => {
-      void this.jobStore.heartbeat?.(
-        jobId,
-        this.leaseOwner,
-        createLeaseExpiry(this.leaseDurationMs),
-      );
+      void this.jobStore
+        .heartbeat?.(
+          jobId,
+          ownership.leaseOwner,
+          createLeaseExpiry(this.leaseDurationMs),
+          ownership.runId,
+        )
+        .then((updated) => {
+          if (!updated) {
+            leaseState.lost = true;
+          }
+        })
+        .catch(() => {
+          leaseState.lost = true;
+        });
     }, this.heartbeatIntervalMs);
     timer.unref?.();
 

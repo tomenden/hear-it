@@ -34,7 +34,7 @@ const app = createApp({
   audioJobService,
   jobStore,
   audioStore,
-  recoverInterruptedJobsOnStartup: true,
+  recoverInterruptedJobsOnStartup: false,
   supabaseUrl,
   supabaseJwtSecret: process.env.SUPABASE_JWT_SECRET,
 });

@@ -460,6 +460,36 @@ function createTestContext(audioDir: string, jobsFilePath: string) {
   return { service, jobStore, audioStore };
 }
 
+class LeaseTakeoverJobStore extends FileJobStore {
+  private heartbeatCount = 0;
+
+  async heartbeat(
+    jobId: string,
+    leaseOwner: string,
+    leaseExpiresAt: string,
+    runId: string,
+  ): Promise<boolean> {
+    this.heartbeatCount += 1;
+
+    if (this.heartbeatCount === 1) {
+      const currentJob = await this.get(jobId);
+      if (currentJob) {
+        await this.save({
+          ...currentJob,
+          status: "processing",
+          leaseOwner: "replacement-worker",
+          leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+          runId: "replacement-run",
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      return false;
+    }
+
+    return super.heartbeat(jobId, leaseOwner, leaseExpiresAt, runId);
+  }
+}
+
 async function waitFor<T>(
   action: () => Promise<T>,
   predicate: (value: T) => boolean,
@@ -814,6 +844,53 @@ describe("audio job service", () => {
     expect(completedJob?.leaseOwner).toBeNull();
     expect(completedJob?.leaseExpiresAt).toBeNull();
     expect(completedJob?.runId).toBeNull();
+  });
+
+  it("stops a stale runner after lease loss without clearing the replacement lease or stream artifacts", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const audioStore = new FileAudioStore(audioDir, "/audio");
+    const jobStore = new LeaseTakeoverJobStore(jobsFilePath);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider: new DelayedSegmentSpeechProvider([
+        { audioData: Buffer.from("ID3SEGMENTONE"), durationSeconds: 11, delayMs: 5 },
+        { audioData: Buffer.from("ID3SEGMENTTWO"), durationSeconds: 13, delayMs: 5 },
+        { audioData: Buffer.from("ID3SEGMENTTHREE"), durationSeconds: 17, delayMs: 120 },
+      ]),
+      mediaPackager: new TestMediaPackager(),
+      leaseOwner: "test-worker",
+      leaseDurationMs: 60,
+      heartbeatIntervalMs: 40,
+    });
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/takeover-job",
+      html: `
+        <!doctype html>
+        <html>
+          <head><title>Lease Takeover Article</title></head>
+          <body>
+            <article>
+              <h1>Lease Takeover Article</h1>
+              <p>${"First segment content. ".repeat(30)}</p>
+              <p>${"Second segment content. ".repeat(30)}</p>
+              <p>${"Third segment content. ".repeat(30)}</p>
+            </article>
+          </body>
+        </html>
+      `,
+    });
+
+    await service.processJob(queuedJob.id);
+
+    const replacedJob = await service.getJob(queuedJob.id);
+    expect(replacedJob?.status).toBe("processing");
+    expect(replacedJob?.leaseOwner).toBe("replacement-worker");
+    expect(replacedJob?.runId).toBe("replacement-run");
+    await expect(readFile(join(audioDir, "jobs", queuedJob.id, "playlist.m3u8"))).resolves.toBeDefined();
+    await expect(readFile(join(audioDir, "jobs", queuedJob.id, "tmp", "chunk-0000.mp3"))).resolves.toBeDefined();
   });
 
   it("makes a job playable before full completion via a growing playlist", async () => {

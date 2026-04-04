@@ -120,7 +120,7 @@ export class AudioJobService {
     });
     const segmentTexts = chunkSpeechScript({
       script: speechScript.script,
-      targetSecondsPerChunk: 30,
+      targetSecondsPerChunk: 20,
     }).map((chunk) => chunk.text);
     let audioSegments: AudioJob["audioSegments"] = [...claimedJob.audioSegments];
     let combinedSegmentAudioData: Buffer[] = [];
@@ -478,65 +478,6 @@ function isRetryableSegmentError(error: unknown): boolean {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-export function chunkNarrationText(text: string, maxChars = MAX_SEGMENT_CHARS): string[] {
-  const trimmed = text.trim();
-  if (!trimmed) return [];
-
-  const blocks = trimmed
-    .split(/\n+/)
-    .map((block) => block.trim())
-    .filter(Boolean);
-
-  const chunks: string[] = [];
-  let currentChunk = "";
-
-  const pushPiece = (piece: string) => {
-    if (!piece) return;
-
-    if (!currentChunk) {
-      currentChunk = piece;
-      return;
-    }
-
-    if (currentChunk.length + 2 + piece.length <= maxChars) {
-      currentChunk = `${currentChunk}\n\n${piece}`;
-      return;
-    }
-
-    chunks.push(currentChunk);
-    currentChunk = piece;
-  };
-
-  const splitLongBlock = (block: string) =>
-    block.split(/(?<=[.!?])\s+/).map((piece) => piece.trim()).filter(Boolean);
-
-  for (const block of blocks.length > 0 ? blocks : [trimmed]) {
-    if (block.length <= maxChars) {
-      pushPiece(block);
-      continue;
-    }
-
-    for (const sentence of splitLongBlock(block)) {
-      if (sentence.length <= maxChars) {
-        pushPiece(sentence);
-        continue;
-      }
-
-      let startIndex = 0;
-      while (startIndex < sentence.length) {
-        pushPiece(sentence.slice(startIndex, startIndex + maxChars).trim());
-        startIndex += maxChars;
-      }
-    }
-  }
-
-  if (currentChunk) {
-    chunks.push(currentChunk);
-  }
-
-  return chunks.length > 0 ? chunks : [trimmed];
 }
 
 function buildNarrationPlaylistKey(jobId: string): string {

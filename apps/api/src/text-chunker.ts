@@ -9,7 +9,7 @@ export interface ChunkSpeechScriptInput {
   targetSecondsPerChunk?: number;
 }
 
-const WORDS_PER_SECOND = 2.7;
+const WORDS_PER_SECOND = 4;
 const PARAGRAPH_SPLIT = /\n\s*\n+/;
 const WORD_REGEX = /[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu;
 

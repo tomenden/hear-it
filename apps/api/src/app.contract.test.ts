@@ -139,17 +139,35 @@ describe("audio job API contract", () => {
     const payload = await response.json() as { job: Record<string, unknown> };
 
     expect(response.status).toBe(200);
-    expect(payload.job).toEqual({
+    expect(payload.job).toMatchObject({
       id: "job-processing",
       title: "Readable title",
       state: "processing",
+      status: "processing",
       article: {
+        title: "Raw article title",
+        byline: null,
         url: "https://example.com/posts/contract",
         siteName: "Example",
         excerpt: null,
+        textContent: "Body copy.",
+        wordCount: 2,
         estimatedMinutes: 1,
       },
       voice: "alloy",
+      speechOptions: {
+        voice: "alloy",
+      },
+      provider: "contract-test",
+      audioUrl: null,
+      audioDownloadPath: null,
+      playlistUrl: "/audio/jobs/job-processing/playlist.m3u8",
+      audioSegments: [
+        { url: "/audio/jobs/job-processing/chunk-0.mp3", durationSeconds: 11 },
+        { url: "/audio/jobs/job-processing/chunk-1.mp3", durationSeconds: 16 },
+      ],
+      durationSeconds: null,
+      error: null,
       playback: {
         mode: "streaming",
         isPlayable: true,
@@ -189,17 +207,32 @@ describe("audio job API contract", () => {
     const payload = await response.json() as { job: Record<string, unknown> };
 
     expect(response.status).toBe(200);
-    expect(payload.job).toEqual({
+    expect(payload.job).toMatchObject({
       id: "job-playlist-only",
       title: "Readable title",
       state: "processing",
+      status: "processing",
       article: {
+        title: "Raw article title",
+        byline: null,
         url: "https://example.com/posts/contract",
         siteName: "Example",
         excerpt: null,
+        textContent: "Body copy.",
+        wordCount: 2,
         estimatedMinutes: 1,
       },
       voice: "alloy",
+      speechOptions: {
+        voice: "alloy",
+      },
+      provider: "contract-test",
+      audioUrl: null,
+      audioDownloadPath: null,
+      playlistUrl: null,
+      audioSegments: [],
+      durationSeconds: null,
+      error: null,
       playback: {
         mode: "preparing",
         isPlayable: false,
@@ -261,19 +294,34 @@ describe("audio job API contract", () => {
     };
 
     expect(response.status).toBe(200);
-
-    expect(payload.jobs).toEqual([
+    expect(payload.jobs).toHaveLength(3);
+    expect(payload.jobs).toMatchObject([
       {
         id: "job-failed",
         title: "Readable title",
         state: "failed",
+        status: "failed",
         article: {
+          title: "Raw article title",
+          byline: null,
           url: "https://example.com/posts/contract",
           siteName: "Example",
           excerpt: null,
+          textContent: "Body copy.",
+          wordCount: 2,
           estimatedMinutes: 1,
         },
         voice: "alloy",
+        speechOptions: {
+          voice: "alloy",
+        },
+        provider: "contract-test",
+        audioUrl: null,
+        audioDownloadPath: null,
+        playlistUrl: null,
+        audioSegments: [],
+        durationSeconds: null,
+        error: "Audio generation failed.",
         playback: {
           mode: "failed",
           isPlayable: false,
@@ -291,13 +339,31 @@ describe("audio job API contract", () => {
         id: "job-ready",
         title: "Readable title",
         state: "ready",
+        status: "completed",
         article: {
+          title: "Raw article title",
+          byline: null,
           url: "https://example.com/posts/contract",
           siteName: "Example",
           excerpt: null,
+          textContent: "Body copy.",
+          wordCount: 2,
           estimatedMinutes: 1,
         },
         voice: "alloy",
+        speechOptions: {
+          voice: "alloy",
+        },
+        provider: "contract-test",
+        audioUrl: "/audio/jobs/job-ready/final.mp3",
+        audioDownloadPath: null,
+        playlistUrl: null,
+        audioSegments: [
+          { url: "/audio/jobs/job-ready/chunk-0.mp3", durationSeconds: 12 },
+          { url: "/audio/jobs/job-ready/chunk-1.mp3", durationSeconds: 18 },
+        ],
+        durationSeconds: 30,
+        error: null,
         playback: {
           mode: "final",
           isPlayable: true,
@@ -317,13 +383,28 @@ describe("audio job API contract", () => {
         id: "job-queued",
         title: "Readable title",
         state: "queued",
+        status: "queued",
         article: {
+          title: "Raw article title",
+          byline: null,
           url: "https://example.com/posts/contract",
           siteName: "Example",
           excerpt: null,
+          textContent: "Body copy.",
+          wordCount: 2,
           estimatedMinutes: 1,
         },
         voice: "alloy",
+        speechOptions: {
+          voice: "alloy",
+        },
+        provider: "contract-test",
+        audioUrl: null,
+        audioDownloadPath: null,
+        playlistUrl: null,
+        audioSegments: [],
+        durationSeconds: null,
+        error: null,
         playback: {
           mode: "preparing",
           isPlayable: false,

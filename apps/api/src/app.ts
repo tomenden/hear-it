@@ -68,12 +68,7 @@ interface AudioJobResponse {
   id: string;
   title: string;
   state: PublicAudioState;
-  article: {
-    url: string;
-    siteName: string | null;
-    excerpt: string | null;
-    estimatedMinutes: number;
-  };
+  article: AudioJob["article"];
   voice: string;
   playback: PlaybackDescriptor;
   progress: {
@@ -81,6 +76,15 @@ interface AudioJobResponse {
     chunksReady: number;
     availableDurationSeconds: number;
   };
+  status: AudioJob["status"];
+  speechOptions: AudioJob["speechOptions"];
+  provider: string;
+  audioUrl: string | null;
+  audioDownloadPath: string | null;
+  playlistUrl: string | null;
+  audioSegments: AudioJob["audioSegments"];
+  durationSeconds: number | null;
+  error: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -110,6 +114,9 @@ export function createApp(options: CreateAppOptions) {
   const app = express();
   const serializeJob = (job: AudioJob): AudioJobResponse => {
     const title = resolveJobTitle(job);
+    const legacyStatus = mapPublicStateToLegacyStatus(
+      mapInternalStateToPublicState(resolveInternalState(job)),
+    );
     const playback = mapJobToPlaybackDescriptor({
       state: resolveInternalState(job),
       streamPlaylistUrl: job.playlistUrl,
@@ -122,17 +129,17 @@ export function createApp(options: CreateAppOptions) {
     });
     const state = mapInternalStateToPublicState(resolveInternalState(job));
     const chunksReady = job.audioSegments.length;
+    const compatibilityFields = buildLegacyCompatibilityFields(
+      job,
+      legacyStatus,
+      playback,
+    );
 
     return {
       id: job.id,
       title,
       state,
-      article: {
-        url: job.article.url,
-        siteName: job.article.siteName,
-        excerpt: job.article.excerpt,
-        estimatedMinutes: job.article.estimatedMinutes,
-      },
+      article: job.article,
       voice: job.speechOptions.voice,
       playback,
       progress: {
@@ -140,6 +147,7 @@ export function createApp(options: CreateAppOptions) {
         chunksReady,
         availableDurationSeconds: resolveAvailableDurationSeconds(job),
       },
+      ...compatibilityFields,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
     };
@@ -457,6 +465,93 @@ function resolveAvailableDurationSeconds(job: AudioJob): number {
 
 function assertNever(value: never): never {
   throw new Error(`Unhandled audio job status: ${String(value)}`);
+}
+
+function mapPublicStateToLegacyStatus(
+  state: PublicAudioState,
+): AudioJob["status"] {
+  switch (state) {
+    case "queued":
+      return "queued";
+    case "processing":
+      return "processing";
+    case "ready":
+      return "completed";
+    case "failed":
+      return "failed";
+    default:
+      return assertNever(state);
+  }
+}
+
+function buildLegacyCompatibilityFields(
+  job: AudioJob,
+  status: AudioJob["status"],
+  playback: PlaybackDescriptor,
+): Pick<
+  AudioJobResponse,
+  | "status"
+  | "speechOptions"
+  | "provider"
+  | "audioUrl"
+  | "audioDownloadPath"
+  | "playlistUrl"
+  | "audioSegments"
+  | "durationSeconds"
+  | "error"
+> {
+  switch (playback.mode) {
+    case "final":
+      return {
+        status,
+        speechOptions: job.speechOptions,
+        provider: job.provider,
+        audioUrl: playback.audioUrl,
+        audioDownloadPath: null,
+        playlistUrl: null,
+        audioSegments: job.audioSegments,
+        durationSeconds: playback.durationSeconds,
+        error: null,
+      };
+    case "streaming":
+      return {
+        status,
+        speechOptions: job.speechOptions,
+        provider: job.provider,
+        audioUrl: null,
+        audioDownloadPath: null,
+        playlistUrl: playback.playlistUrl,
+        audioSegments: job.audioSegments,
+        durationSeconds: null,
+        error: null,
+      };
+    case "failed":
+      return {
+        status,
+        speechOptions: job.speechOptions,
+        provider: job.provider,
+        audioUrl: null,
+        audioDownloadPath: null,
+        playlistUrl: null,
+        audioSegments: [],
+        durationSeconds: null,
+        error: playback.errorMessage,
+      };
+    case "preparing":
+      return {
+        status,
+        speechOptions: job.speechOptions,
+        provider: job.provider,
+        audioUrl: null,
+        audioDownloadPath: null,
+        playlistUrl: null,
+        audioSegments: [],
+        durationSeconds: null,
+        error: status === "queued" ? job.error : null,
+      };
+    default:
+      return assertNever(playback);
+  }
 }
 
 function runBackgroundTask(

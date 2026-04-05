@@ -48,7 +48,8 @@ struct HearItURLResolutionTests {
             durationSeconds: nil,
             error: nil,
             createdAt: .now,
-            updatedAt: .now
+            updatedAt: .now,
+            liveEdgeUpdatedAt: "2026-04-05T12:30:00Z"
         )
 
         #expect(

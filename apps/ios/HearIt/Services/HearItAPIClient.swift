@@ -11,7 +11,6 @@ protocol HearItAPIProviding: Sendable {
     func deleteJob(jobID: String, baseURL: URL) async throws
     func createJob(articleURL: String, voiceID: String, baseURL: URL) async throws -> AudioJob
     func downloadAudioData(from url: URL) async throws -> Data
-    func downloadNarrationAudio(from url: URL) async throws -> Data
 }
 
 struct HearItAPIClient {
@@ -118,10 +117,6 @@ struct HearItAPIClient {
         }
 
         return data
-    }
-
-    func downloadNarrationAudio(from url: URL) async throws -> Data {
-        try await downloadAudioData(from: url)
     }
 
     static func resolveURL(_ rawValue: String?, relativeTo baseURL: URL) -> URL? {

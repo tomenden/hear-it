@@ -1,7 +1,7 @@
 const VOICE_TONES = {
   alloy: "Balanced and calm for long-form listening.",
   ash: "Clear and measured with a steady delivery.",
-  sage: "Warm and conversational for softer narration.",
+  sage: "Warm and conversational for softer delivery.",
   verse: "Brighter and more energetic for quick reads.",
 };
 
@@ -208,7 +208,7 @@ async function createJob({ navigateToPlayer }) {
     const createdJob = payload.job;
     state.selectedJobId = createdJob.id;
     elements.urlInput.value = "";
-    setMessage("Job queued. Polling for narration status...", false);
+    setMessage("Job queued. Polling for audio status...", false);
     await refreshJobs();
     if (navigateToPlayer) {
       setActiveTab("player");
@@ -283,7 +283,7 @@ function renderVoiceSamples() {
     const player = node.querySelector(".voice-preview-player");
 
     name.textContent = capitalize(voice);
-    tone.textContent = VOICE_TONES[voice] || "OpenAI-supported narration voice.";
+    tone.textContent = VOICE_TONES[voice] || "OpenAI-supported audio voice.";
     useButton.classList.toggle("voice-selected", voice === state.selectedVoice);
     useButton.textContent = voice === state.selectedVoice ? "Selected" : "Use";
 
@@ -328,7 +328,7 @@ function renderVoiceSamples() {
 function renderHomeSnapshot() {
   const jobs = state.jobs.slice(0, 3);
   if (!jobs.length) {
-    renderEmptyState(elements.homeSnapshot, "No jobs yet. Create your first narration from the card above.");
+    renderEmptyState(elements.homeSnapshot, "No jobs yet. Create your first audio from the card above.");
     return;
   }
 
@@ -348,7 +348,7 @@ function renderLibrary() {
   renderStats();
 
   if (!state.jobs.length) {
-    renderEmptyState(elements.jobsList, "No narrations yet. Start one from the Home tab.");
+    renderEmptyState(elements.jobsList, "No audio yet. Start one from the Home tab.");
     return;
   }
 
@@ -381,7 +381,7 @@ function renderLibrary() {
     excerpt.textContent = job.article.excerpt || "No summary available.";
     note.textContent = buildStatusMessage(job);
 
-    const audioSource = resolveNarrationAudioSource(job);
+    const audioSource = resolvePlaybackAudioSource(job);
 
     if (audioSource) {
       audioLink.hidden = false;
@@ -444,13 +444,13 @@ function renderPlayer() {
 
   elements.playerOpenLinkButton.disabled = false;
 
-  const source = resolveNarrationAudioSource(job);
+  const source = resolvePlaybackAudioSource(job);
   const isPlayable = Boolean(job.playback?.isPlayable && source);
 
   if (!isPlayable) {
     elements.playerProcessingView.hidden = false;
     elements.processingTitle.textContent =
-      job.playback?.mode === "failed" ? "Narration failed" : "Generating narration...";
+      job.playback?.mode === "failed" ? "Audio failed" : "Generating audio...";
     elements.processingSubtitle.textContent =
       job.playback?.mode === "failed"
         ? job.playback.errorMessage || "This job failed before audio was generated."
@@ -464,7 +464,7 @@ function renderPlayer() {
   elements.playerSource.textContent = [job.article.siteName, `${job.article.estimatedMinutes} min read`]
     .filter(Boolean)
     .join("  •  ");
-  elements.playerVoice.textContent = `Narrated by ${capitalize(job.voice)}`;
+  elements.playerVoice.textContent = `Voice: ${capitalize(job.voice)}`;
 
   if (elements.playerAudio.dataset.jobId !== job.id) {
     elements.playerAudio.src = source;
@@ -509,15 +509,15 @@ function setMessage(text, isError) {
 function setLoading(isLoading) {
   elements.submitButton.disabled = isLoading;
   elements.voiceCreateButton.disabled = isLoading;
-  elements.submitButton.textContent = isLoading ? "Creating..." : "Start Narrating";
-  elements.voiceCreateButton.textContent = isLoading ? "Creating..." : "Create Narration";
+  elements.submitButton.textContent = isLoading ? "Creating..." : "Create Audio";
+  elements.voiceCreateButton.textContent = isLoading ? "Creating..." : "Create Audio";
 }
 
 function syncVoiceSummary() {
   elements.selectedVoiceLabel.textContent = state.selectedVoice;
 }
 
-function resolveNarrationAudioSource(job) {
+function resolvePlaybackAudioSource(job) {
   if (!job.playback?.isPlayable) {
     return null;
   }

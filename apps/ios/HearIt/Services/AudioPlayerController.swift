@@ -37,12 +37,7 @@ final class AudioPlayerController {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self else { return }
-                isPlaying = false
-                // Clear saved position so next open starts from the beginning
-                if let jobID = loadedJobID {
-                    clearPosition(for: jobID)
-                }
+                self?.endPlaybackSession()
             }
         }
     }
@@ -103,6 +98,21 @@ final class AudioPlayerController {
     func updateObservedDuration(_ observedDuration: Double) {
         guard observedDuration.isFinite, observedDuration > 0 else { return }
         duration = observedDuration
+    }
+
+    func refreshPinnedSession(for jobID: String, knownDuration: Double?) -> Bool {
+        guard loadedJobID == jobID, loadedSourceURL != nil else { return false }
+        if let knownDuration, knownDuration > 0 {
+            duration = knownDuration
+        }
+        return true
+    }
+
+    func endPlaybackSession() {
+        if let jobID = loadedJobID {
+            clearPosition(for: jobID)
+        }
+        unload()
     }
 
     func togglePlayback() {

@@ -1,6 +1,6 @@
 import Foundation
 
-struct LocalNarrationAudioStore: Sendable {
+struct LocalAudioAssetStore: Sendable {
     struct StoredSegment: Sendable {
         let fileName: String
         let durationSeconds: Double
@@ -18,34 +18,58 @@ struct LocalNarrationAudioStore: Sendable {
     }
 
     func playbackURLIfExists(forJobID jobID: String) -> URL? {
+        let currentFileURL = currentAudioFileURL(forJobID: jobID)
+        if FileManager.default.fileExists(atPath: currentFileURL.path) {
+            return currentFileURL
+        }
+
         let legacyFileURL = legacyAudioFileURL(forJobID: jobID)
-        if FileManager.default.fileExists(atPath: legacyFileURL.path) {
+        guard FileManager.default.fileExists(atPath: legacyFileURL.path) else { return nil }
+
+        do {
+            try migrateLegacyAudioFileIfNeeded(forJobID: jobID)
+            if FileManager.default.fileExists(atPath: currentFileURL.path) {
+                return currentFileURL
+            }
+        } catch {
             return legacyFileURL
         }
 
-        let playlistURL = playlistFileURL(forJobID: jobID)
-        if FileManager.default.fileExists(atPath: playlistURL.path) {
-            do {
-                try buildLegacyAudioFileIfNeeded(forJobID: jobID)
-                if FileManager.default.fileExists(atPath: legacyFileURL.path) {
-                    return legacyFileURL
-                }
-            } catch {
-                #if DEBUG
-                print("[HearIt][Player] Failed to build local MP3 fallback for \(jobID): \(error)")
-                #endif
-            }
-        }
+        return legacyFileURL
+    }
 
-        return nil
+    func hasLegacyPlaylistBundle(forJobID jobID: String) -> Bool {
+        FileManager.default.fileExists(atPath: legacyPlaylistFileURL(forJobID: jobID).path)
+    }
+
+    func migrateLegacyPlaylistBundleIfNeeded(forJobID jobID: String) async throws -> URL? {
+        try await Task.detached(priority: .utility) { [self] in
+            let currentFileURL = currentAudioFileURL(forJobID: jobID)
+            if FileManager.default.fileExists(atPath: currentFileURL.path) {
+                return currentFileURL
+            }
+
+            let legacyFileURL = legacyAudioFileURL(forJobID: jobID)
+            if FileManager.default.fileExists(atPath: legacyFileURL.path) {
+                try migrateLegacyAudioFileIfNeeded(forJobID: jobID)
+                return FileManager.default.fileExists(atPath: currentFileURL.path) ? currentFileURL : legacyFileURL
+            }
+
+            guard FileManager.default.fileExists(atPath: legacyPlaylistFileURL(forJobID: jobID).path) else {
+                return nil
+            }
+
+            try buildCurrentAudioFileFromLegacyPlaylistIfNeeded(forJobID: jobID)
+            return FileManager.default.fileExists(atPath: currentFileURL.path) ? currentFileURL : nil
+        }.value
     }
 
     func savePlaylistBundle(
         forJobID jobID: String,
         segments: [StoredSegment]
     ) async throws -> URL {
-        let directoryURL = jobDirectoryURL(forJobID: jobID)
-        let playlistURL = playlistFileURL(forJobID: jobID)
+        let directoryURL = currentJobDirectoryURL(forJobID: jobID)
+        let playlistURL = currentPlaylistFileURL(forJobID: jobID)
         let fileManager = FileManager.default
         try Task.checkCancellation()
         try fileManager.createDirectory(
@@ -68,56 +92,74 @@ struct LocalNarrationAudioStore: Sendable {
         try Task.checkCancellation()
         try Self.writeCombinedAudioFile(
             segmentData: segments.map(\.audioData),
-            to: legacyAudioFileURL(forJobID: jobID)
+            to: currentAudioFileURL(forJobID: jobID)
         )
         return playlistURL
     }
 
     func saveAudioFile(forJobID jobID: String, audioData: Data) async throws -> URL {
-        let legacyFileURL = legacyAudioFileURL(forJobID: jobID)
+        let currentFileURL = currentAudioFileURL(forJobID: jobID)
         try Task.checkCancellation()
         try FileManager.default.createDirectory(
-            at: narrationsDirectory,
+            at: audioAssetsDirectory,
             withIntermediateDirectories: true,
             attributes: nil
         )
         try Task.checkCancellation()
-        try audioData.write(to: legacyFileURL, options: .atomic)
-        return legacyFileURL
+        try audioData.write(to: currentFileURL, options: .atomic)
+        return currentFileURL
     }
 
-    func removeCachedNarration(forJobID jobID: String) async throws {
-        let directoryURL = jobDirectoryURL(forJobID: jobID)
-        let legacyFileURL = legacyAudioFileURL(forJobID: jobID)
+    func removeCachedAudio(forJobID jobID: String) async throws {
         let fileManager = FileManager.default
         try Task.checkCancellation()
-        if fileManager.fileExists(atPath: directoryURL.path) {
-            try fileManager.removeItem(at: directoryURL)
-        }
-        try Task.checkCancellation()
-        if fileManager.fileExists(atPath: legacyFileURL.path) {
-            try fileManager.removeItem(at: legacyFileURL)
+        for url in [
+            currentJobDirectoryURL(forJobID: jobID),
+            currentAudioFileURL(forJobID: jobID),
+            legacyJobDirectoryURL(forJobID: jobID),
+            legacyAudioFileURL(forJobID: jobID),
+        ] {
+            if fileManager.fileExists(atPath: url.path) {
+                try fileManager.removeItem(at: url)
+            }
+            try Task.checkCancellation()
         }
     }
 
-    private var narrationsDirectory: URL {
+    private var audioAssetsDirectory: URL {
+        baseDirectory.appendingPathComponent("AudioAssets", isDirectory: true)
+    }
+
+    private var legacyNarrationsDirectory: URL {
         baseDirectory.appendingPathComponent("Narrations", isDirectory: true)
     }
 
-    private func jobDirectoryURL(forJobID jobID: String) -> URL {
-        narrationsDirectory.appendingPathComponent(sanitize(jobID), isDirectory: true)
+    private func currentJobDirectoryURL(forJobID jobID: String) -> URL {
+        audioAssetsDirectory.appendingPathComponent(sanitize(jobID), isDirectory: true)
     }
 
-    private func playlistFileURL(forJobID jobID: String) -> URL {
-        jobDirectoryURL(forJobID: jobID).appendingPathComponent("playlist.m3u8")
+    private func legacyJobDirectoryURL(forJobID jobID: String) -> URL {
+        legacyNarrationsDirectory.appendingPathComponent(sanitize(jobID), isDirectory: true)
+    }
+
+    private func currentPlaylistFileURL(forJobID jobID: String) -> URL {
+        currentJobDirectoryURL(forJobID: jobID).appendingPathComponent("playlist.m3u8")
+    }
+
+    private func legacyPlaylistFileURL(forJobID jobID: String) -> URL {
+        legacyJobDirectoryURL(forJobID: jobID).appendingPathComponent("playlist.m3u8")
+    }
+
+    private func currentAudioFileURL(forJobID jobID: String) -> URL {
+        audioAssetsDirectory.appendingPathComponent("audio-\(sanitize(jobID)).mp3")
     }
 
     private func legacyAudioFileURL(forJobID jobID: String) -> URL {
-        narrationsDirectory.appendingPathComponent("narration-\(sanitize(jobID)).mp3")
+        legacyNarrationsDirectory.appendingPathComponent("narration-\(sanitize(jobID)).mp3")
     }
 
-    private func segmentFileURLs(forJobID jobID: String) -> [URL] {
-        let jobDirectory = jobDirectoryURL(forJobID: jobID)
+    private func legacySegmentFileURLs(forJobID jobID: String) -> [URL] {
+        let jobDirectory = legacyJobDirectoryURL(forJobID: jobID)
         let segmentURLs = (try? FileManager.default.contentsOfDirectory(
             at: jobDirectory,
             includingPropertiesForKeys: nil
@@ -142,16 +184,30 @@ struct LocalNarrationAudioStore: Sendable {
             .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     }
 
-    private func buildLegacyAudioFileIfNeeded(forJobID jobID: String) throws {
-        let legacyFileURL = legacyAudioFileURL(forJobID: jobID)
-        guard !FileManager.default.fileExists(atPath: legacyFileURL.path) else { return }
+    private func migrateLegacyAudioFileIfNeeded(forJobID jobID: String) throws {
+        let currentFileURL = currentAudioFileURL(forJobID: jobID)
+        guard !FileManager.default.fileExists(atPath: currentFileURL.path) else { return }
 
-        let segmentURLs = segmentFileURLs(forJobID: jobID)
+        let legacyFileURL = legacyAudioFileURL(forJobID: jobID)
+        guard FileManager.default.fileExists(atPath: legacyFileURL.path) else { return }
+
+        try FileManager.default.createDirectory(
+            at: audioAssetsDirectory,
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.moveItem(at: legacyFileURL, to: currentFileURL)
+    }
+
+    private func buildCurrentAudioFileFromLegacyPlaylistIfNeeded(forJobID jobID: String) throws {
+        let currentFileURL = currentAudioFileURL(forJobID: jobID)
+        guard !FileManager.default.fileExists(atPath: currentFileURL.path) else { return }
+
+        let segmentURLs = legacySegmentFileURLs(forJobID: jobID)
         guard !segmentURLs.isEmpty else { return }
 
         try Self.writeCombinedAudioFile(
             segmentData: try segmentURLs.map { try Data(contentsOf: $0) },
-            to: legacyFileURL
+            to: currentFileURL
         )
     }
 

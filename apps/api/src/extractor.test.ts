@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ArticleTooLongError,
-  MAX_NARRATION_CHARS,
+  MAX_AUDIO_CHARS,
   extractArticle,
 } from "./extractor.js";
 
@@ -67,9 +67,9 @@ describe("article extraction", () => {
     expect(article.textContent).not.toContain("John Searle, \"Minds, Brains, and Programs\".");
   });
 
-  it("rejects articles that exceed narration limits", async () => {
+  it("rejects articles that exceed audio limits", async () => {
     const filler = "A".repeat(1_000);
-    const paragraphs = Array.from({ length: Math.ceil((MAX_NARRATION_CHARS + 500) / 1_000) }, () => `<p>${filler}</p>`).join("\n");
+    const paragraphs = Array.from({ length: Math.ceil((MAX_AUDIO_CHARS + 500) / 1_000) }, () => `<p>${filler}</p>`).join("\n");
     const oversizedHtml = `
       <!doctype html>
       <html>
@@ -93,7 +93,7 @@ describe("article extraction", () => {
       code: "article_too_long",
       statusCode: 422,
       details: {
-        maxCharacterCount: MAX_NARRATION_CHARS,
+        maxCharacterCount: MAX_AUDIO_CHARS,
       },
     });
   });

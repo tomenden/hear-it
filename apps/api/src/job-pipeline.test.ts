@@ -545,13 +545,14 @@ describe("job pipeline", () => {
     const audioStore = new RecordingAudioStore();
     const harness = createPipelineHarness({ audioStore });
     const prefix = buildJobMediaPrefix("job-123");
+    const legacyPrefix = `narrations/job-job-123`;
     audioStore.seed(`${prefix}/final.mp3`, Buffer.from("final"));
     audioStore.seed(`${prefix}/tmp/chunk-0000.mp3`, Buffer.from("temp"));
     audioStore.seed(`${prefix}/segments/chunk-0000.m4s`, Buffer.from("segment"));
 
     await harness.pipeline.deleteJobArtifacts("job-123");
 
-    expect(audioStore.deletedPrefixes).toEqual([prefix]);
+    expect(audioStore.deletedPrefixes).toEqual([prefix, legacyPrefix]);
     expect(audioStore.has(`${prefix}/final.mp3`)).toBe(false);
     expect(audioStore.has(`${prefix}/tmp/chunk-0000.mp3`)).toBe(false);
     expect(audioStore.has(`${prefix}/segments/chunk-0000.m4s`)).toBe(false);

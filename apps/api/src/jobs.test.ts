@@ -10,7 +10,7 @@ import * as jose from "jose";
 
 import { createAuthMiddleware } from "./auth.js";
 import { createApp, createAudioJobSchema, extractRequestSchema } from "./app.js";
-import { MAX_NARRATION_CHARS } from "./extractor.js";
+import { MAX_AUDIO_CHARS } from "./extractor.js";
 import { AudioJobService } from "./jobs.js";
 import {
   buildChunkMediaKey,
@@ -895,10 +895,10 @@ describe("audio job service", () => {
     await jobStore.save({
       ...queuedJob,
       status: "processing",
-      playlistUrl: `/audio/narrations/job-${queuedJob.id}/playlist.m3u8`,
+      playlistUrl: `/audio/jobs/job-${queuedJob.id}/playlist.m3u8`,
       audioSegments: [
         {
-          url: `/audio/narrations/job-${queuedJob.id}/segment-0.mp3`,
+          url: `/audio/jobs/job-${queuedJob.id}/segment-0.mp3`,
           durationSeconds: 11,
         },
       ],
@@ -1216,6 +1216,7 @@ describe("audio job service", () => {
         typeof job.playlistUrl === "string" &&
         job.playlistUrl.length > 0 &&
         (job.availableDurationSeconds ?? 0) >= 20,
+      5_000,
     );
 
     expect(partiallyReadyJob?.durationSeconds).toBeNull();
@@ -1681,7 +1682,7 @@ describe("audio job service", () => {
               <body>
                 <article>
                   <h1>Very Long Article</h1>
-                  <p>${"A".repeat(MAX_NARRATION_CHARS + 500)}</p>
+                  <p>${"A".repeat(MAX_AUDIO_CHARS + 500)}</p>
                 </article>
               </body>
             </html>
@@ -1696,8 +1697,8 @@ describe("audio job service", () => {
 
       expect(response.status).toBe(422);
       expect(payload.code).toBe("article_too_long");
-      expect(payload.details.maxCharacterCount).toBe(MAX_NARRATION_CHARS);
-      expect(payload.details.characterCount).toBeGreaterThan(MAX_NARRATION_CHARS);
+      expect(payload.details.maxCharacterCount).toBe(MAX_AUDIO_CHARS);
+      expect(payload.details.characterCount).toBeGreaterThan(MAX_AUDIO_CHARS);
       expect(await service.listJobs()).toHaveLength(0);
     } finally {
       server.close();

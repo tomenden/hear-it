@@ -22,10 +22,10 @@ extension AppModel {
 
     static func previewPlayerReady() -> AppModel {
         let model = previewBase(name: "player-ready")
-        model.playerPresentation = PlayerPresentation(jobID: PreviewSamples.readyJob.id)
-        model.settings.lastPresentedJobID = PreviewSamples.readyJob.id
+        model.playerPresentation = PlayerPresentation(jobID: PlaybackStateSamples.finalJob.id)
+        model.settings.lastPresentedJobID = PlaybackStateSamples.finalJob.id
         model.player.configurePreviewState(
-            jobID: PreviewSamples.readyJob.id,
+            jobID: PlaybackStateSamples.finalJob.id,
             duration: 603,
             currentTime: 148,
             isPlaying: false,
@@ -35,18 +35,48 @@ extension AppModel {
         return model
     }
 
+    static func previewPlayerPreparing() -> AppModel {
+        let model = previewBase(name: "player-preparing")
+        model.playerPresentation = PlayerPresentation(jobID: PlaybackStateSamples.preparingJob.id)
+        model.settings.lastPresentedJobID = PlaybackStateSamples.preparingJob.id
+        model.player.configurePreviewState(
+            jobID: PlaybackStateSamples.preparingJob.id,
+            duration: nil,
+            currentTime: 0,
+            isPlaying: false,
+            playbackRate: 1.0,
+            volume: 0.82
+        )
+        return model
+    }
+
     static func previewPlayerProcessing() -> AppModel {
         let model = previewBase(name: "player-processing")
-        model.playerPresentation = PlayerPresentation(jobID: PreviewSamples.processingJob.id)
-        model.settings.lastPresentedJobID = PreviewSamples.processingJob.id
+        model.playerPresentation = PlayerPresentation(jobID: PlaybackStateSamples.streamingJob.id)
+        model.settings.lastPresentedJobID = PlaybackStateSamples.streamingJob.id
         model.player.configurePreviewState(
-            jobID: PreviewSamples.processingJob.id,
-            duration: nil,
+            jobID: PlaybackStateSamples.streamingJob.id,
+            duration: 136,
             currentTime: 41,
             isPlaying: true,
             playbackRate: 1.0,
             volume: 0.82,
-            loadedSourceURL: URL(string: "http://127.0.0.1:3000/audio/job-preview-processing/playlist.m3u8")
+            loadedSourceURL: URL(string: PlaybackStateSamples.streamingJob.playback.playlistUrl ?? "")
+        )
+        return model
+    }
+
+    static func previewPlayerFailed() -> AppModel {
+        let model = previewBase(name: "player-failed")
+        model.playerPresentation = PlayerPresentation(jobID: PlaybackStateSamples.failedJob.id)
+        model.settings.lastPresentedJobID = PlaybackStateSamples.failedJob.id
+        model.player.configurePreviewState(
+            jobID: PlaybackStateSamples.failedJob.id,
+            duration: nil,
+            currentTime: 0,
+            isPlaying: false,
+            playbackRate: 1.0,
+            volume: 0.82
         )
         return model
     }
@@ -73,7 +103,7 @@ extension AppModel {
         let settings = AppSettings(defaults: defaults)
         settings.apiBaseURLString = "http://127.0.0.1:3000"
         settings.selectedVoiceID = "sage"
-        settings.lastPresentedJobID = PreviewSamples.readyJob.id
+        settings.lastPresentedJobID = PlaybackStateSamples.finalJob.id
 
         let model = AppModel(
             settings: settings,
@@ -84,7 +114,7 @@ extension AppModel {
         model.connectionState = .connected
         model.serverConfig = PreviewSamples.serverConfig
         model.availableVoices = PreviewSamples.voices
-        model.jobs = PreviewSamples.libraryJobs
+        model.jobs = PlaybackStateSamples.libraryJobs
         model.urlInput = PreviewSamples.previewArticle.url
         model.previewArticle = PreviewSamples.previewArticle
 

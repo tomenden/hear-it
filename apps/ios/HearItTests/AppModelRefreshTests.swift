@@ -77,10 +77,6 @@ private final class MockHearItAPIClient: HearItAPIProviding, @unchecked Sendable
     func downloadAudioData(from url: URL) async throws -> Data {
         try await downloadAudioDataHandler(url)
     }
-
-    func downloadNarrationAudio(from url: URL) async throws -> Data {
-        try await downloadAudioData(from: url)
-    }
 }
 
 private actor JobsResponseSequence {
@@ -169,7 +165,7 @@ struct AppModelRefreshTests {
         let model = AppModel(
             settings: settings,
             apiClient: apiClient,
-            localAudioStore: LocalNarrationAudioStore(baseDirectory: FileManager.default.temporaryDirectory),
+            localAudioStore: LocalAudioAssetStore(baseDirectory: FileManager.default.temporaryDirectory),
             player: AudioPlayerController(previewMode: true)
         )
 
@@ -221,7 +217,7 @@ struct AppModelRefreshTests {
         let model = AppModel(
             settings: settings,
             apiClient: apiClient,
-            localAudioStore: LocalNarrationAudioStore(baseDirectory: FileManager.default.temporaryDirectory),
+            localAudioStore: LocalAudioAssetStore(baseDirectory: FileManager.default.temporaryDirectory),
             player: AudioPlayerController(previewMode: true)
         )
 
@@ -264,7 +260,7 @@ struct AppModelRefreshTests {
         let model = AppModel(
             settings: settings,
             apiClient: apiClient,
-            localAudioStore: LocalNarrationAudioStore(baseDirectory: FileManager.default.temporaryDirectory),
+            localAudioStore: LocalAudioAssetStore(baseDirectory: FileManager.default.temporaryDirectory),
             player: AudioPlayerController(previewMode: true)
         )
         let didRefresh = await model.refreshServerState(showLoadingState: false)

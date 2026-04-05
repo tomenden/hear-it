@@ -6,7 +6,7 @@ import { trackEvent } from "./analytics.js";
 import type { ExtractArticleInput, ExtractedArticle } from "./types.js";
 
 const WORDS_PER_MINUTE = 160;
-export const MAX_NARRATION_CHARS = 100_000;
+export const MAX_AUDIO_CHARS = 100_000;
 const DEFAULT_ARTICLE_FETCH_TIMEOUT_MS = 15_000;
 const MIN_PARAGRAPH_LENGTH = 40;
 const BOILERPLATE_PATTERNS = [
@@ -115,18 +115,18 @@ export async function extractArticle(
   const canonicalUrl = detectCanonicalUrl(document, input.url);
   const estimatedMinutes = Math.max(1, Math.ceil(wordCount / WORDS_PER_MINUTE));
 
-  if (textContent.length > MAX_NARRATION_CHARS) {
+  if (textContent.length > MAX_AUDIO_CHARS) {
     const details = {
       url: canonicalUrl,
       title,
       characterCount: textContent.length,
-      maxCharacterCount: MAX_NARRATION_CHARS,
+      maxCharacterCount: MAX_AUDIO_CHARS,
       wordCount,
       estimatedMinutes,
     };
 
     console.warn("[extractor] article_too_long", details);
-    Sentry.captureMessage("Article too long for narration", {
+    Sentry.captureMessage("Article too long for audio generation", {
       level: "warning",
       tags: {
         url: canonicalUrl,

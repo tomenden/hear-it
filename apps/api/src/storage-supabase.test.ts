@@ -46,7 +46,7 @@ describe("SupabaseAudioStore", () => {
     vi.stubGlobal("fetch", vi.fn());
     uploadMock.mockResolvedValue({ error: null });
     getPublicUrlMock.mockReturnValue({
-      data: { publicUrl: "https://supabase.example/storage/v1/object/public/audio/narrations/test.mp3" },
+      data: { publicUrl: "https://supabase.example/storage/v1/object/public/audio/jobs/test.mp3" },
     });
     removeMock.mockResolvedValue({ error: null });
     listMock.mockResolvedValue({ data: [], error: null });
@@ -60,7 +60,7 @@ describe("SupabaseAudioStore", () => {
     );
 
     const url = await store.put(
-      "narrations/test.mp3",
+      "jobs/test.mp3",
       Buffer.from("ID3DATA"),
       "audio/mpeg",
       { overwrite: true },
@@ -72,12 +72,12 @@ describe("SupabaseAudioStore", () => {
     );
     expect(fromMock).toHaveBeenCalledWith("audio");
     expect(uploadMock).toHaveBeenCalledWith(
-      "narrations/test.mp3",
+      "jobs/test.mp3",
       expect.any(Buffer),
       { contentType: "audio/mpeg", upsert: true },
     );
     expect(url).toBe(
-      "https://supabase.example/storage/v1/object/public/audio/narrations/test.mp3",
+      "https://supabase.example/storage/v1/object/public/audio/jobs/test.mp3",
     );
   });
 
@@ -90,16 +90,16 @@ describe("SupabaseAudioStore", () => {
       "audio",
     );
 
-    await expect(store.head("narrations/test.mp3")).resolves.toBe(
-      "https://supabase.example/storage/v1/object/public/audio/narrations/test.mp3",
+    await expect(store.head("jobs/test.mp3")).resolves.toBe(
+      "https://supabase.example/storage/v1/object/public/audio/jobs/test.mp3",
     );
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://supabase.example/storage/v1/object/public/audio/narrations/test.mp3",
+      "https://supabase.example/storage/v1/object/public/audio/jobs/test.mp3",
       { method: "HEAD" },
     );
 
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
-    await expect(store.head("narrations/missing.mp3")).resolves.toBeNull();
+    await expect(store.head("jobs/missing.mp3")).resolves.toBeNull();
   });
 
   it("deletes keys and performs a lightweight connectivity check", async () => {
@@ -109,10 +109,10 @@ describe("SupabaseAudioStore", () => {
       "audio",
     );
 
-    await store.delete("narrations/test.mp3");
+    await store.delete("jobs/test.mp3");
     await store.check();
 
-    expect(removeMock).toHaveBeenCalledWith(["narrations/test.mp3"]);
+    expect(removeMock).toHaveBeenCalledWith(["jobs/test.mp3"]);
     expect(listMock).toHaveBeenCalledWith("", { limit: 1 });
   });
 });

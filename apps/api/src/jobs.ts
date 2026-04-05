@@ -124,7 +124,7 @@ export class AudioJobService {
       : await this.jobStore.get(jobId);
 
     if (existingJob) {
-      await this.deleteNarrationArtifacts(jobId);
+      await this.deleteJobArtifacts(jobId);
     }
 
     if (userId) return this.jobStore.deleteForUser(jobId, userId);
@@ -158,7 +158,7 @@ export class AudioJobService {
     try {
       if (shouldStartFresh) {
         try {
-          await this.deleteNarrationArtifacts(jobId);
+          await this.deleteJobArtifacts(jobId);
         } catch (error) {
           const cleanupFailed = await this.updateOwnedJob(
             jobId,
@@ -174,7 +174,7 @@ export class AudioJobService {
               error:
                 error instanceof Error
                   ? error.message
-                  : "Failed to clean up previous narration artifacts.",
+                  : "Failed to clean up previous audio artifacts.",
             },
             ownership,
           );
@@ -343,7 +343,7 @@ export class AudioJobService {
     );
   }
 
-  private async deleteNarrationArtifacts(jobId: string): Promise<void> {
+  private async deleteJobArtifacts(jobId: string): Promise<void> {
     const pipeline = createJobPipeline({
       audioStore: this.audioStore,
       speechProvider: this.speechProvider,

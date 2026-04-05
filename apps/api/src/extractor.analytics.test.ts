@@ -16,7 +16,7 @@ vi.mock("@sentry/node", () => ({
 }));
 
 import {
-  MAX_NARRATION_CHARS,
+  MAX_AUDIO_CHARS,
   extractArticle,
 } from "./extractor.js";
 
@@ -64,10 +64,10 @@ describe("extractor analytics", () => {
     );
   });
 
-  it("emits audio_article_too_long when narration exceeds the max length", async () => {
+  it("emits audio_article_too_long when audio exceeds the max length", async () => {
     const filler = "A".repeat(1_000);
     const paragraphs = Array.from(
-      { length: Math.ceil((MAX_NARRATION_CHARS + 500) / 1_000) },
+      { length: Math.ceil((MAX_AUDIO_CHARS + 500) / 1_000) },
       () => `<p>${filler}</p>`,
     ).join("\n");
 

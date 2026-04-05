@@ -10,10 +10,6 @@ This glossary defines the product, backend, and playback terms used across Hear 
 - keep internal terms explicit
 - avoid leaking backend implementation details into user-facing language
 
-## Deprecated Term
-
-`Narration` is a legacy term in this codebase and documentation. It should be retired over time in favor of the terms below.
-
 ## Product Terms
 
 ### audio

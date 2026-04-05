@@ -2,29 +2,29 @@ import Foundation
 import Testing
 @testable import HearIt
 
-struct LocalNarrationAudioStoreTests {
+struct LocalAudioAssetStoreTests {
     @Test
-    func savesStandaloneNarrationAudioFilesForDirectPlayback() async throws {
+    func savesStandaloneAudioFilesForDirectPlayback() async throws {
         let tempDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let store = LocalNarrationAudioStore(baseDirectory: tempDirectory)
+        let store = LocalAudioAssetStore(baseDirectory: tempDirectory)
 
         let savedURL = try await store.saveAudioFile(
             forJobID: "job/final",
             audioData: Data("FINALMP3".utf8)
         )
 
-        #expect(savedURL.lastPathComponent == "narration-job-final.mp3")
+        #expect(savedURL.lastPathComponent == "audio-job-final.mp3")
         #expect(FileManager.default.fileExists(atPath: savedURL.path))
         #expect(try Data(contentsOf: savedURL) == Data("FINALMP3".utf8))
         #expect(store.playbackURLIfExists(forJobID: "job/final") == savedURL)
     }
 
     @Test
-    func savesAndRemovesNarrationPlaylistBundlesInTheConfiguredDirectory() async throws {
+    func savesAndRemovesLegacyPlaylistBundlesInTheConfiguredDirectory() async throws {
         let tempDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let store = LocalNarrationAudioStore(baseDirectory: tempDirectory)
+        let store = LocalAudioAssetStore(baseDirectory: tempDirectory)
         let savedURL = try await store.savePlaylistBundle(
             forJobID: "job/123",
             segments: [
@@ -51,8 +51,8 @@ struct LocalNarrationAudioStoreTests {
                 """
         )
         let legacyAudioURL = tempDirectory
-            .appendingPathComponent("Narrations", isDirectory: true)
-            .appendingPathComponent("narration-job-123.mp3")
+            .appendingPathComponent("AudioAssets", isDirectory: true)
+            .appendingPathComponent("audio-job-123.mp3")
         #expect(FileManager.default.fileExists(atPath: legacyAudioURL.path))
         #expect(store.playbackURLIfExists(forJobID: "job/123") == legacyAudioURL)
         #expect(
@@ -64,22 +64,24 @@ struct LocalNarrationAudioStoreTests {
                 Data("ID3SEG0ID3SEG1".utf8)
         )
 
-        try await store.removeCachedNarration(forJobID: "job/123")
+        try await store.removeCachedAudio(forJobID: "job/123")
 
         #expect(store.playbackURLIfExists(forJobID: "job/123") == nil)
     }
 
     @Test
-    func playbackURLMigratesExistingPlaylistBundleToCombinedMP3() throws {
+    func playbackURLMigratesExistingPlaylistBundleToCombinedMP3() async throws {
         let tempDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let store = LocalNarrationAudioStore(baseDirectory: tempDirectory)
+        let store = LocalAudioAssetStore(baseDirectory: tempDirectory)
         let narrationsDirectory = tempDirectory.appendingPathComponent("Narrations", isDirectory: true)
         let jobDirectory = narrationsDirectory.appendingPathComponent("job-456", isDirectory: true)
         let playlistURL = jobDirectory.appendingPathComponent("playlist.m3u8")
         let segment0URL = jobDirectory.appendingPathComponent("segment-0.mp3")
         let segment1URL = jobDirectory.appendingPathComponent("segment-1.mp3")
-        let expectedLegacyURL = narrationsDirectory.appendingPathComponent("narration-job-456.mp3")
+        let expectedPlaybackURL = tempDirectory
+            .appendingPathComponent("AudioAssets", isDirectory: true)
+            .appendingPathComponent("audio-job-456.mp3")
 
         try FileManager.default.createDirectory(at: jobDirectory, withIntermediateDirectories: true)
         try Data("AAA".utf8).write(to: segment0URL)
@@ -98,10 +100,38 @@ struct LocalNarrationAudioStoreTests {
             """
             .write(to: playlistURL, atomically: true, encoding: .utf8)
 
-        let playbackURL = store.playbackURLIfExists(forJobID: "job-456")
+        #expect(store.playbackURLIfExists(forJobID: "job-456") == nil)
 
-        #expect(playbackURL == expectedLegacyURL)
-        #expect(FileManager.default.fileExists(atPath: expectedLegacyURL.path))
-        #expect(try Data(contentsOf: expectedLegacyURL) == Data("AAABBB".utf8))
+        let playbackURL = try await store.migrateLegacyPlaylistBundleIfNeeded(forJobID: "job-456")
+
+        #expect(playbackURL == expectedPlaybackURL)
+        #expect(FileManager.default.fileExists(atPath: expectedPlaybackURL.path))
+        #expect(try Data(contentsOf: expectedPlaybackURL) == Data("AAABBB".utf8))
+    }
+
+    @Test
+    func playbackURLMigratesExistingLegacyStandaloneAudioFile() throws {
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = LocalAudioAssetStore(baseDirectory: tempDirectory)
+        let legacyURL = tempDirectory
+            .appendingPathComponent("Narrations", isDirectory: true)
+            .appendingPathComponent("narration-job-legacy.mp3")
+        let currentURL = tempDirectory
+            .appendingPathComponent("AudioAssets", isDirectory: true)
+            .appendingPathComponent("audio-job-legacy.mp3")
+
+        try FileManager.default.createDirectory(
+            at: legacyURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("LEGACY".utf8).write(to: legacyURL)
+
+        let playbackURL = store.playbackURLIfExists(forJobID: "job-legacy")
+
+        #expect(playbackURL == currentURL)
+        #expect(FileManager.default.fileExists(atPath: currentURL.path))
+        #expect(!FileManager.default.fileExists(atPath: legacyURL.path))
+        #expect(try Data(contentsOf: currentURL) == Data("LEGACY".utf8))
     }
 }

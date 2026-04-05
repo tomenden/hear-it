@@ -68,25 +68,13 @@ struct MiniPlayerView: View {
     }
 
     private func statusSubtitle(for job: AudioJob) -> String {
-        if model.isStreamingPlayback(for: job) {
-            return "Playing while audio is being created"
-        }
-
-        if model.isDownloadingAudio(for: job) {
-            return "Caching to this device"
-        }
-
-        if model.hasLocallyCachedAudio(for: job) {
-            return "Saved on this device"
-        }
-
-        switch job.status {
-        case .queued:
-            return "Waiting for audio to start"
-        case .processing:
-            return "Creating audio…"
-        case .completed:
-            return "Tap to return to full player"
+        switch job.playback.mode {
+        case .preparing:
+            return "Preparing audio"
+        case .streaming:
+            return "Playing the audio available so far"
+        case .final:
+            return "Tap to return to the full player"
         case .failed:
             return "Audio failed"
         }
@@ -123,4 +111,16 @@ struct MiniPlayerView: View {
         }
         .buttonStyle(.plain)
     }
+}
+
+#Preview("Mini Player Streaming") {
+    MiniPlayerView(model: AppModel.previewPlayerProcessing())
+        .padding()
+        .background(AppTheme.Gradients.page)
+}
+
+#Preview("Mini Player Ready") {
+    MiniPlayerView(model: AppModel.previewPlayerReady())
+        .padding()
+        .background(AppTheme.Gradients.page)
 }

@@ -22,22 +22,22 @@ struct VoiceSelectionView: View {
 
                         Button {
                             Task {
-                                await model.createNarration()
+                                await model.createAudio()
                             }
                         } label: {
-                            Label(model.isCreatingNarration ? "Creating…" : "Create Audio", systemImage: "headphones")
+                            Label(model.isCreatingAudio ? "Creating…" : "Create Audio", systemImage: "headphones")
                                 .font(.headline)
                                 .frame(maxWidth: .infinity, minHeight: 54)
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(AppTheme.Colors.accentGreen)
-                        .disabled(model.isCreatingNarration)
+                        .disabled(model.isCreatingAudio)
                     }
                     .padding(AppTheme.Layout.screenPadding)
                 }
             }
             .overlay {
-                if model.isCreatingNarration {
+                if model.isCreatingAudio {
                     ZStack {
                         Color.black.opacity(0.4).ignoresSafeArea()
                         VStack(spacing: 14) {
@@ -52,7 +52,7 @@ struct VoiceSelectionView: View {
                     }
                 }
             }
-            .animation(.easeInOut(duration: 0.2), value: model.isCreatingNarration)
+            .animation(.easeInOut(duration: 0.2), value: model.isCreatingAudio)
             .navigationTitle("Choose a Voice")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

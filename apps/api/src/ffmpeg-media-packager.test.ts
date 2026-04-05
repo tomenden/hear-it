@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -100,8 +101,11 @@ describe("createFfmpegMediaPackager", () => {
         const segmentPattern = args[args.indexOf("-hls_segment_filename") + 1];
         const playlistPath = args.at(-1);
 
-        if (typeof initPath === "string") {
-          await writeFile(initPath, Buffer.from("init-bytes"));
+        if (typeof initPath === "string" && typeof playlistPath === "string") {
+          const resolvedInitPath = isAbsolute(initPath)
+            ? initPath
+            : join(dirname(playlistPath), initPath);
+          await writeFile(resolvedInitPath, Buffer.from("init-bytes"));
         }
 
         if (typeof playlistPath === "string") {
@@ -161,6 +165,7 @@ describe("createFfmpegMediaPackager", () => {
     expect(calls[0]?.args).toContain("event");
     expect(calls[0]?.args).toContain("-hls_segment_type");
     expect(calls[0]?.args).toContain("fmp4");
+    expect(calls[0]?.args[calls[0]!.args.indexOf("-hls_fmp4_init_filename") + 1]).toBe("init.mp4");
     expect(calls[0]?.args).toContain("-hls_segment_filename");
     expect(calls[0]?.args.at(-1)).toContain("playlist.m3u8");
     expect(calls[1]?.args[4]).toBe("-f");

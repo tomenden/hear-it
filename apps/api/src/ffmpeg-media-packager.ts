@@ -116,6 +116,7 @@ export function createFfmpegMediaPackager(
         const initSegmentKey = buildInitSegmentKey(jobId);
         const hlsPlaylistPath = join(outputsDir, "playlist.m3u8");
         const hlsInitSegmentPath = join(outputsDir, "init.mp4");
+        const hlsInitSegmentFileName = "init.mp4";
         const hlsSegmentPattern = join(outputsDir, "chunk-%04d.m4s");
 
         await runFfmpegCommand(commandRunner, ffmpegPath, [
@@ -142,7 +143,7 @@ export function createFfmpegMediaPackager(
           "-hls_segment_type",
           "fmp4",
           "-hls_fmp4_init_filename",
-          hlsInitSegmentPath,
+          hlsInitSegmentFileName,
           "-hls_segment_filename",
           hlsSegmentPattern,
           hlsPlaylistPath,

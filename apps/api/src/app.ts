@@ -114,24 +114,20 @@ export function createApp(options: CreateAppOptions) {
   const app = express();
   const serializeJob = (job: AudioJob): AudioJobResponse => {
     const title = resolveJobTitle(job);
-    const legacyStatus = mapPublicStateToLegacyStatus(
-      mapInternalStateToPublicState(resolveInternalState(job)),
-    );
+    const state = mapInternalStateToPublicState(resolveInternalState(job));
     const playback = mapJobToPlaybackDescriptor({
-      state: resolveInternalState(job),
+      state: state === "queued" ? "queued" : resolveInternalState(job),
       streamPlaylistUrl: job.playlistUrl,
       finalAudioUrl: job.audioUrl,
-      availableDurationSeconds: resolveAvailableDurationSeconds(job),
+      availableDurationSeconds: state === "queued" ? 0 : resolveAvailableDurationSeconds(job),
       durationSeconds: job.durationSeconds,
       title,
       error: job.error,
-      liveEdgeUpdatedAt: job.liveEdgeUpdatedAt,
+      liveEdgeUpdatedAt: state === "queued" ? null : job.liveEdgeUpdatedAt,
     });
-    const state = mapInternalStateToPublicState(resolveInternalState(job));
     const chunksReady = job.audioSegments.length;
     const compatibilityFields = buildLegacyCompatibilityFields(
       job,
-      legacyStatus,
       playback,
     );
 
@@ -467,26 +463,8 @@ function assertNever(value: never): never {
   throw new Error(`Unhandled audio job status: ${String(value)}`);
 }
 
-function mapPublicStateToLegacyStatus(
-  state: PublicAudioState,
-): AudioJob["status"] {
-  switch (state) {
-    case "queued":
-      return "queued";
-    case "processing":
-      return "processing";
-    case "ready":
-      return "completed";
-    case "failed":
-      return "failed";
-    default:
-      return assertNever(state);
-  }
-}
-
 function buildLegacyCompatibilityFields(
   job: AudioJob,
-  status: AudioJob["status"],
   playback: PlaybackDescriptor,
 ): Pick<
   AudioJobResponse,
@@ -500,58 +478,17 @@ function buildLegacyCompatibilityFields(
   | "durationSeconds"
   | "error"
 > {
-  switch (playback.mode) {
-    case "final":
-      return {
-        status,
-        speechOptions: job.speechOptions,
-        provider: job.provider,
-        audioUrl: playback.audioUrl,
-        audioDownloadPath: null,
-        playlistUrl: null,
-        audioSegments: job.audioSegments,
-        durationSeconds: playback.durationSeconds,
-        error: null,
-      };
-    case "streaming":
-      return {
-        status,
-        speechOptions: job.speechOptions,
-        provider: job.provider,
-        audioUrl: null,
-        audioDownloadPath: null,
-        playlistUrl: playback.playlistUrl,
-        audioSegments: job.audioSegments,
-        durationSeconds: null,
-        error: null,
-      };
-    case "failed":
-      return {
-        status,
-        speechOptions: job.speechOptions,
-        provider: job.provider,
-        audioUrl: null,
-        audioDownloadPath: null,
-        playlistUrl: null,
-        audioSegments: [],
-        durationSeconds: null,
-        error: playback.errorMessage,
-      };
-    case "preparing":
-      return {
-        status,
-        speechOptions: job.speechOptions,
-        provider: job.provider,
-        audioUrl: null,
-        audioDownloadPath: null,
-        playlistUrl: null,
-        audioSegments: [],
-        durationSeconds: null,
-        error: status === "queued" ? job.error : null,
-      };
-    default:
-      return assertNever(playback);
-  }
+  return {
+    status: job.status,
+    speechOptions: job.speechOptions,
+    provider: job.provider,
+    audioUrl: job.audioUrl,
+    audioDownloadPath: job.audioDownloadPath ?? null,
+    playlistUrl: job.playlistUrl,
+    audioSegments: job.audioSegments,
+    durationSeconds: job.durationSeconds,
+    error: playback.mode === "failed" ? playback.errorMessage : job.error,
+  };
 }
 
 function runBackgroundTask(

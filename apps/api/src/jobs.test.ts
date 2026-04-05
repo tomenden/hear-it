@@ -577,6 +577,42 @@ async function exists(path: string): Promise<boolean> {
 }
 
 describe("audio job service", () => {
+  it("deletes both new and legacy artifact trees when removing a job", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const { service, audioStore } = createTestContext(audioDir, jobsFilePath);
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/delete-job",
+      html: sampleHtml,
+    });
+
+    await audioStore.put(
+      `jobs/${queuedJob.id}/final.mp3`,
+      Buffer.from("NEWAUDIO"),
+      "audio/mpeg",
+    );
+    await audioStore.put(
+      `narrations/job-${queuedJob.id}/playlist.m3u8`,
+      Buffer.from("#EXTM3U"),
+      "application/vnd.apple.mpegurl",
+    );
+    await audioStore.put(
+      `narrations/job-${queuedJob.id}/segment-0.mp3`,
+      Buffer.from("LEGACYAUDIO"),
+      "audio/mpeg",
+    );
+
+    await expect(service.deleteJob(queuedJob.id)).resolves.toBe(true);
+
+    expect(await exists(join(audioDir, "jobs", queuedJob.id, "final.mp3"))).toBe(false);
+    expect(
+      await exists(join(audioDir, "narrations", `job-${queuedJob.id}`, "playlist.m3u8")),
+    ).toBe(false);
+    expect(
+      await exists(join(audioDir, "narrations", `job-${queuedJob.id}`, "segment-0.mp3")),
+    ).toBe(false);
+  });
+
   it("creates and completes an audio job", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
@@ -1345,6 +1381,61 @@ describe("audio job service", () => {
     expect(completedJob?.audioUrl).toBe(`/audio/jobs/${queuedJob.id}/final.mp3`);
   });
 
+  it("surfaces restarted job failures while resetting interrupted jobs to a truthful queued state", async () => {
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const audioStore = new FileAudioStore(audioDir, "/audio");
+    const jobStore = new FileJobStore(jobsFilePath);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider: new InstantSpeechProvider(),
+      mediaPackager: new TestMediaPackager(),
+    });
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/resume-failure",
+      html: sampleHtml,
+    });
+
+    await jobStore.save({
+      ...queuedJob,
+      status: "processing",
+      internalState: "packaging_stream",
+      leaseOwner: "stale-worker",
+      leaseExpiresAt: new Date(Date.now() - 60_000).toISOString(),
+      runId: "stale-run",
+      playlistUrl: `/audio/jobs/${queuedJob.id}/playlist.m3u8`,
+      audioSegments: [
+        {
+          url: `/audio/jobs/${queuedJob.id}/tmp/chunk-0000.mp3`,
+          durationSeconds: 11,
+        },
+      ],
+      updatedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    });
+
+    vi.spyOn(service, "processJob").mockRejectedValueOnce(new Error("resume failed"));
+
+    await expect(service.requeueInterruptedJobs()).rejects.toThrow("resume failed");
+
+    expect(await service.getJob(queuedJob.id)).toMatchObject({
+      status: "queued",
+      internalState: "queued",
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      runId: null,
+      playlistUrl: `/audio/jobs/${queuedJob.id}/playlist.m3u8`,
+      audioSegments: [
+        {
+          url: `/audio/jobs/${queuedJob.id}/tmp/chunk-0000.mp3`,
+          durationSeconds: 11,
+        },
+      ],
+      error: "Job resumed after server restart.",
+    });
+  });
+
   it("clears partial playback metadata when generation fails mid-run", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
@@ -1374,6 +1465,17 @@ describe("audio job service", () => {
       `,
     });
 
+    await audioStore.put(
+      `narrations/job-${queuedJob.id}/playlist.m3u8`,
+      Buffer.from("#EXTM3U"),
+      "application/vnd.apple.mpegurl",
+    );
+    await audioStore.put(
+      `narrations/job-${queuedJob.id}/segment-0.mp3`,
+      Buffer.from("ID3LEGACYSEGMENT"),
+      "audio/mpeg",
+    );
+
     await service.processJob(queuedJob.id);
 
     const failedJob = await service.getJob(queuedJob.id);
@@ -1384,6 +1486,12 @@ describe("audio job service", () => {
     expect(failedJob?.error).toContain("failed after the first playable chunk");
     await expect(readFile(join(audioDir, "jobs", queuedJob.id, "playlist.m3u8"))).rejects.toThrow();
     await expect(readFile(join(audioDir, "jobs", queuedJob.id, "tmp", "chunk-0000.mp3"))).rejects.toThrow();
+    await expect(
+      readFile(join(audioDir, "narrations", `job-${queuedJob.id}`, "playlist.m3u8")),
+    ).rejects.toThrow();
+    await expect(
+      readFile(join(audioDir, "narrations", `job-${queuedJob.id}`, "segment-0.mp3")),
+    ).rejects.toThrow();
   });
 
   it("fails jobs that produce no speech script chunks before writing final audio", async () => {

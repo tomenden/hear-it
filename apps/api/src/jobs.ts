@@ -266,17 +266,38 @@ export class AudioJobService {
   async requeueInterruptedJobs(): Promise<void> {
     await this.init();
     const jobs = await this.jobStore.getAll();
+    const resumedJobs: Promise<void>[] = [];
 
     for (const job of jobs) {
       if (job.status === "processing") {
         await this.updateJob(job.id, {
           status: "queued",
+          internalState: "queued",
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          runId: null,
           error: "Job resumed after server restart.",
         });
-        void this.processJob(job.id);
+        resumedJobs.push(this.processJob(job.id));
       } else if (job.status === "queued") {
-        void this.processJob(job.id);
+        resumedJobs.push(this.processJob(job.id));
       }
+    }
+
+    const results = await Promise.allSettled(resumedJobs);
+    const failedResults = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+
+    if (failedResults.length > 0) {
+      if (failedResults.length === 1) {
+        throw failedResults[0].reason;
+      }
+
+      throw new AggregateError(
+        failedResults.map((result) => result.reason),
+        "One or more interrupted jobs failed to resume.",
+      );
     }
   }
 

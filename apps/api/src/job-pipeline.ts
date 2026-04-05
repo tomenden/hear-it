@@ -126,6 +126,7 @@ export function createJobPipeline(options: JobPipelineOptions) {
         });
         try {
           await audioStore.deletePrefix(buildJobMediaPrefix(currentJob.id));
+          await audioStore.deletePrefix(buildLegacyJobMediaPrefix(currentJob.id));
         } catch (cleanupError) {
           Sentry.captureException(cleanupError, {
             tags: {
@@ -418,12 +419,17 @@ export function createJobPipeline(options: JobPipelineOptions) {
 
     async deleteJobArtifacts(jobId: string): Promise<void> {
       await audioStore.deletePrefix(buildJobMediaPrefix(jobId));
+      await audioStore.deletePrefix(buildLegacyJobMediaPrefix(jobId));
     },
   };
 }
 
 export function buildTemporaryChunkKey(jobId: string, index: number): string {
   return `${buildJobMediaPrefix(jobId)}/tmp/chunk-${index.toString().padStart(4, "0")}.mp3`;
+}
+
+function buildLegacyJobMediaPrefix(jobId: string): string {
+  return `narrations/job-${jobId}`;
 }
 
 async function synthesizeChunk(

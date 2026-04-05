@@ -69,7 +69,7 @@ function buildJob(overrides: Partial<AudioJob> = {}): AudioJob {
     },
     provider: overrides.provider ?? "contract-test",
     audioUrl: overrides.audioUrl ?? null,
-    audioDownloadPath: overrides.audioDownloadPath ?? "/audio/legacy-download.mp3",
+    audioDownloadPath: overrides.audioDownloadPath ?? null,
     playlistUrl: overrides.playlistUrl ?? null,
     audioSegments: overrides.audioSegments ?? [],
     durationSeconds: overrides.durationSeconds ?? null,
@@ -229,8 +229,11 @@ describe("audio job API contract", () => {
       provider: "contract-test",
       audioUrl: null,
       audioDownloadPath: null,
-      playlistUrl: null,
-      audioSegments: [],
+      playlistUrl: "/audio/jobs/job-playlist-only/playlist.m3u8",
+      audioSegments: [
+        { url: "/audio/jobs/job-playlist-only/chunk-0.mp3", durationSeconds: 11 },
+        { url: "/audio/jobs/job-playlist-only/chunk-1.mp3", durationSeconds: 16 },
+      ],
       durationSeconds: null,
       error: null,
       playback: {

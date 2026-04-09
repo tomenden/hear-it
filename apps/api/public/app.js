@@ -150,7 +150,7 @@ async function refreshJobs() {
       jobs.map((job) => ({
         id: job.id,
         state: job.state,
-        playbackMode: job.playback?.mode,
+        playbackMode: job.playback?.preferredModeForNewSessions,
         playable: job.playback?.isPlayable,
         updatedAt: job.updatedAt,
         error: job.playback?.errorMessage,
@@ -450,9 +450,9 @@ function renderPlayer() {
   if (!isPlayable) {
     elements.playerProcessingView.hidden = false;
     elements.processingTitle.textContent =
-      job.playback?.mode === "failed" ? "Audio failed" : "Generating audio...";
+      job.state === "failed" ? "Audio failed" : "Generating audio...";
     elements.processingSubtitle.textContent =
-      job.playback?.mode === "failed"
+      job.state === "failed"
         ? job.playback.errorMessage || "This job failed before audio was generated."
         : `${job.title || "Current article"} is still ${humanizeStatus(job.state).toLowerCase()}.`;
     detachAudioSource();
@@ -522,12 +522,12 @@ function resolvePlaybackAudioSource(job) {
     return null;
   }
 
-  if (job.playback.mode === "final") {
-    return job.playback.audioUrl || null;
+  if (job.playback?.final?.audioUrl) {
+    return job.playback.final.audioUrl;
   }
 
-  if (job.playback.mode === "streaming") {
-    return job.playback.playlistUrl || null;
+  if (job.playback?.stream?.playlistUrl) {
+    return job.playback.stream.playlistUrl;
   }
 
   return null;
@@ -670,7 +670,7 @@ function detachAudioSource() {
 }
 
 function buildStatusMessage(job) {
-  if (job.playback?.mode === "streaming") {
+  if (job.playback?.preferredModeForNewSessions === "stream" && job.playback?.stream) {
     return "Streaming playback is ready while the rest of the audio finishes.";
   }
 

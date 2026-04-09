@@ -455,7 +455,7 @@ struct AppModelAudioPlaybackSessionTests {
     }
 
     @Test
-    func completedPinnedStreamingSessionEndsCleanlyAndReplayUsesFinalAudio() {
+    func completedPinnedStreamingSessionReplayUsesFinalAudioOnFirstTap() {
         let model = makeModel()
         let playlistURL = URL(string: "http://localhost:3000/audio/job-stream-finished/playlist.m3u8")!
         let finalJob = makeJob(
@@ -481,11 +481,6 @@ struct AppModelAudioPlaybackSessionTests {
         )
 
         model.player.handlePlaybackItemDidReachEnd()
-        model.preparePlayer(for: finalJob.id)
-
-        #expect(model.player.loadedSourceURL == nil)
-        #expect(!model.player.isPlaying)
-
         model.togglePlayback(for: finalJob.id)
 
         #expect(

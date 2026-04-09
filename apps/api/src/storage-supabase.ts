@@ -103,27 +103,7 @@ export class SupabaseAudioStore implements AudioStore {
 
   async deletePrefix(prefix: string): Promise<void> {
     const directory = prefix.replace(/\/+$/, "");
-    const keys: string[] = [];
-    let offset = 0;
-
-    while (true) {
-      const { data, error } = await this.bucketClient().list(directory, { limit: 100, offset });
-      if (error) {
-        captureStorageFailure("supabase_delete_prefix", error, { bucket: this.bucket, prefix: directory });
-        throw error;
-      }
-
-      const fileNames = (data ?? [])
-        .map((entry) => entry.name)
-        .filter((name): name is string => Boolean(name));
-      keys.push(...fileNames.map((name) => `${directory}/${name}`));
-
-      if (fileNames.length < 100) {
-        break;
-      }
-
-      offset += fileNames.length;
-    }
+    const keys = await this.collectPrefixKeys(directory);
 
     if (keys.length === 0) {
       return;
@@ -142,6 +122,45 @@ export class SupabaseAudioStore implements AudioStore {
 
   private bucketClient() {
     return this.client.storage.from(this.bucket);
+  }
+
+  private async collectPrefixKeys(prefix: string): Promise<string[]> {
+    const keys: string[] = [];
+    let offset = 0;
+
+    while (true) {
+      const { data, error } = await this.bucketClient().list(prefix, { limit: 100, offset });
+      if (error) {
+        captureStorageFailure("supabase_delete_prefix", error, {
+          bucket: this.bucket,
+          prefix,
+        });
+        throw error;
+      }
+
+      const entries = data ?? [];
+      for (const entry of entries) {
+        if (!entry.name) {
+          continue;
+        }
+
+        const key = `${prefix}/${entry.name}`;
+        const isFolder = entry.id === null || entry.metadata === null;
+        if (isFolder) {
+          keys.push(...(await this.collectPrefixKeys(key)));
+        } else {
+          keys.push(key);
+        }
+      }
+
+      if (entries.length < 100) {
+        break;
+      }
+
+      offset += entries.length;
+    }
+
+    return keys;
   }
 
   private publicUrl(key: string): string {

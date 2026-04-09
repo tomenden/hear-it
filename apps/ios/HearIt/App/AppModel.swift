@@ -502,10 +502,10 @@ final class AppModel {
 
         if shouldTreatPinnedStreamingSessionAsFinished {
             player.clearSavedPositionForLoadedJob()
-            return
         }
 
-        if let pendingContinuationSourceURL,
+        if !shouldTreatPinnedStreamingSessionAsFinished,
+           let pendingContinuationSourceURL,
            pendingContinuationSourceURL.pathExtension.lowercased() == "m3u8" {
             player.load(
                 url: pendingContinuationSourceURL,

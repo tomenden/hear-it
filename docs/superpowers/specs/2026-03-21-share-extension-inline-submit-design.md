@@ -11,7 +11,7 @@ Replace the current "open main app" Share Extension behavior with an in-extensio
 3. Extension reads the last-used voice from shared UserDefaults (falls back to "alloy")
 4. Extension reads auth token from shared Keychain
 5. Extension POSTs to `/api/jobs` with the URL and voice ID
-6. On success: shows "Narration started!" with a checkmark for ~1.5s, then dismisses
+6. On success: shows "Creating your audio" with a checkmark for ~1.5s, then dismisses
 7. On error: shows error message for ~2s, then dismisses
 
 ## Infrastructure: App Group
@@ -82,7 +82,7 @@ Body:
   }
 ```
 
-The API base URL is hardcoded to `https://hear-it.onrender.com` in the extension. No need to sync it via shared UserDefaults.
+The extension reads the API base URL from the shared `hear-it.api-base-url` UserDefaults key when present, and falls back to `https://hear-it.onrender.com`.
 
 Set `timeoutIntervalForRequest` to 15 seconds on the URLRequest to avoid the extension being killed silently by iOS (extensions have a ~30s lifecycle limit). Note: Render.com cold starts can take 10-30s, so some requests may time out. Show "Server is starting up. Please try again." for timeout errors specifically.
 

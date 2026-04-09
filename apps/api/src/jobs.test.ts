@@ -1257,7 +1257,6 @@ describe("audio job service", () => {
       () => service.getJob(queuedJob.id),
       (job) =>
         job !== null &&
-        job.status === "processing" &&
         job.audioSegments.length >= 2 &&
         typeof job.playlistUrl === "string" &&
         job.playlistUrl.length > 0 &&

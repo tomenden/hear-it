@@ -93,14 +93,23 @@ The human-readable filename used for downloads or sharing, derived from the arti
 
 ## Playback Terms
 
-### playback mode
+### preferred playback mode for new sessions
 
-The explicit playback shape exposed by the API:
+The API field that tells the client what a fresh session should load:
 
-- `preparing`
-- `streaming`
+- `none`
+- `stream`
 - `final`
-- `failed`
+
+This is not the same thing as the currently active player session. A pinned HLS session may still be playing even after new sessions should prefer the final MP3.
+
+### stream source
+
+The append-only HLS playback source exposed by the API when in-progress playback is available or when a completed job still needs to support active pinned sessions.
+
+### final source
+
+The canonical completed MP3 playback source exposed by the API once finalization succeeds.
 
 ### HLS session
 
@@ -109,6 +118,10 @@ A playback session that starts on the in-progress streaming asset.
 ### pinned session
 
 A session stays on the asset it started with. If it started on HLS, it remains HLS until stop, unload, or natural completion.
+
+### complete stream
+
+An HLS stream whose playlist has been finalized and ended, even if an already active pinned session is still consuming it.
 
 ## Backend Terms
 
@@ -123,6 +136,10 @@ Short-lived worker-side audio output used before packaging. This may be PCM or W
 ### packaging
 
 The media pipeline step that converts generated audio into valid HLS artifacts and the final MP3.
+
+### append-only HLS
+
+The publication rule for in-progress playback: once a segment is published, its key and bytes never change, and later playlist updates only extend the stream.
 
 ### reconciler
 

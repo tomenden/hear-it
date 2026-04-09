@@ -1,6 +1,8 @@
 # Audio Pipeline Redesign Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+>
+> **Historical note:** This plan is kept as an execution record, not as the current API reference. It predates the final dual-source playback contract and contains superseded examples. When this plan and the current code diverge, trust the docs in `docs/` and the source code.
 
 **Goal:** Replace the current ad-hoc streaming and completed-audio pipeline with an explicit speech-script, HLS, and final-MP3 architecture that is stable, provider-flexible, and ready for production hardening.
 

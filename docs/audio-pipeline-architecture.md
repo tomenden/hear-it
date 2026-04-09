@@ -1,6 +1,6 @@
 # Hear It Audio Pipeline Architecture
 
-This document describes the target backend architecture for turning an extracted article into smooth in-progress playback and a stable completed asset.
+This document describes the current backend pipeline design for turning an extracted article into smooth in-progress playback and a stable completed asset.
 
 ## Goals
 
@@ -31,15 +31,16 @@ This document describes the target backend architecture for turning an extracted
 
 ```mermaid
 flowchart LR
-    A["iOS App"] --> B["API Service"]
-    B --> C["Postgres"]
-    B --> D["Worker Service"]
-    D --> C
-    D --> E["OpenAI Speech Provider"]
-    D --> F["ffmpeg"]
-    D --> G["Supabase Storage"]
+    A["iOS App"] --> B["API Runtime"]
+    B --> C["Job pipeline role"]
+    C --> D["Postgres"]
+    C --> E["OpenAI Speech Provider"]
+    C --> F["ffmpeg"]
+    C --> G["Supabase Storage"]
     A --> G
 ```
+
+Today the HTTP API and the job pipeline run in the same Node process. This document still uses `job pipeline role` language because the code is intentionally structured so that role can move into a dedicated worker service later without changing playback behavior.
 
 ## End-To-End Flow
 
@@ -51,13 +52,15 @@ flowchart TD
     D --> E["Semantic chunking"]
     E --> F["Speech generation with bounded parallelism"]
     F --> G["Ordered chunk outputs"]
-    G --> H["Package short HLS batches"]
+    G --> H["Package append-only HLS batches"]
     H --> I{"Startup buffer ready?"}
     I -- "No" --> F
     I -- "Yes" --> J["Expose playable HLS"]
     G --> K["Generate final MP3"]
-    K --> L["Upload canonical asset"]
-    L --> M["Mark job completed"]
+    H --> L["Append #EXT-X-ENDLIST once complete"]
+    K --> M["Upload canonical asset"]
+    L --> N["Mark job completed"]
+    M --> N
 ```
 
 ## Content Preparation
@@ -103,6 +106,22 @@ Rules:
 - first playable publish waits for a startup buffer
 - later HLS extensions publish short ordered batches
 - packaging should not thrash on every single completed chunk
+- published HLS history is immutable once exposed
+
+## Append-Only HLS Publishing
+
+The worker publishes a growing HLS EVENT playlist, but it must not rewrite stream history.
+
+Rules:
+
+- once a segment is published, its key and bytes never change
+- new packaging work only uploads new init/segment objects for the next batch
+- the playlist URL stays stable, but the playlist text only grows
+- later batches are appended with discontinuities rather than rebuilding the whole stream from zero
+- finalization appends `#EXT-X-ENDLIST`; it does not replace old segments with a new stream snapshot
+- the worker tracks how many chunks have already been published so a restart resumes from the last append point rather than rebuilding prior batches
+
+This preserves the contract for active HLS sessions and prevents the player from effectively running on an old view of a constantly rewritten stream.
 
 ## Startup Buffer Policy
 
@@ -129,6 +148,7 @@ This is not a user-facing persisted format.
 - codec family: AAC
 - container/segment strategy: fMP4/CMAF HLS
 - playlist type: EVENT while processing
+- publication strategy: append-only batches with immutable published segments
 
 ### Completed Playback
 
@@ -155,7 +175,9 @@ Rules:
 
 - never switch an active HLS session to the final MP3 mid-session
 - keep the session pinned to the asset it started with
-- use the final MP3 for all new sessions after completion
+- once the job is complete, expose the final MP3 for all new sessions
+- keep the completed HLS playlist available long enough for already active sessions to finish cleanly
+- the active HLS session may continue using its own timeline semantics even after the backend exposes the final MP3 for new sessions
 
 ## Storage Model
 
@@ -178,6 +200,11 @@ Supabase Storage stores:
 - HLS playlists
 - HLS segments
 - canonical final MP3
+
+Completed jobs may temporarily have both:
+
+- a retained HLS stream for active pinned sessions
+- a canonical final MP3 for new sessions and local caching
 
 ### Object Keys
 

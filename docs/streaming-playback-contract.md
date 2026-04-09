@@ -22,36 +22,39 @@ These states are product-facing. The backend may use richer internal states, but
 
 ## Playback Descriptor
 
-The API should expose a discriminated playback object.
+The API exposes one canonical playback object, but it no longer forces the client into an exclusive `streaming | final` choice.
+
+That change matters because a completed job can legitimately have:
+
+- a still-valid HLS stream for an already active pinned session
+- a final MP3 for all new playback sessions
 
 ```ts
-type PlaybackDescriptor =
-  | {
-      mode: "preparing";
-      isPlayable: false;
-      availableDurationSeconds: 0;
-      liveEdgeUpdatedAt: string | null;
-    }
-  | {
-      mode: "streaming";
-      isPlayable: true;
-      playlistUrl: string;
-      availableDurationSeconds: number;
-      liveEdgeUpdatedAt: string;
-    }
-  | {
-      mode: "final";
-      isPlayable: true;
-      audioUrl: string;
-      durationSeconds: number;
-      fileName: string;
-    }
-  | {
-      mode: "failed";
-      isPlayable: false;
-      errorMessage: string;
-    };
+type PlaybackDescriptor = {
+  preferredModeForNewSessions: "none" | "stream" | "final";
+  isPlayable: boolean;
+  stream: {
+    playlistUrl: string;
+    availableDurationSeconds: number;
+    liveEdgeUpdatedAt: string;
+    isComplete: boolean;
+  } | null;
+  final: {
+    audioUrl: string;
+    durationSeconds: number;
+    fileName: string;
+  } | null;
+  errorMessage: string | null;
+};
 ```
+
+Interpretation:
+
+- `preferredModeForNewSessions` tells the client what a fresh session should load
+- `stream` describes the append-only HLS source, when present
+- `final` describes the canonical completed MP3, when present
+- `errorMessage` is only meaningful when playback is not playable because the job failed
+- the descriptor answers what sources exist for the job, but it does not override the source an already active player session is pinned to
 
 ## Audio Job Response
 
@@ -75,32 +78,41 @@ type AudioJobResponse = {
 
 ### While Preparing
 
-If `playback.mode === "preparing"`:
+If `playback.isPlayable === false` and `playback.errorMessage == null`:
 
 - the play button should not start playback
 - UI may say `Preparing audio`
 - the user should not be promised that playback is ready yet
 
-### While Streaming
+### For New Streaming Sessions
 
-If `playback.mode === "streaming"`:
+If `playback.preferredModeForNewSessions === "stream"` and `playback.stream` exists:
 
-- start a new AVPlayer item from `playlistUrl`
-- treat `availableDurationSeconds` as the current playable range
+- start a new AVPlayer item from `playback.stream.playlistUrl`
+- treat `playback.stream.availableDurationSeconds` as the current playable range
 - do not allow seeking beyond the available duration
 - if the user tries, show soft copy such as `That part is still being generated`
 
-### While Final
+### For New Final Sessions
 
-If `playback.mode === "final"`:
+If `playback.preferredModeForNewSessions === "final"` and `playback.final` exists:
 
-- start a new AVPlayer item from `audioUrl`
+- start a new AVPlayer item from `playback.final.audioUrl`
 - full seeking is now supported
-- the user-facing filename should come from `fileName`
+- the user-facing filename should come from `playback.final.fileName`
+
+### For Active Pinned HLS Sessions
+
+If the current AVPlayer item already started from `playback.stream.playlistUrl`:
+
+- keep the current session on HLS even if `preferredModeForNewSessions` later flips to `final`
+- keep HLS-specific control restrictions for that active session
+- treat `playback.final` as a source for future sessions, not as a command to mutate the current one
+- use `stream.isComplete` only to understand that the stream will stop growing, not to switch the active player item
 
 ### While Failed
 
-If `playback.mode === "failed"`:
+If `playback.isPlayable === false` and `playback.errorMessage` exists:
 
 - do not try to start playback
 - show the user-facing failure state
@@ -114,6 +126,9 @@ Rules:
 - if a session started on HLS, keep it on HLS until stop, unload, or natural end
 - if the job completes during playback, do not switch the current player item
 - use the final MP3 only for future playback sessions
+- a completed job may therefore expose both `stream` and `final` at the same time
+- the UI may reveal the exact final duration once completion is known, but that does not imply a source switch for the active session
+- the client must reason separately about `preferredModeForNewSessions` and the current player item's actual source
 
 ## Polling Contract
 
@@ -163,7 +178,7 @@ flowchart LR
     B --> C["Public state mapping"]
     C --> D["queued / processing / ready / failed"]
     C --> E["playback descriptor"]
-    E --> F["preparing / streaming / final / failed"]
+    E --> F["preferredModeForNewSessions + stream/final sources"]
 ```
 
 ## Future Compatibility

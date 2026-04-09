@@ -79,10 +79,10 @@ This spec records the design decisions agreed on before implementation.
 
 ## Documentation Outputs
 
-- [System Overview](/Users/tome/projects/hear-it/docs/architecture.md)
-- [Ubiquitous Language](/Users/tome/projects/hear-it/docs/ubiquitous-language.md)
-- [Audio Pipeline Architecture](/Users/tome/projects/hear-it/docs/audio-pipeline-architecture.md)
-- [Streaming Playback Contract](/Users/tome/projects/hear-it/docs/streaming-playback-contract.md)
+- [System Overview](../../architecture.md)
+- [Ubiquitous Language](../../ubiquitous-language.md)
+- [Audio Pipeline Architecture](../../audio-pipeline-architecture.md)
+- [Streaming Playback Contract](../../streaming-playback-contract.md)
 
 ## Mermaid Coverage
 

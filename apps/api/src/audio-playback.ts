@@ -1,6 +1,6 @@
 export type PublicAudioState = "queued" | "processing" | "ready" | "failed";
 
-export type PlaybackMode = "preparing" | "streaming" | "final" | "failed";
+export type PreferredPlaybackMode = "none" | "stream" | "final";
 
 export type InternalAudioState =
   | "queued"
@@ -12,40 +12,26 @@ export type InternalAudioState =
   | "completed"
   | "failed";
 
-export interface PlaybackDescriptorPreparing {
-  mode: "preparing";
-  isPlayable: false;
-  availableDurationSeconds: number;
-  liveEdgeUpdatedAt: string | null;
-}
-
-export interface PlaybackDescriptorStreaming {
-  mode: "streaming";
-  isPlayable: true;
+export interface PlaybackStreamSource {
   playlistUrl: string;
   availableDurationSeconds: number;
   liveEdgeUpdatedAt: string;
+  isComplete: boolean;
 }
 
-export interface PlaybackDescriptorFinal {
-  mode: "final";
-  isPlayable: true;
+export interface PlaybackFinalSource {
   audioUrl: string;
   durationSeconds: number;
   fileName: string;
 }
 
-export interface PlaybackDescriptorFailed {
-  mode: "failed";
-  isPlayable: false;
-  errorMessage: string;
+export interface PlaybackDescriptor {
+  preferredModeForNewSessions: PreferredPlaybackMode;
+  isPlayable: boolean;
+  stream: PlaybackStreamSource | null;
+  final: PlaybackFinalSource | null;
+  errorMessage: string | null;
 }
-
-export type PlaybackDescriptor =
-  | PlaybackDescriptorPreparing
-  | PlaybackDescriptorStreaming
-  | PlaybackDescriptorFinal
-  | PlaybackDescriptorFailed;
 
 export interface JobPlaybackSource {
   state: InternalAudioState;
@@ -80,37 +66,53 @@ export function mapInternalStateToPublicState(state: InternalAudioState): Public
 export function mapJobToPlaybackDescriptor(job: JobPlaybackSource): PlaybackDescriptor {
   if (job.state === "failed") {
     return {
-      mode: "failed",
+      preferredModeForNewSessions: "none",
       isPlayable: false,
+      stream: null,
+      final: null,
       errorMessage: job.error ?? "Audio generation failed.",
     };
   }
 
-  if (job.finalAudioUrl) {
-    return {
-      mode: "final",
-      isPlayable: true,
-      audioUrl: job.finalAudioUrl,
-      durationSeconds: job.durationSeconds ?? job.availableDurationSeconds,
-      fileName: buildFileName(job.title),
-    };
-  }
+  const canonicalCompletedDurationSeconds =
+    job.state === "completed" && typeof job.durationSeconds === "number"
+      ? job.durationSeconds
+      : job.availableDurationSeconds;
 
-  if (job.streamPlaylistUrl && job.liveEdgeUpdatedAt) {
+  const streamSource =
+    job.streamPlaylistUrl && job.liveEdgeUpdatedAt
+      ? {
+          playlistUrl: job.streamPlaylistUrl,
+          availableDurationSeconds: canonicalCompletedDurationSeconds,
+          liveEdgeUpdatedAt: job.liveEdgeUpdatedAt,
+          isComplete: job.state === "completed",
+        }
+      : null;
+
+  const finalSource = job.finalAudioUrl
+    ? {
+        audioUrl: job.finalAudioUrl,
+        durationSeconds: job.durationSeconds ?? canonicalCompletedDurationSeconds,
+        fileName: buildFileName(job.title),
+      }
+    : null;
+
+  if (finalSource || streamSource) {
     return {
-      mode: "streaming",
+      preferredModeForNewSessions: finalSource ? "final" : "stream",
       isPlayable: true,
-      playlistUrl: job.streamPlaylistUrl,
-      availableDurationSeconds: job.availableDurationSeconds,
-      liveEdgeUpdatedAt: job.liveEdgeUpdatedAt,
+      stream: streamSource,
+      final: finalSource,
+      errorMessage: null,
     };
   }
 
   return {
-    mode: "preparing",
+    preferredModeForNewSessions: "none",
     isPlayable: false,
-    availableDurationSeconds: 0,
-    liveEdgeUpdatedAt: job.liveEdgeUpdatedAt ?? null,
+    stream: null,
+    final: null,
+    errorMessage: null,
   };
 }
 

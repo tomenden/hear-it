@@ -68,6 +68,7 @@ export class PostgresJobStore implements JobStore {
           display_title TEXT,
           speech_script TEXT,
           available_duration_seconds DOUBLE PRECISION,
+          published_chunk_count INTEGER,
           live_edge_updated_at TEXT,
           lease_owner TEXT,
           lease_expires_at TEXT,
@@ -156,6 +157,10 @@ export class PostgresJobStore implements JobStore {
       `;
 
       await this.sql`
+        ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS published_chunk_count INTEGER
+      `;
+
+      await this.sql`
         ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS live_edge_updated_at TEXT
       `;
 
@@ -238,7 +243,7 @@ export class PostgresJobStore implements JobStore {
       await this.sql`
         INSERT INTO audio_jobs (
           id, status, internal_state, display_title, speech_script,
-          available_duration_seconds, live_edge_updated_at,
+          available_duration_seconds, published_chunk_count, live_edge_updated_at,
           lease_owner, lease_expires_at, run_id, attempt,
           article, speech_options, provider,
           audio_url, playlist_url, audio_segments, duration_seconds,
@@ -250,6 +255,7 @@ export class PostgresJobStore implements JobStore {
           ${job.displayTitle ?? job.article.title},
           ${job.speechScript ?? null},
           ${job.availableDurationSeconds ?? null},
+          ${job.publishedChunkCount ?? null},
           ${job.liveEdgeUpdatedAt ?? null},
           ${job.leaseOwner ?? null},
           ${job.leaseExpiresAt ?? null},
@@ -273,6 +279,7 @@ export class PostgresJobStore implements JobStore {
           display_title = EXCLUDED.display_title,
           speech_script = EXCLUDED.speech_script,
           available_duration_seconds = EXCLUDED.available_duration_seconds,
+          published_chunk_count = EXCLUDED.published_chunk_count,
           live_edge_updated_at = EXCLUDED.live_edge_updated_at,
           lease_owner = EXCLUDED.lease_owner,
           lease_expires_at = EXCLUDED.lease_expires_at,
@@ -382,6 +389,7 @@ export class PostgresJobStore implements JobStore {
     const hasDisplayTitle = patch.displayTitle !== undefined;
     const hasSpeechScript = patch.speechScript !== undefined;
     const hasAvailableDurationSeconds = patch.availableDurationSeconds !== undefined;
+    const hasPublishedChunkCount = patch.publishedChunkCount !== undefined;
     const hasLiveEdgeUpdatedAt = patch.liveEdgeUpdatedAt !== undefined;
     const hasLeaseOwner = patch.leaseOwner !== undefined;
     const hasLeaseExpiresAt = patch.leaseExpiresAt !== undefined;
@@ -403,6 +411,10 @@ export class PostgresJobStore implements JobStore {
         available_duration_seconds = CASE
           WHEN ${hasAvailableDurationSeconds} THEN ${patch.availableDurationSeconds ?? null}
           ELSE available_duration_seconds
+        END,
+        published_chunk_count = CASE
+          WHEN ${hasPublishedChunkCount} THEN ${patch.publishedChunkCount ?? null}
+          ELSE published_chunk_count
         END,
         live_edge_updated_at = CASE
           WHEN ${hasLiveEdgeUpdatedAt} THEN ${patch.liveEdgeUpdatedAt ?? null}
@@ -441,6 +453,10 @@ export class PostgresJobStore implements JobStore {
           WHEN ${hasAvailableDurationSeconds} THEN ${patch.availableDurationSeconds ?? null}
           ELSE available_duration_seconds
         END,
+        published_chunk_count = CASE
+          WHEN ${hasPublishedChunkCount} THEN ${patch.publishedChunkCount ?? null}
+          ELSE published_chunk_count
+        END,
         live_edge_updated_at = CASE
           WHEN ${hasLiveEdgeUpdatedAt} THEN ${patch.liveEdgeUpdatedAt ?? null}
           ELSE live_edge_updated_at
@@ -477,6 +493,10 @@ export class PostgresJobStore implements JobStore {
         available_duration_seconds = CASE
           WHEN ${hasAvailableDurationSeconds} THEN ${patch.availableDurationSeconds ?? null}
           ELSE available_duration_seconds
+        END,
+        published_chunk_count = CASE
+          WHEN ${hasPublishedChunkCount} THEN ${patch.publishedChunkCount ?? null}
+          ELSE published_chunk_count
         END,
         live_edge_updated_at = CASE
           WHEN ${hasLiveEdgeUpdatedAt} THEN ${patch.liveEdgeUpdatedAt ?? null}
@@ -643,6 +663,10 @@ function rowToJob(row: SqlRow): AudioJob {
       row.available_duration_seconds === undefined
         ? null
         : (row.available_duration_seconds as number | null),
+    publishedChunkCount:
+      row.published_chunk_count === undefined
+        ? null
+        : (row.published_chunk_count as number | null),
     liveEdgeUpdatedAt: (row.live_edge_updated_at as string) ?? null,
     leaseOwner: (row.lease_owner as string) ?? null,
     leaseExpiresAt: (row.lease_expires_at as string) ?? null,

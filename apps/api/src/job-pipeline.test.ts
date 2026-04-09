@@ -2,18 +2,25 @@ import { describe, expect, it, vi } from "vitest";
 
 import { mapInternalStateToPublicState, mapJobToPlaybackDescriptor } from "./audio-playback.js";
 import {
+  buildBatchInitSegmentKey,
+  buildBatchSegmentKey,
   buildChunkMediaKey,
   buildFinalAudioKey,
+  buildHlsEventPlaylist,
   buildInitSegmentKey,
   buildJobMediaPrefix,
   buildPlaylistKey,
+  buildPlaylistUri,
   type MediaChunkInput,
+  type MediaPackagingFinalAudio,
   type MediaPackagingResult,
+  type StreamBatchPackagingResult,
 } from "./media-packager.js";
 import { createJobPipeline } from "./job-pipeline.js";
 import type { AudioStore } from "./storage.js";
 import type { AudioJob, AudioRenderResult, ExtractedArticle, SpeechOptions } from "./types.js";
 import type { SpeechProvider, SpeechSynthesisContext } from "./tts.js";
+import type { FfmpegMediaPackager } from "./ffmpeg-media-packager.js";
 
 class RecordingAudioStore implements AudioStore {
   readonly puts: string[] = [];
@@ -131,7 +138,12 @@ class IndexedSpeechProvider implements SpeechProvider {
 }
 
 class RecordingPackager {
-  readonly calls: Array<{ jobId: string; chunks: readonly MediaChunkInput[] }> = [];
+  readonly calls: Array<{
+    kind: "stream" | "final";
+    jobId: string;
+    batchStartChunkIndex?: number;
+    chunks: readonly MediaChunkInput[];
+  }> = [];
   private attempts = 0;
 
   constructor(
@@ -141,11 +153,12 @@ class RecordingPackager {
     },
   ) {}
 
-  async packageMedia(
+  async packageStreamBatch(
     jobId: string,
+    batchStartChunkIndex: number,
     chunks: readonly MediaChunkInput[],
-  ): Promise<MediaPackagingResult> {
-    this.calls.push({ jobId, chunks });
+  ): Promise<StreamBatchPackagingResult> {
+    this.calls.push({ kind: "stream", jobId, batchStartChunkIndex, chunks });
     this.attempts += 1;
 
     if (this.attempts <= (this.options.failAttempts ?? 0)) {
@@ -158,36 +171,198 @@ class RecordingPackager {
     );
 
     return {
-      playlist: {
-        key: buildPlaylistKey(jobId),
-        audioData: Buffer.from(`# playlist for ${jobId}`),
-        contentType: "application/vnd.apple.mpegurl",
-      },
       initSegment: {
-        key: buildInitSegmentKey(jobId),
+        key: buildBatchInitSegmentKey(jobId, batchStartChunkIndex),
+        uri: buildPlaylistUri(jobId, buildBatchInitSegmentKey(jobId, batchStartChunkIndex)),
         audioData: Buffer.from("init"),
         contentType: "video/mp4",
       },
       segments: chunks.map((chunk) => ({
         index: chunk.index,
-        key: buildChunkMediaKey(jobId, chunk.index),
+        key: buildBatchSegmentKey(jobId, batchStartChunkIndex, chunk.index - batchStartChunkIndex),
+        uri: buildPlaylistUri(
+          jobId,
+          buildBatchSegmentKey(jobId, batchStartChunkIndex, chunk.index - batchStartChunkIndex),
+        ),
         audioData: Buffer.from(`segment-${chunk.index}`),
         contentType: "video/mp4" as const,
         durationSeconds: chunk.chunkMedia.durationSeconds,
       })),
+      batchDurationSeconds: bufferedSeconds,
+    };
+  }
+
+  async packageFinalAudio(
+    jobId: string,
+    chunks: readonly MediaChunkInput[],
+  ): Promise<MediaPackagingFinalAudio> {
+    this.calls.push({ kind: "final", jobId, chunks });
+    const bufferedSeconds = chunks.reduce(
+      (total, chunk) => total + chunk.chunkMedia.durationSeconds,
+      0,
+    );
+
+    return {
+      key: buildFinalAudioKey(jobId),
+      audioData: Buffer.from(`final-${jobId}`),
+      contentType: "audio/mpeg",
+      format: "mp3",
+      durationSeconds: bufferedSeconds,
+      sampleRateHz: 44_100,
+      channelCount: 1,
+    };
+  }
+
+  async packageMedia(
+    jobId: string,
+    chunks: readonly MediaChunkInput[],
+  ): Promise<MediaPackagingResult> {
+    const streamBatch = await this.packageStreamBatch(jobId, 0, chunks);
+    const finalAudio = await this.packageFinalAudio(jobId, chunks);
+    return {
+      playlist: {
+        key: buildPlaylistKey(jobId),
+        audioData: Buffer.from(
+          buildHlsEventPlaylist(jobId, chunks, {
+            startupBufferPlayable: streamBatch.batchDurationSeconds >= this.options.startupBufferSeconds,
+          }),
+          "utf8",
+        ),
+        contentType: "application/vnd.apple.mpegurl",
+      },
+      initSegment: {
+        key: buildInitSegmentKey(jobId),
+        audioData: streamBatch.initSegment.audioData,
+        contentType: streamBatch.initSegment.contentType,
+      },
+      segments: streamBatch.segments.map((segment, index) => ({
+        index,
+        key: buildChunkMediaKey(jobId, index),
+        audioData: segment.audioData,
+        contentType: segment.contentType,
+        durationSeconds: segment.durationSeconds,
+      })),
       startupBuffer: {
-        bufferedSeconds,
-        isPlayable: bufferedSeconds >= this.options.startupBufferSeconds,
+        bufferedSeconds: streamBatch.batchDurationSeconds,
+        isPlayable: streamBatch.batchDurationSeconds >= this.options.startupBufferSeconds,
       },
-      finalAudio: {
-        key: buildFinalAudioKey(jobId),
-        audioData: Buffer.from(`final-${jobId}`),
-        contentType: "audio/mpeg",
-        format: "mp3",
-        durationSeconds: bufferedSeconds,
-        sampleRateHz: 44_100,
-        channelCount: 1,
+      finalAudio,
+    };
+  }
+}
+
+class BufferedDurationPackager {
+  readonly calls: Array<{
+    kind: "stream" | "final";
+    jobId: string;
+    batchStartChunkIndex?: number;
+    chunks: readonly MediaChunkInput[];
+  }> = [];
+
+  constructor(
+    private readonly bufferedDurationsByChunkCount: Record<number, number>,
+    private readonly startupBufferSeconds: number,
+  ) {}
+
+  async packageStreamBatch(
+    jobId: string,
+    batchStartChunkIndex: number,
+    chunks: readonly MediaChunkInput[],
+  ): Promise<StreamBatchPackagingResult> {
+    this.calls.push({ kind: "stream", jobId, batchStartChunkIndex, chunks });
+    const totalChunkCountAfterPublish = batchStartChunkIndex + chunks.length;
+    const totalBufferedSeconds =
+      this.bufferedDurationsByChunkCount[totalChunkCountAfterPublish];
+
+    if (typeof totalBufferedSeconds !== "number") {
+      throw new Error(
+        `Missing buffered duration fixture for chunk count ${totalChunkCountAfterPublish}.`,
+      );
+    }
+
+    const priorBufferedSeconds =
+      batchStartChunkIndex > 0
+        ? (this.bufferedDurationsByChunkCount[batchStartChunkIndex] ?? 0)
+        : 0;
+    const batchDurationSeconds = totalBufferedSeconds - priorBufferedSeconds;
+
+    return {
+      initSegment: {
+        key: buildBatchInitSegmentKey(jobId, batchStartChunkIndex),
+        uri: buildPlaylistUri(jobId, buildBatchInitSegmentKey(jobId, batchStartChunkIndex)),
+        audioData: Buffer.from("init"),
+        contentType: "video/mp4",
       },
+      segments: chunks.map((chunk) => ({
+        index: chunk.index,
+        key: buildBatchSegmentKey(jobId, batchStartChunkIndex, chunk.index - batchStartChunkIndex),
+        uri: buildPlaylistUri(
+          jobId,
+          buildBatchSegmentKey(jobId, batchStartChunkIndex, chunk.index - batchStartChunkIndex),
+        ),
+        audioData: Buffer.from(`segment-${chunk.index}`),
+        contentType: "video/mp4" as const,
+        durationSeconds: batchDurationSeconds / chunks.length,
+      })),
+      batchDurationSeconds,
+    };
+  }
+
+  async packageFinalAudio(
+    jobId: string,
+    chunks: readonly MediaChunkInput[],
+  ): Promise<MediaPackagingFinalAudio> {
+    this.calls.push({ kind: "final", jobId, chunks });
+    const totalChunkCount = chunks.length;
+    const durationSeconds =
+      this.bufferedDurationsByChunkCount[totalChunkCount] ??
+      chunks.reduce((total, chunk) => total + chunk.chunkMedia.durationSeconds, 0);
+
+    return {
+      key: buildFinalAudioKey(jobId),
+      audioData: Buffer.from(`final-${jobId}`),
+      contentType: "audio/mpeg",
+      format: "mp3",
+      durationSeconds,
+      sampleRateHz: 44_100,
+      channelCount: 1,
+    };
+  }
+
+  async packageMedia(
+    jobId: string,
+    chunks: readonly MediaChunkInput[],
+  ): Promise<MediaPackagingResult> {
+    const streamBatch = await this.packageStreamBatch(jobId, 0, chunks);
+    const finalAudio = await this.packageFinalAudio(jobId, chunks);
+    return {
+      playlist: {
+        key: buildPlaylistKey(jobId),
+        audioData: Buffer.from(
+          buildHlsEventPlaylist(jobId, chunks, {
+            startupBufferPlayable: streamBatch.batchDurationSeconds >= this.startupBufferSeconds,
+          }),
+          "utf8",
+        ),
+        contentType: "application/vnd.apple.mpegurl",
+      },
+      initSegment: {
+        key: buildInitSegmentKey(jobId),
+        audioData: streamBatch.initSegment.audioData,
+        contentType: streamBatch.initSegment.contentType,
+      },
+      segments: streamBatch.segments.map((segment, index) => ({
+        index,
+        key: buildChunkMediaKey(jobId, index),
+        audioData: segment.audioData,
+        contentType: segment.contentType,
+        durationSeconds: segment.durationSeconds,
+      })),
+      startupBuffer: {
+        bufferedSeconds: streamBatch.batchDurationSeconds,
+        isPlayable: streamBatch.batchDurationSeconds >= this.startupBufferSeconds,
+      },
+      finalAudio,
     };
   }
 }
@@ -377,7 +552,7 @@ function snapshotPlayback(job: AudioJob) {
 function createPipelineHarness(options: {
   job?: AudioJob;
   speechProvider?: SpeechProvider;
-  packager?: { packageMedia(jobId: string, chunks: readonly MediaChunkInput[]): Promise<MediaPackagingResult> };
+  packager?: FfmpegMediaPackager;
   audioStore?: RecordingAudioStore;
   sleep?: (ms: number) => Promise<void>;
   startupBufferSeconds?: number;
@@ -454,14 +629,15 @@ describe("job pipeline", () => {
     await harness.pipeline.processClaimedJob(harness.getCurrentJob());
 
     const beforeBuffer = harness.snapshots.find(
-      ({ job }) => job.availableDurationSeconds === 16,
+      ({ job }) => job.audioSegments.length === 2 && (job.availableDurationSeconds ?? 0) === 0,
     );
 
-    expect(beforeBuffer?.playback.mode).toBe("preparing");
+    expect(beforeBuffer?.playback.preferredModeForNewSessions).toBe("none");
     expect(
       harness.snapshots.some(
         ({ job, playback }) =>
-          (job.availableDurationSeconds ?? 0) >= 20 && playback.mode === "streaming",
+          (job.availableDurationSeconds ?? 0) >= 20 &&
+          playback.preferredModeForNewSessions === "stream",
       ),
     ).toBe(true);
   });
@@ -482,7 +658,75 @@ describe("job pipeline", () => {
       .map(({ job }) => job.availableDurationSeconds ?? 0)
       .filter((value, index, values) => index === 0 || value !== values[index - 1]);
 
-    expect(observedDurations).toEqual(expect.arrayContaining([0, 8, 20, 29]));
+    expect(observedDurations).toEqual(expect.arrayContaining([0, 20, 29]));
+  });
+
+  it("uses packaged buffered duration when deciding streaming readiness", async () => {
+    const harness = createPipelineHarness({
+      speechProvider: new IndexedSpeechProvider([
+        { durationSeconds: 12, delayMs: 5 },
+        { durationSeconds: 12, delayMs: 10 },
+        { durationSeconds: 9, delayMs: 15 },
+      ]),
+      packager: new BufferedDurationPackager(
+        {
+          2: 18,
+          3: 26,
+        },
+        20,
+      ),
+      startupBufferSeconds: 20,
+    });
+
+    await harness.pipeline.processClaimedJob(harness.getCurrentJob());
+
+    expect(
+      harness.snapshots.some(
+        ({ job, playback }) =>
+          (job.availableDurationSeconds ?? 0) === 24 &&
+          playback.preferredModeForNewSessions === "stream",
+      ),
+    ).toBe(false);
+    expect(
+      harness.snapshots.some(
+        ({ job, playback }) =>
+          (job.availableDurationSeconds ?? 0) === 0 &&
+          job.audioSegments.length === 2 &&
+          playback.preferredModeForNewSessions === "none",
+      ),
+    ).toBe(true);
+    expect(
+      harness.snapshots.some(
+        ({ job, playback }) =>
+          (job.availableDurationSeconds ?? 0) === 26 &&
+          playback.preferredModeForNewSessions === "stream",
+      ),
+    ).toBe(true);
+  });
+
+  it("publishes new HLS media batches without rewriting previously published segment keys", async () => {
+    const harness = createPipelineHarness({
+      speechProvider: new IndexedSpeechProvider([
+        { durationSeconds: 11, delayMs: 5 },
+        { durationSeconds: 13, delayMs: 10 },
+        { durationSeconds: 17, delayMs: 15 },
+      ]),
+      startupBufferSeconds: 20,
+    });
+
+    await harness.pipeline.processClaimedJob(harness.getCurrentJob());
+
+    const publishedSegmentKeys = harness.audioStore.puts.filter((key) =>
+      key.includes("/segments/"),
+    );
+
+    expect(publishedSegmentKeys).toEqual([
+      "jobs/job-123/segments/batch-0000/init.mp4",
+      "jobs/job-123/segments/batch-0000/chunk-0000.m4s",
+      "jobs/job-123/segments/batch-0000/chunk-0001.m4s",
+      "jobs/job-123/segments/batch-0002/init.mp4",
+      "jobs/job-123/segments/batch-0002/chunk-0000.m4s",
+    ]);
   });
 
   it("uploads the final MP3 before the public state becomes ready", async () => {
@@ -541,18 +785,17 @@ describe("job pipeline", () => {
     expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([500, 1_000, 2_000]);
   });
 
-  it("deleting a job removes final and temporary assets", async () => {
+  it("deleting a job removes only the current asset tree", async () => {
     const audioStore = new RecordingAudioStore();
     const harness = createPipelineHarness({ audioStore });
     const prefix = buildJobMediaPrefix("job-123");
-    const legacyPrefix = `narrations/job-job-123`;
     audioStore.seed(`${prefix}/final.mp3`, Buffer.from("final"));
     audioStore.seed(`${prefix}/tmp/chunk-0000.mp3`, Buffer.from("temp"));
     audioStore.seed(`${prefix}/segments/chunk-0000.m4s`, Buffer.from("segment"));
 
     await harness.pipeline.deleteJobArtifacts("job-123");
 
-    expect(audioStore.deletedPrefixes).toEqual([prefix, legacyPrefix]);
+    expect(audioStore.deletedPrefixes).toEqual([prefix]);
     expect(audioStore.has(`${prefix}/final.mp3`)).toBe(false);
     expect(audioStore.has(`${prefix}/tmp/chunk-0000.mp3`)).toBe(false);
     expect(audioStore.has(`${prefix}/segments/chunk-0000.m4s`)).toBe(false);
@@ -573,6 +816,8 @@ describe("job pipeline", () => {
         {
           url: "/audio/jobs/job-123/tmp/chunk-0000.mp3",
           durationSeconds: 12,
+          sampleRateHz: 24_000,
+          channelCount: 2,
         },
       ],
     });
@@ -595,6 +840,93 @@ describe("job pipeline", () => {
     expect(harness.getCurrentJob().status).toBe("completed");
     expect(harness.getCurrentJob().audioSegments).toHaveLength(3);
     expect(harness.getCurrentJob().availableDurationSeconds).toBe(33);
+    const packager = harness.packager as RecordingPackager;
+    expect(packager.calls[0]).toMatchObject({
+      kind: "stream",
+      chunks: [
+        {
+          index: 0,
+          chunkMedia: {
+            sampleRateHz: 24_000,
+            channelCount: 2,
+          },
+        },
+        {
+          index: 1,
+        },
+        {
+          index: 2,
+        },
+      ],
+    });
+  });
+
+  it("resumes append-only streaming from restored chunks even when publishedChunkCount was not persisted yet", async () => {
+    const audioStore = new RecordingAudioStore();
+    const resumedJob = createClaimedJob({
+      internalState: "packaging_stream",
+      displayTitle: "Resumed stream",
+      speechScript: [
+        Array.from({ length: 64 }, (_, index) => `resume-a${index}`).join(" "),
+        Array.from({ length: 64 }, (_, index) => `resume-b${index}`).join(" "),
+        Array.from({ length: 64 }, (_, index) => `resume-c${index}`).join(" "),
+      ].join("\n\n"),
+      playlistUrl: "/audio/jobs/job-123/playlist.m3u8",
+      liveEdgeUpdatedAt: "2026-04-09T10:00:00.000Z",
+      availableDurationSeconds: 12,
+      audioSegments: [
+        {
+          url: "/audio/jobs/job-123/tmp/chunk-0000.mp3",
+          durationSeconds: 12,
+          sampleRateHz: 24_000,
+          channelCount: 2,
+        },
+      ],
+      publishedChunkCount: null,
+    });
+    audioStore.seed("jobs/job-123/tmp/chunk-0000.mp3", Buffer.from("ID3chunk-0"));
+    audioStore.seed(
+      "jobs/job-123/playlist.m3u8",
+      Buffer.from(
+        [
+          "#EXTM3U",
+          "#EXT-X-VERSION:7",
+          "#EXT-X-TARGETDURATION:12",
+          "#EXT-X-MEDIA-SEQUENCE:0",
+          "#EXT-X-PLAYLIST-TYPE:EVENT",
+          "#EXT-X-INDEPENDENT-SEGMENTS",
+          '#EXT-X-MAP:URI="segments/batch-0000/init.mp4"',
+          "#EXTINF:12.000,",
+          "segments/batch-0000/chunk-0000.m4s",
+          "",
+        ].join("\n"),
+      ),
+    );
+    const speechProvider = new IndexedSpeechProvider([
+      { durationSeconds: 12 },
+      { durationSeconds: 11 },
+      { durationSeconds: 10 },
+    ]);
+    const harness = createPipelineHarness({
+      job: resumedJob,
+      audioStore,
+      speechProvider,
+      startupBufferSeconds: 20,
+    });
+
+    await harness.pipeline.processClaimedJob(resumedJob);
+
+    const packager = harness.packager as RecordingPackager;
+    const streamCalls = packager.calls.filter(
+      (call): call is Extract<(typeof packager.calls)[number], { kind: "stream" }> =>
+        call.kind === "stream",
+    );
+    expect(streamCalls[0]).toMatchObject({
+      kind: "stream",
+      batchStartChunkIndex: 1,
+    });
+    expect(harness.getCurrentJob().publishedChunkCount).toBe(3);
+    expect(harness.getCurrentJob().availableDurationSeconds).toBe(33);
   });
 
   it("clears stale streaming metadata when synthesis fails after publish", async () => {
@@ -608,7 +940,8 @@ describe("job pipeline", () => {
     expect(
       harness.snapshots.some(
         ({ job, playback }) =>
-          Boolean(job.playlistUrl) && playback.mode === "streaming",
+          Boolean(job.playlistUrl) &&
+          playback.preferredModeForNewSessions === "stream",
       ),
     ).toBe(true);
     expect(harness.getCurrentJob().status).toBe("failed");

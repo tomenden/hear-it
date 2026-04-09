@@ -227,7 +227,7 @@ export function createApp(options: CreateAppOptions) {
 <ul>
   <li><strong>Account info</strong> — your email address, used solely for authentication (managed by Supabase Auth).</li>
   <li><strong>Article URLs</strong> — the links you submit, used to fetch and convert articles. We store the URL and extracted text on our server while the audio job is active.</li>
-  <li><strong>Generated audio</strong> — stored on your device so you can listen offline. The audio is generated server-side and downloaded to your device; we do not retain it on our servers after delivery.</li>
+  <li><strong>Generated audio</strong> — stored on our servers so it remains available in your library, and may also be cached on your device to make repeat or offline playback smoother.</li>
   <li><strong>Analytics events</strong> — anonymous product-interaction data (e.g. screens viewed, features used) sent to PostHog to help us improve the app. No personally identifiable information is included.</li>
   <li><strong>Crash &amp; performance data</strong> — sent to Sentry so we can fix bugs. This may include device model and OS version but not personal content.</li>
 </ul>
@@ -249,7 +249,7 @@ export function createApp(options: CreateAppOptions) {
 </ul>
 
 <h2>Data Retention</h2>
-<p>Your account and generated audio persist until you delete them. You can delete individual articles from the app at any time. If you want your account fully removed, contact us.</p>
+<p>Your account and generated audio persist until you delete them. You can delete individual audio items from the app at any time. If you want your account fully removed, contact us.</p>
 
 <h2>Your Rights</h2>
 <p>You can request access to, correction of, or deletion of your personal data at any time by emailing us.</p>
@@ -445,6 +445,10 @@ function resolveInternalState(job: AudioJob): InternalAudioState {
 }
 
 function resolveAvailableDurationSeconds(job: AudioJob): number {
+  if (job.status === "completed" && typeof job.durationSeconds === "number") {
+    return job.durationSeconds;
+  }
+
   if (typeof job.availableDurationSeconds === "number") {
     return job.availableDurationSeconds;
   }
@@ -483,11 +487,11 @@ function buildLegacyCompatibilityFields(
     speechOptions: job.speechOptions,
     provider: job.provider,
     audioUrl: job.audioUrl,
-    audioDownloadPath: job.audioDownloadPath ?? null,
+    audioDownloadPath: null,
     playlistUrl: job.playlistUrl,
     audioSegments: job.audioSegments,
     durationSeconds: job.durationSeconds,
-    error: playback.mode === "failed" ? playback.errorMessage : job.error,
+    error: playback.errorMessage ?? job.error,
   };
 }
 

@@ -242,7 +242,7 @@ export class MaintenanceRunner {
 
     const claimed = await this.jobStore.claimMaintenanceLease(
       this.leaseOwner,
-      new Date(now.getTime() + this.leaseDurationMs).toISOString(),
+      new Date(Date.now() + this.leaseDurationMs).toISOString(),
       this.leaseName,
     );
 

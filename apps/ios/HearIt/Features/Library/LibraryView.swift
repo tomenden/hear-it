@@ -151,7 +151,7 @@ struct LibraryView: View {
 
                         // Play button
                         Button {
-                            model.openPlayer(for: job.id)
+                            model.playFromLibrary(for: job.id)
                         } label: {
                             Circle()
                                 .fill(AppTheme.Colors.accentGreen)

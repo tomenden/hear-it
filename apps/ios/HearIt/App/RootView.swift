@@ -78,6 +78,8 @@ struct RootView: View {
         }
         .task {
             await model.bootstrap()
+            await model.runDebugAutostartIfNeeded()
+            model.runDebugAutomationIfNeeded()
         }
         .onChange(of: scenePhase, initial: true) { _, newPhase in
             model.handleScenePhaseChange(newPhase)

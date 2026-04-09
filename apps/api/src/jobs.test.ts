@@ -13,13 +13,18 @@ import { createApp, createAudioJobSchema, extractRequestSchema } from "./app.js"
 import { MAX_AUDIO_CHARS } from "./extractor.js";
 import { AudioJobService } from "./jobs.js";
 import {
+  buildBatchInitSegmentKey,
+  buildBatchSegmentKey,
   buildChunkMediaKey,
   buildFinalAudioKey,
   buildHlsEventPlaylist,
   buildInitSegmentKey,
   buildPlaylistKey,
+  buildPlaylistUri,
   type MediaChunkInput,
+  type MediaPackagingFinalAudio,
   type MediaPackagingResult,
+  type StreamBatchPackagingResult,
 } from "./media-packager.js";
 import { FileJobStore, FileAudioStore } from "./storage-fs.js";
 import type { AudioStore } from "./storage.js";
@@ -397,14 +402,65 @@ class CleanupFailingAudioStore extends FileAudioStore {
 }
 
 class TestMediaPackager {
-  async packageMedia(
+  async packageStreamBatch(
     jobId: string,
+    batchStartChunkIndex: number,
     chunks: readonly MediaChunkInput[],
-  ): Promise<MediaPackagingResult> {
+  ): Promise<StreamBatchPackagingResult> {
     const bufferedSeconds = chunks.reduce(
       (total, chunk) => total + chunk.chunkMedia.durationSeconds,
       0,
     );
+
+    return {
+      initSegment: {
+        key: buildBatchInitSegmentKey(jobId, batchStartChunkIndex),
+        uri: buildPlaylistUri(jobId, buildBatchInitSegmentKey(jobId, batchStartChunkIndex)),
+        audioData: Buffer.from("init"),
+        contentType: "video/mp4",
+      },
+      segments: chunks.map((chunk) => ({
+        index: chunk.index,
+        key: buildBatchSegmentKey(jobId, batchStartChunkIndex, chunk.index - batchStartChunkIndex),
+        uri: buildPlaylistUri(
+          jobId,
+          buildBatchSegmentKey(jobId, batchStartChunkIndex, chunk.index - batchStartChunkIndex),
+        ),
+        audioData: Buffer.from(`segment-${chunk.index}`),
+        contentType: "video/mp4" as const,
+        durationSeconds: chunk.chunkMedia.durationSeconds,
+      })),
+      batchDurationSeconds: bufferedSeconds,
+    };
+  }
+
+  async packageFinalAudio(
+    jobId: string,
+    chunks: readonly MediaChunkInput[],
+  ): Promise<MediaPackagingFinalAudio> {
+    const bufferedSeconds = chunks.reduce(
+      (total, chunk) => total + chunk.chunkMedia.durationSeconds,
+      0,
+    );
+
+    return {
+      key: buildFinalAudioKey(jobId),
+      audioData: Buffer.concat(chunks.map((chunk) => chunk.chunkMedia.audioData)),
+      contentType: "audio/mpeg",
+      format: "mp3",
+      durationSeconds: bufferedSeconds,
+      sampleRateHz: chunks[0]?.chunkMedia.sampleRateHz ?? 44_100,
+      channelCount: chunks[0]?.chunkMedia.channelCount ?? 1,
+    };
+  }
+
+  async packageMedia(
+    jobId: string,
+    chunks: readonly MediaChunkInput[],
+  ): Promise<MediaPackagingResult> {
+    const streamBatch = await this.packageStreamBatch(jobId, 0, chunks);
+    const finalAudio = await this.packageFinalAudio(jobId, chunks);
+    const bufferedSeconds = streamBatch.batchDurationSeconds;
 
     return {
       playlist: {
@@ -418,29 +474,21 @@ class TestMediaPackager {
       },
       initSegment: {
         key: buildInitSegmentKey(jobId),
-        audioData: Buffer.from("init"),
-        contentType: "video/mp4",
+        audioData: streamBatch.initSegment.audioData,
+        contentType: streamBatch.initSegment.contentType,
       },
-      segments: chunks.map((chunk) => ({
-        index: chunk.index,
-        key: buildChunkMediaKey(jobId, chunk.index),
-        audioData: Buffer.from(`segment-${chunk.index}`),
-        contentType: "video/mp4" as const,
-        durationSeconds: chunk.chunkMedia.durationSeconds,
+      segments: streamBatch.segments.map((segment, index) => ({
+        index,
+        key: buildChunkMediaKey(jobId, index),
+        audioData: segment.audioData,
+        contentType: segment.contentType,
+        durationSeconds: segment.durationSeconds,
       })),
       startupBuffer: {
         bufferedSeconds,
         isPlayable: bufferedSeconds >= 20,
       },
-      finalAudio: {
-        key: buildFinalAudioKey(jobId),
-        audioData: Buffer.concat(chunks.map((chunk) => chunk.chunkMedia.audioData)),
-        contentType: "audio/mpeg",
-        format: "mp3",
-        durationSeconds: bufferedSeconds,
-        sampleRateHz: chunks[0]?.chunkMedia.sampleRateHz ?? 44_100,
-        channelCount: chunks[0]?.chunkMedia.channelCount ?? 1,
-      },
+      finalAudio,
     };
   }
 }
@@ -577,7 +625,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 describe("audio job service", () => {
-  it("deletes both new and legacy artifact trees when removing a job", async () => {
+  it("deletes only the current artifact tree when removing a job", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
     const { service, audioStore } = createTestContext(audioDir, jobsFilePath);
@@ -591,26 +639,10 @@ describe("audio job service", () => {
       Buffer.from("NEWAUDIO"),
       "audio/mpeg",
     );
-    await audioStore.put(
-      `narrations/job-${queuedJob.id}/playlist.m3u8`,
-      Buffer.from("#EXTM3U"),
-      "application/vnd.apple.mpegurl",
-    );
-    await audioStore.put(
-      `narrations/job-${queuedJob.id}/segment-0.mp3`,
-      Buffer.from("LEGACYAUDIO"),
-      "audio/mpeg",
-    );
 
     await expect(service.deleteJob(queuedJob.id)).resolves.toBe(true);
 
     expect(await exists(join(audioDir, "jobs", queuedJob.id, "final.mp3"))).toBe(false);
-    expect(
-      await exists(join(audioDir, "narrations", `job-${queuedJob.id}`, "playlist.m3u8")),
-    ).toBe(false);
-    expect(
-      await exists(join(audioDir, "narrations", `job-${queuedJob.id}`, "segment-0.mp3")),
-    ).toBe(false);
   });
 
   it("creates and completes an audio job", async () => {
@@ -621,7 +653,7 @@ describe("audio job service", () => {
       url: "https://example.com/posts/jobs",
       html: sampleHtml,
       speechOptions: {
-        voice: "narrator",
+        voice: "alloy",
       },
     });
 
@@ -736,11 +768,19 @@ describe("audio job service", () => {
         job: {
           state: string;
           playback: {
-            mode: string;
+            preferredModeForNewSessions: string;
             isPlayable: boolean;
-            audioUrl?: string;
-            durationSeconds?: number;
-            fileName?: string;
+            stream?: {
+              playlistUrl: string;
+              availableDurationSeconds: number;
+              liveEdgeUpdatedAt: string;
+              isComplete: boolean;
+            } | null;
+            final?: {
+              audioUrl: string;
+              durationSeconds: number;
+              fileName: string;
+            } | null;
           };
           progress: {
             chunksTotal: number | null;
@@ -751,10 +791,16 @@ describe("audio job service", () => {
       };
       expect(jobPayload.job.state).toBe("ready");
       expect(jobPayload.job.playback).toMatchObject({
-        mode: "final",
+        preferredModeForNewSessions: "final",
         isPlayable: true,
-        audioUrl: `/audio/jobs/${queuedJob.id}/final.mp3`,
-        fileName: "Queueing Speech Jobs.mp3",
+        stream: {
+          playlistUrl: `/audio/jobs/${queuedJob.id}/playlist.m3u8`,
+          isComplete: true,
+        },
+        final: {
+          audioUrl: `/audio/jobs/${queuedJob.id}/final.mp3`,
+          fileName: "Queueing Speech Jobs.mp3",
+        },
       });
       expect(jobPayload.job.progress.chunksTotal).toBe(jobPayload.job.progress.chunksReady);
       expect(jobPayload.job.progress.availableDurationSeconds).toBeGreaterThan(0);
@@ -1228,7 +1274,7 @@ describe("audio job service", () => {
     expect(partialPlaylist).toContain("#EXTM3U");
     expect(partialPlaylist).toContain("#EXT-X-VERSION:7");
     expect(partialPlaylist).toContain("#EXT-X-START:TIME-OFFSET=0,PRECISE=YES");
-    expect(partialPlaylist).toContain(`jobs/${queuedJob.id}/segments/chunk-0000.m4s`);
+    expect(partialPlaylist).toContain("segments/batch-0000/chunk-0000.m4s");
 
     await processingPromise;
 
@@ -1305,13 +1351,13 @@ describe("audio job service", () => {
     await processingPromise;
 
     const completedPlaylist = await readFile(playlistPath, "utf8");
-    expect(completedPlaylist).toContain(`jobs/${queuedJob.id}/segments/chunk-0000.m4s`);
-    expect(completedPlaylist).toContain(`jobs/${queuedJob.id}/segments/chunk-0001.m4s`);
-    expect(completedPlaylist).toContain(`jobs/${queuedJob.id}/segments/chunk-0002.m4s`);
+    expect(completedPlaylist).toContain("segments/batch-0000/chunk-0000.m4s");
+    expect(completedPlaylist).toContain("segments/batch-0000/chunk-0001.m4s");
+    expect(completedPlaylist).toContain("segments/batch-0000/chunk-0002.m4s");
     expect(
-      completedPlaylist.indexOf(`jobs/${queuedJob.id}/segments/chunk-0000.m4s`),
+      completedPlaylist.indexOf("segments/batch-0000/chunk-0000.m4s"),
     ).toBeLessThan(
-      completedPlaylist.indexOf(`jobs/${queuedJob.id}/segments/chunk-0001.m4s`),
+      completedPlaylist.indexOf("segments/batch-0000/chunk-0001.m4s"),
     );
   });
 
@@ -1466,17 +1512,6 @@ describe("audio job service", () => {
       `,
     });
 
-    await audioStore.put(
-      `narrations/job-${queuedJob.id}/playlist.m3u8`,
-      Buffer.from("#EXTM3U"),
-      "application/vnd.apple.mpegurl",
-    );
-    await audioStore.put(
-      `narrations/job-${queuedJob.id}/segment-0.mp3`,
-      Buffer.from("ID3LEGACYSEGMENT"),
-      "audio/mpeg",
-    );
-
     await service.processJob(queuedJob.id);
 
     const failedJob = await service.getJob(queuedJob.id);
@@ -1487,12 +1522,6 @@ describe("audio job service", () => {
     expect(failedJob?.error).toContain("failed after the first playable chunk");
     await expect(readFile(join(audioDir, "jobs", queuedJob.id, "playlist.m3u8"))).rejects.toThrow();
     await expect(readFile(join(audioDir, "jobs", queuedJob.id, "tmp", "chunk-0000.mp3"))).rejects.toThrow();
-    await expect(
-      readFile(join(audioDir, "narrations", `job-${queuedJob.id}`, "playlist.m3u8")),
-    ).rejects.toThrow();
-    await expect(
-      readFile(join(audioDir, "narrations", `job-${queuedJob.id}`, "segment-0.mp3")),
-    ).rejects.toThrow();
   });
 
   it("fails jobs that produce no speech script chunks before writing final audio", async () => {

@@ -68,11 +68,15 @@ struct MiniPlayerView: View {
     }
 
     private func statusSubtitle(for job: AudioJob) -> String {
+        if model.isStreamingPlaybackSession(for: job) {
+            return "Playing the audio available so far"
+        }
+
         switch job.playback.mode {
         case .preparing:
             return "Preparing audio"
         case .streaming:
-            return "Playing the audio available so far"
+            return "Preparing audio"
         case .final:
             return "Tap to return to the full player"
         case .failed:
@@ -82,7 +86,9 @@ struct MiniPlayerView: View {
 
     private var playPauseButton: some View {
         Button {
-            model.player.togglePlayback()
+            if let job = currentJob {
+                model.togglePlayback(for: job.id)
+            }
         } label: {
             Circle()
                 .fill(AppTheme.Colors.miniPlayerGreen)

@@ -6,6 +6,7 @@ private final class AudioDownloadMockAPIClient: HearItAPIProviding, @unchecked S
     var tokenProvider: (@Sendable () async -> String?)?
     var downloadedURLs: [URL] = []
     var audioData = Data("DOWNLOADED-FINAL-AUDIO".utf8)
+    var fetchJobsHandler: @Sendable (URL, Bool) async throws -> [AudioJob] = { _, _ in [] }
 
     func fetchConfig(baseURL: URL) async throws -> ServerConfig {
         ServerConfig(provider: "openai", audioPublicBaseURL: "/audio", openAIConfigured: true)
@@ -16,7 +17,7 @@ private final class AudioDownloadMockAPIClient: HearItAPIProviding, @unchecked S
     }
 
     func fetchJobs(baseURL: URL, reportErrors: Bool) async throws -> [AudioJob] {
-        []
+        try await fetchJobsHandler(baseURL, reportErrors)
     }
 
     func extractArticle(articleURL: String, baseURL: URL) async throws -> Article {
@@ -86,7 +87,9 @@ struct AppModelAudioPlaybackSessionTests {
         model.preparePlayer(for: readyJob.id)
 
         #expect(model.player.loadedSourceURL == playlistURL)
-        #expect(model.player.duration == 30)
+        #expect(model.player.duration == 12)
+        #expect(model.isStreamingPlaybackSession(for: readyJob))
+        #expect(!model.areAdvancedPlaybackControlsEnabled(for: readyJob))
     }
 
     @Test
@@ -213,6 +216,382 @@ struct AppModelAudioPlaybackSessionTests {
         #expect(model.player.loadedSourceURL?.lastPathComponent == "audio-job-ended-stream.mp3")
         #expect(model.player.duration == 30)
     }
+
+    @Test
+    func streamingSessionReloadsAndResumesWhenMoreAudioArrivesAfterHittingTheLiveEdge() async throws {
+        let model = makeModel()
+        let playlistURL = URL(string: "http://localhost:3000/audio/job-live-edge/playlist.m3u8")!
+        let initialJob = makeJob(
+            id: "job-live-edge",
+            state: .processing,
+            playback: .streaming(
+                playlistUrl: "/audio/job-live-edge/playlist.m3u8",
+                availableDurationSeconds: 8,
+                liveEdgeUpdatedAt: "2026-04-05T12:30:00Z"
+            ),
+            audioSegments: [
+                .init(url: "/audio/job-live-edge/segment-0.mp3", durationSeconds: 8),
+            ]
+        )
+        let updatedJob = makeJob(
+            id: initialJob.id,
+            state: .processing,
+            playback: .streaming(
+                playlistUrl: "/audio/job-live-edge/playlist.m3u8",
+                availableDurationSeconds: 24,
+                liveEdgeUpdatedAt: "2026-04-05T12:30:08Z"
+            ),
+            audioSegments: [
+                .init(url: "/audio/job-live-edge/segment-0.mp3", durationSeconds: 8),
+                .init(url: "/audio/job-live-edge/segment-1.mp3", durationSeconds: 8),
+                .init(url: "/audio/job-live-edge/segment-2.mp3", durationSeconds: 8),
+            ]
+        )
+        model.jobs = [initialJob]
+        model.playerPresentation = PlayerPresentation(jobID: initialJob.id)
+
+        model.preparePlayer(for: initialJob.id)
+        model.player.configurePreviewState(
+            jobID: initialJob.id,
+            duration: 8,
+            currentTime: 8,
+            isPlaying: true,
+            loadedSourceURL: playlistURL
+        )
+
+        model.player.handlePlaybackItemDidReachEnd()
+
+        model.jobs = [updatedJob]
+        model.preparePlayer(for: updatedJob.id)
+
+        #expect(model.player.loadedSourceURL == playlistURL)
+        #expect(model.player.duration == 24)
+        #expect(model.player.isPlaying)
+    }
+
+    @Test
+    func pinnedStreamingSessionKeepsStreamingRulesAfterJobFinalizes() {
+        let model = makeModel()
+        let playlistURL = URL(string: "http://localhost:3000/audio/job-pinned-stream/playlist.m3u8")!
+        let streamingJob = makeJob(
+            id: "job-pinned-stream",
+            state: .processing,
+            playback: .streaming(
+                playlistUrl: "/audio/job-pinned-stream/playlist.m3u8",
+                availableDurationSeconds: 68,
+                liveEdgeUpdatedAt: "2026-04-05T12:30:00Z"
+            ),
+            audioSegments: [
+                .init(url: "/audio/job-pinned-stream/segment-0.mp3", durationSeconds: 68),
+            ],
+            estimatedMinutes: 3
+        )
+        let finalJob = makeJob(
+            id: streamingJob.id,
+            state: .ready,
+            playback: .final(
+                audioUrl: "/audio/job-pinned-stream/final.mp3",
+                durationSeconds: 166,
+                fileName: "Pinned stream.mp3",
+                retainedStream: .init(
+                    playlistUrl: "/audio/job-pinned-stream/playlist.m3u8",
+                    availableDurationSeconds: 166,
+                    liveEdgeUpdatedAt: "2026-04-05T12:31:00Z",
+                    isComplete: true
+                )
+            ),
+            playlistUrl: "/audio/job-pinned-stream/playlist.m3u8",
+            durationSeconds: 166,
+            estimatedMinutes: 3
+        )
+        model.jobs = [streamingJob]
+        model.playerPresentation = PlayerPresentation(jobID: streamingJob.id)
+
+        model.preparePlayer(for: streamingJob.id)
+        model.player.configurePreviewState(
+            jobID: streamingJob.id,
+            duration: 68,
+            currentTime: 54,
+            isPlaying: true,
+            loadedSourceURL: playlistURL
+        )
+
+        model.jobs = [finalJob]
+        model.preparePlayer(for: finalJob.id)
+
+        #expect(model.isStreamingPlaybackSession(for: finalJob))
+        #expect(!model.areAdvancedPlaybackControlsEnabled(for: finalJob))
+        #expect(model.player.loadedSourceURL == playlistURL)
+        #expect(model.player.duration == 68)
+        #expect(model.displayedTotalDuration(for: finalJob) == 166)
+        #expect(!model.isUsingEstimatedTimelineEnvelope(for: finalJob))
+        #expect(model.displayedTimelineProgress(for: finalJob) == 54.0 / 166.0)
+    }
+
+    @Test
+    func pendingStreamingContinuationReloadsThePinnedPlaylistAfterFinalization() {
+        let model = makeModel()
+        let playlistURL = URL(string: "http://localhost:3000/audio/job-pending-stream/playlist.m3u8")!
+        let streamingJob = makeJob(
+            id: "job-pending-stream",
+            state: .processing,
+            playback: .streaming(
+                playlistUrl: "/audio/job-pending-stream/playlist.m3u8",
+                availableDurationSeconds: 63.475,
+                liveEdgeUpdatedAt: "2026-04-05T12:30:00Z"
+            ),
+            audioSegments: [
+                .init(url: "/audio/job-pending-stream/segment-0.mp3", durationSeconds: 63.475),
+            ],
+            estimatedMinutes: 3
+        )
+        let finalJob = makeJob(
+            id: streamingJob.id,
+            state: .ready,
+            playback: .final(
+                audioUrl: "/audio/job-pending-stream/final.mp3",
+                durationSeconds: 154.104,
+                fileName: "Pending stream.mp3"
+            ),
+            playlistUrl: "/audio/job-pending-stream/playlist.m3u8",
+            durationSeconds: 154.104,
+            estimatedMinutes: 3
+        )
+        model.jobs = [streamingJob]
+        model.playerPresentation = PlayerPresentation(jobID: streamingJob.id)
+
+        model.preparePlayer(for: streamingJob.id)
+        model.player.configurePreviewState(
+            jobID: streamingJob.id,
+            duration: 63.475,
+            currentTime: 63.475,
+            isPlaying: true,
+            loadedSourceURL: playlistURL
+        )
+
+        model.player.handlePlaybackItemDidReachEnd()
+        model.jobs = [finalJob]
+        model.preparePlayer(for: finalJob.id)
+
+        #expect(model.player.loadedSourceURL == playlistURL)
+        #expect(model.player.isPlaying)
+        #expect(model.player.duration == 154.104)
+        #expect(model.isStreamingPlaybackSession(for: finalJob))
+        #expect(!model.areAdvancedPlaybackControlsEnabled(for: finalJob))
+    }
+
+    @Test
+    func refreshJobsReloadsPendingStreamingContinuationEvenWhenTheJobPayloadIsUnchanged() async {
+        let apiClient = AudioDownloadMockAPIClient()
+        let playlistURL = URL(string: "http://localhost:3000/audio/job-poll-resume/playlist.m3u8")!
+        let finalJob = makeJob(
+            id: "job-poll-resume",
+            state: .ready,
+            playback: .final(
+                audioUrl: "/audio/job-poll-resume/final.mp3",
+                durationSeconds: 154.104,
+                fileName: "Poll resume.mp3"
+            ),
+            playlistUrl: "/audio/job-poll-resume/playlist.m3u8",
+            durationSeconds: 154.104,
+            estimatedMinutes: 3
+        )
+        apiClient.fetchJobsHandler = { _, _ in [finalJob] }
+
+        let model = makeModel(apiClient: apiClient)
+        model.jobs = [finalJob]
+        model.playerPresentation = PlayerPresentation(jobID: finalJob.id)
+        model.player.configurePreviewState(
+            jobID: finalJob.id,
+            duration: 63.475,
+            currentTime: 63.475,
+            isPlaying: true,
+            loadedSourceURL: playlistURL
+        )
+
+        model.player.handlePlaybackItemDidReachEnd()
+        await model.refreshJobs(silent: true)
+
+        #expect(model.player.loadedSourceURL == playlistURL)
+        #expect(model.player.isPlaying)
+        #expect(model.player.duration == 154.104)
+    }
+
+    @Test
+    func refreshJobsReloadsPendingStreamingContinuationEvenWhenOnlyTheMiniPlayerIsVisible() async {
+        let apiClient = AudioDownloadMockAPIClient()
+        let playlistURL = URL(string: "http://localhost:3000/audio/job-mini-resume/playlist.m3u8")!
+        let finalJob = makeJob(
+            id: "job-mini-resume",
+            state: .ready,
+            playback: .final(
+                audioUrl: "/audio/job-mini-resume/final.mp3",
+                durationSeconds: 154.104,
+                fileName: "Mini resume.mp3"
+            ),
+            playlistUrl: "/audio/job-mini-resume/playlist.m3u8",
+            durationSeconds: 154.104,
+            estimatedMinutes: 3
+        )
+        apiClient.fetchJobsHandler = { _, _ in [finalJob] }
+
+        let model = makeModel(apiClient: apiClient)
+        model.jobs = [finalJob]
+        model.playerPresentation = nil
+        model.player.configurePreviewState(
+            jobID: finalJob.id,
+            duration: 63.475,
+            currentTime: 63.475,
+            isPlaying: true,
+            loadedSourceURL: playlistURL
+        )
+
+        model.player.handlePlaybackItemDidReachEnd()
+        await model.refreshJobs(silent: true)
+
+        #expect(model.player.loadedSourceURL == playlistURL)
+        #expect(model.player.isPlaying)
+        #expect(model.player.duration == 154.104)
+    }
+
+    @Test
+    func completedPinnedStreamingSessionEndsCleanlyAndReplayUsesFinalAudio() {
+        let model = makeModel()
+        let playlistURL = URL(string: "http://localhost:3000/audio/job-stream-finished/playlist.m3u8")!
+        let finalJob = makeJob(
+            id: "job-stream-finished",
+            state: .ready,
+            playback: .final(
+                audioUrl: "/audio/job-stream-finished/final.mp3",
+                durationSeconds: 146.539,
+                fileName: "Stream finished.mp3"
+            ),
+            playlistUrl: "/audio/job-stream-finished/playlist.m3u8",
+            durationSeconds: 146.539,
+            estimatedMinutes: 3
+        )
+        model.jobs = [finalJob]
+        model.playerPresentation = PlayerPresentation(jobID: finalJob.id)
+        model.player.configurePreviewState(
+            jobID: finalJob.id,
+            duration: 146.539,
+            currentTime: 146.539,
+            isPlaying: true,
+            loadedSourceURL: playlistURL
+        )
+
+        model.player.handlePlaybackItemDidReachEnd()
+        model.preparePlayer(for: finalJob.id)
+
+        #expect(model.player.loadedSourceURL == nil)
+        #expect(!model.player.isPlaying)
+
+        model.togglePlayback(for: finalJob.id)
+
+        #expect(
+            model.player.loadedSourceURL ==
+                URL(string: "http://localhost:3000/audio/job-stream-finished/final.mp3")
+        )
+        #expect(model.player.isPlaying)
+        #expect(model.player.currentTime == 0)
+        #expect(model.player.duration == 146.539)
+    }
+
+    @Test
+    func libraryPlayStartsPausedLoadedSessionAndPresentsPlayer() {
+        let model = makeModel()
+        let job = makeJob(
+            id: "job-library-play",
+            state: .ready,
+            playback: .final(
+                audioUrl: "/audio/job-library-play/final.mp3",
+                durationSeconds: 146.539,
+                fileName: "Library play.mp3"
+            ),
+            durationSeconds: 146.539
+        )
+        let finalURL = URL(string: "http://localhost:3000/audio/job-library-play/final.mp3")!
+        model.jobs = [job]
+        model.player.configurePreviewState(
+            jobID: job.id,
+            duration: 146.539,
+            currentTime: 12,
+            isPlaying: false,
+            loadedSourceURL: finalURL
+        )
+
+        model.playFromLibrary(for: job.id)
+
+        #expect(model.playerPresentation?.jobID == job.id)
+        #expect(model.player.loadedSourceURL == finalURL)
+        #expect(model.player.isPlaying)
+    }
+
+    @Test
+    func togglePlaybackReloadsFinishedFinalSession() {
+        let model = makeModel()
+        let job = makeJob(
+            id: "job-finished-final",
+            state: .ready,
+            playback: .final(
+                audioUrl: "/audio/job-finished-final/final.mp3",
+                durationSeconds: 42,
+                fileName: "Finished final.mp3"
+            ),
+            durationSeconds: 42
+        )
+        model.jobs = [job]
+        model.playerPresentation = PlayerPresentation(jobID: job.id)
+        model.player.configurePreviewState(
+            jobID: job.id,
+            duration: nil,
+            currentTime: 0,
+            isPlaying: false,
+            loadedSourceURL: nil
+        )
+
+        model.togglePlayback(for: job.id)
+
+        #expect(model.player.loadedJobID == job.id)
+        #expect(
+            model.player.loadedSourceURL ==
+                URL(string: "http://localhost:3000/audio/job-finished-final/final.mp3")
+        )
+        #expect(model.player.isPlaying)
+        #expect(model.player.duration == 42)
+    }
+
+    @Test
+    func reopeningEndedSessionAutoplaysWhenTheSourceWasCleared() {
+        let model = makeModel()
+        let job = makeJob(
+            id: "job-reopen-ended",
+            state: .ready,
+            playback: .final(
+                audioUrl: "/audio/job-reopen-ended/final.mp3",
+                durationSeconds: 84,
+                fileName: "Reopen ended.mp3"
+            ),
+            durationSeconds: 84
+        )
+        model.jobs = [job]
+        model.player.configurePreviewState(
+            jobID: job.id,
+            duration: nil,
+            currentTime: 0,
+            isPlaying: false,
+            loadedSourceURL: nil
+        )
+
+        model.openPlayer(for: job.id)
+
+        #expect(model.playerPresentation?.jobID == job.id)
+        #expect(
+            model.player.loadedSourceURL ==
+                URL(string: "http://localhost:3000/audio/job-reopen-ended/final.mp3")
+        )
+        #expect(model.player.isPlaying)
+    }
 }
 
 private extension AppModelAudioPlaybackSessionTests {
@@ -252,9 +631,44 @@ private extension AppModelAudioPlaybackSessionTests {
         playlistUrl: String? = nil,
         audioUrl: String? = nil,
         audioSegments: [AudioJob.Segment] = [],
-        durationSeconds: Double? = nil
+        durationSeconds: Double? = nil,
+        estimatedMinutes: Int = 1
     ) -> AudioJob {
-        AudioJob(
+        let resolvedPlaylistURL = playlistUrl ?? playback.playlistUrl
+        let resolvedAudioURL = audioUrl ?? playback.audioUrl
+        let resolvedDuration = durationSeconds ?? playback.durationSeconds ?? playback.availableDurationSeconds
+        let resolvedPlayback: AudioPlayback = {
+            switch playback.mode {
+            case .final:
+                guard let resolvedAudioURL else { return playback }
+                let retainedStream = resolvedPlaylistURL.map {
+                    AudioPlayback.StreamSource(
+                        playlistUrl: $0,
+                        availableDurationSeconds: resolvedDuration ?? 0,
+                        liveEdgeUpdatedAt: playback.liveEdgeUpdatedAt,
+                        isComplete: state == .ready || playback.isStreamComplete
+                    )
+                }
+                return .final(
+                    audioUrl: resolvedAudioURL,
+                    durationSeconds: resolvedDuration ?? 0,
+                    fileName: playback.fileName ?? "\(id).mp3",
+                    retainedStream: retainedStream ?? playback.stream
+                )
+            case .streaming:
+                guard let resolvedPlaylistURL else { return playback }
+                return .streaming(
+                    playlistUrl: resolvedPlaylistURL,
+                    availableDurationSeconds: playback.availableDurationSeconds ?? resolvedDuration ?? 0,
+                    liveEdgeUpdatedAt: playback.liveEdgeUpdatedAt,
+                    isComplete: playback.isStreamComplete
+                )
+            case .preparing, .failed:
+                return playback
+            }
+        }()
+
+        return AudioJob(
             id: id,
             status: legacyStatus(from: state),
             article: Article(
@@ -265,26 +679,25 @@ private extension AppModelAudioPlaybackSessionTests {
                 excerpt: nil,
                 textContent: "Body",
                 wordCount: 100,
-                estimatedMinutes: 1
+                estimatedMinutes: estimatedMinutes
             ),
             speechOptions: AudioJob.SpeechOptions(voice: "alloy"),
             provider: "openai",
-            audioUrl: audioUrl ?? playback.audioUrl,
+            audioUrl: resolvedAudioURL,
             audioDownloadPath: nil,
-            playlistUrl: playlistUrl ?? playback.playlistUrl,
+            playlistUrl: resolvedPlaylistURL,
             audioSegments: audioSegments,
-            durationSeconds: durationSeconds ?? playback.durationSeconds ?? playback.availableDurationSeconds,
-            error: playback.errorMessage,
+            durationSeconds: resolvedDuration,
+            error: resolvedPlayback.errorMessage,
             createdAt: .now,
             updatedAt: .now,
-            liveEdgeUpdatedAt: playback.liveEdgeUpdatedAt,
-            playback: playback,
+            liveEdgeUpdatedAt: resolvedPlayback.liveEdgeUpdatedAt,
+            playback: resolvedPlayback,
             progress: AudioJob.Progress(
                 chunksTotal: state == .ready ? audioSegments.count : nil,
                 chunksReady: audioSegments.count,
-                availableDurationSeconds: playback.availableDurationSeconds
-                    ?? durationSeconds
-                    ?? playback.durationSeconds
+                availableDurationSeconds: resolvedPlayback.availableDurationSeconds
+                    ?? resolvedDuration
                     ?? audioSegments.reduce(0) { $0 + $1.durationSeconds }
             )
         )

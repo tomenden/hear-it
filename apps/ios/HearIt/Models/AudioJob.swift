@@ -200,15 +200,15 @@ struct AudioJob: Codable, Hashable, Identifiable {
             article: article,
             speechOptions: speechOptions,
             provider: provider,
-            audioUrl: audioUrl ?? resolvedPlayback.audioUrl,
+            audioUrl: audioUrl ?? resolvedPlayback.final?.audioUrl,
             audioDownloadPath: audioDownloadPath,
-            playlistUrl: playlistUrl ?? resolvedPlayback.playlistUrl,
+            playlistUrl: playlistUrl ?? resolvedPlayback.stream?.playlistUrl,
             audioSegments: audioSegments,
-            durationSeconds: durationSeconds ?? resolvedPlayback.durationSeconds,
+            durationSeconds: durationSeconds ?? resolvedPlayback.final?.durationSeconds,
             error: error ?? resolvedPlayback.errorMessage,
             createdAt: createdAt,
             updatedAt: updatedAt,
-            liveEdgeUpdatedAt: liveEdgeUpdatedAt ?? resolvedPlayback.liveEdgeUpdatedAt,
+            liveEdgeUpdatedAt: liveEdgeUpdatedAt ?? resolvedPlayback.stream?.liveEdgeUpdatedAt,
             playback: resolvedPlayback,
             progress: resolvedProgress
         )
@@ -235,14 +235,22 @@ struct AudioJob: Codable, Hashable, Identifiable {
     }
 
     func playbackURL(relativeTo baseURL: URL) -> URL? {
-        switch playback.mode {
+        switch playback.preferredModeForNewSessions {
         case .final:
-            return HearItAPIClient.resolveURL(playback.audioUrl, relativeTo: baseURL)
-        case .streaming:
-            return HearItAPIClient.resolveURL(playback.playlistUrl, relativeTo: baseURL)
-        case .preparing, .failed:
+            return finalPlaybackURL(relativeTo: baseURL) ?? streamPlaybackURL(relativeTo: baseURL)
+        case .stream:
+            return streamPlaybackURL(relativeTo: baseURL) ?? finalPlaybackURL(relativeTo: baseURL)
+        case .none:
             return nil
         }
+    }
+
+    func streamPlaybackURL(relativeTo baseURL: URL) -> URL? {
+        HearItAPIClient.resolveURL(playback.stream?.playlistUrl ?? playlistUrl, relativeTo: baseURL)
+    }
+
+    func finalPlaybackURL(relativeTo baseURL: URL) -> URL? {
+        HearItAPIClient.resolveURL(playback.final?.audioUrl ?? audioUrl, relativeTo: baseURL)
     }
 
     func audioDownloadURL(relativeTo baseURL: URL) -> URL? {
@@ -311,35 +319,53 @@ private extension AudioJob {
         case .failed:
             return .failed(errorMessage: error ?? "Audio generation failed.")
         case .ready:
+            let resolvedDuration = durationSeconds ?? defaultDurationSeconds(from: audioSegments)
+            let streamSource = makeStreamSource(
+                state: state,
+                playlistUrl: playlistUrl,
+                liveEdgeUpdatedAt: liveEdgeUpdatedAt,
+                durationSeconds: resolvedDuration,
+                audioSegments: audioSegments
+            )
+
             if let audioUrl {
                 return .final(
                     audioUrl: audioUrl,
-                    durationSeconds: durationSeconds ?? defaultDurationSeconds(from: audioSegments),
-                    fileName: sanitizedFileName(from: title)
+                    durationSeconds: resolvedDuration,
+                    fileName: sanitizedFileName(from: title),
+                    retainedStream: streamSource
+                )
+            }
+
+            if let streamSource {
+                return AudioPlayback(
+                    preferredModeForNewSessions: .stream,
+                    isPlayable: true,
+                    stream: streamSource,
+                    final: nil,
+                    errorMessage: nil
                 )
             }
 
             return .preparing()
         case .processing:
-            if let playlistUrl, let liveEdgeUpdatedAt {
-                return .streaming(
-                    playlistUrl: playlistUrl,
-                    availableDurationSeconds: defaultAvailableDurationSeconds(
-                        state: state,
-                        durationSeconds: durationSeconds,
-                        audioSegments: audioSegments
-                    ),
-                    liveEdgeUpdatedAt: liveEdgeUpdatedAt
+            if let streamSource = makeStreamSource(
+                state: state,
+                playlistUrl: playlistUrl,
+                liveEdgeUpdatedAt: liveEdgeUpdatedAt,
+                durationSeconds: durationSeconds,
+                audioSegments: audioSegments
+            ) {
+                return AudioPlayback(
+                    preferredModeForNewSessions: .stream,
+                    isPlayable: true,
+                    stream: streamSource,
+                    final: nil,
+                    errorMessage: nil
                 )
             }
 
-            return .preparing(
-                availableDurationSeconds: defaultAvailableDurationSeconds(
-                    state: state,
-                    durationSeconds: durationSeconds,
-                    audioSegments: audioSegments
-                )
-            )
+            return .preparing()
         case .queued:
             return .preparing()
         }
@@ -353,7 +379,8 @@ private extension AudioJob {
     ) -> Progress {
         let chunksReady = audioSegments.count
         let chunksTotal: Int? = state == .ready ? chunksReady : nil
-        let availableDurationSeconds = playback.availableDurationSeconds
+        let availableDurationSeconds = playback.stream?.availableDurationSeconds
+            ?? playback.final?.durationSeconds
             ?? durationSeconds
             ?? defaultDurationSeconds(from: audioSegments)
 
@@ -361,6 +388,29 @@ private extension AudioJob {
             chunksTotal: chunksTotal,
             chunksReady: chunksReady,
             availableDurationSeconds: availableDurationSeconds
+        )
+    }
+
+    static func makeStreamSource(
+        state: State,
+        playlistUrl: String?,
+        liveEdgeUpdatedAt: String?,
+        durationSeconds: Double?,
+        audioSegments: [Segment]
+    ) -> AudioPlayback.StreamSource? {
+        guard let playlistUrl, let liveEdgeUpdatedAt else {
+            return nil
+        }
+
+        return AudioPlayback.StreamSource(
+            playlistUrl: playlistUrl,
+            availableDurationSeconds: defaultAvailableDurationSeconds(
+                state: state,
+                durationSeconds: durationSeconds,
+                audioSegments: audioSegments
+            ),
+            liveEdgeUpdatedAt: liveEdgeUpdatedAt,
+            isComplete: state == .ready
         )
     }
 

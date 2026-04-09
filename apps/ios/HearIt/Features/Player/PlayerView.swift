@@ -9,6 +9,7 @@ struct PlayerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var seekProgress = 0.0
+    @State private var isEditingSeek = false
     @State private var volume = 1.0
 
     private let playbackRates = [0.75, 1.0, 1.25, 1.5]
@@ -44,11 +45,10 @@ struct PlayerView: View {
         }
         .task(id: presentation.jobID) {
             model.preparePlayer(for: presentation.jobID)
-            seekProgress = model.player.progress
+            if let job = currentJob {
+                seekProgress = model.displayedTimelineProgress(for: job)
+            }
             volume = model.player.volume
-        }
-        .onChange(of: model.player.progress) { _, newValue in
-            seekProgress = newValue
         }
         .onChange(of: model.player.volume) { _, newValue in
             volume = newValue
@@ -105,7 +105,9 @@ struct PlayerView: View {
     }
 
     private func readyView(for job: AudioJob) -> some View {
-        VStack(spacing: 24) {
+        let advancedControlsEnabled = model.areAdvancedPlaybackControlsEnabled(for: job)
+
+        return VStack(spacing: 24) {
             RoundedRectangle(cornerRadius: 28)
                 .fill(AppTheme.Gradients.artwork)
                 .frame(maxWidth: .infinity)
@@ -143,11 +145,15 @@ struct PlayerView: View {
 
             VStack(spacing: 12) {
                 Slider(
-                    value: $seekProgress,
+                    value: seekBinding(for: job),
                     in: 0 ... 1,
                     onEditingChanged: { editing in
-                        if !editing {
-                            model.player.seek(toProgress: seekProgress)
+                        if editing {
+                            isEditingSeek = true
+                            seekProgress = model.displayedTimelineProgress(for: job)
+                        } else {
+                            isEditingSeek = false
+                            model.seekDisplayedTimeline(for: job, toProgress: seekProgress)
                         }
                     }
                 )
@@ -157,7 +163,7 @@ struct PlayerView: View {
                 HStack {
                     Text(Self.formatTime(model.player.currentTime))
                     Spacer()
-                    Text(Self.formatTime(model.displayedTotalDuration(for: job)))
+                    Text(displayedDurationLabel(for: job))
                 }
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(AppTheme.Colors.textSecondary)
@@ -171,7 +177,7 @@ struct PlayerView: View {
                 .tint(AppTheme.Colors.textPrimary)
 
                 Button(model.player.isPlaying ? "Pause" : "Play", systemImage: model.player.isPlaying ? "pause.fill" : "play.fill") {
-                    model.player.togglePlayback()
+                    model.togglePlayback(for: job.id)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(AppTheme.Colors.accentGreen)
@@ -181,6 +187,7 @@ struct PlayerView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(AppTheme.Colors.textPrimary)
+                .disabled(!advancedControlsEnabled)
             }
             .labelStyle(.titleAndIcon)
 
@@ -191,11 +198,13 @@ struct PlayerView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(model.player.playbackRate == rate ? AppTheme.Colors.accentGreen : AppTheme.Colors.textPrimary)
+                    .disabled(!advancedControlsEnabled)
                 }
             }
 
             VStack(spacing: 8) {
-                if model.isStreamingPlayback(for: job) {
+                let isStreamingSession = model.isStreamingPlaybackSession(for: job)
+                if isStreamingSession {
                     VStack(spacing: 6) {
                         Label("Playing the audio available so far", systemImage: "dot.radiowaves.left.and.right")
                             .font(.caption.weight(.semibold))
@@ -205,6 +214,13 @@ struct PlayerView: View {
                             .font(.caption)
                             .foregroundStyle(AppTheme.Colors.textSecondary)
                             .multilineTextAlignment(.center)
+
+                        if !advancedControlsEnabled {
+                            Text("Playback speed and quick-skip unlock when the full audio is ready.")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
                     }
                 } else {
                     Label("Ready", systemImage: "checkmark.circle")
@@ -233,6 +249,28 @@ struct PlayerView: View {
                     .foregroundStyle(AppTheme.Colors.textSecondary)
             }
         }
+    }
+
+    private func displayedDurationLabel(for job: AudioJob) -> String {
+        let formattedDuration = Self.formatTime(model.displayedTotalDuration(for: job))
+        if model.isUsingEstimatedTimelineEnvelope(for: job) {
+            return "~\(formattedDuration)"
+        }
+        return formattedDuration
+    }
+
+    private func seekBinding(for job: AudioJob) -> Binding<Double> {
+        Binding(
+            get: {
+                if isEditingSeek {
+                    return seekProgress
+                }
+                return model.displayedTimelineProgress(for: job)
+            },
+            set: { newValue in
+                seekProgress = newValue
+            }
+        )
     }
 
     @State private var waveformPhase: CGFloat = 0

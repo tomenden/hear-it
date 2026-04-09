@@ -65,7 +65,7 @@ export class ArticleTooLongError extends Error {
     },
   ) {
     super(
-      `This article is too long to narrate right now (${details.characterCount.toLocaleString()} characters, limit ${details.maxCharacterCount.toLocaleString()}). Try a shorter article.`,
+      `This article is too long to turn into audio right now (${details.characterCount.toLocaleString()} characters, limit ${details.maxCharacterCount.toLocaleString()}). Try a shorter article.`,
     );
     this.name = "ArticleTooLongError";
   }

@@ -72,6 +72,8 @@ export interface AudioRenderResult {
 export interface AudioSegment {
   url: string;
   durationSeconds: number;
+  sampleRateHz?: number;
+  channelCount?: number;
 }
 
 export interface AudioJob {
@@ -82,6 +84,7 @@ export interface AudioJob {
   speechScript?: string | null;
   availableDurationSeconds?: number | null;
   liveEdgeUpdatedAt?: string | null;
+  publishedChunkCount?: number | null;
   leaseOwner?: string | null;
   leaseExpiresAt?: string | null;
   runId?: string | null;

@@ -31,10 +31,11 @@ describe("mapJobToPlaybackDescriptor", () => {
     });
 
     expect(playback).toEqual({
-      mode: "preparing",
+      preferredModeForNewSessions: "none",
       isPlayable: false,
-      availableDurationSeconds: 0,
-      liveEdgeUpdatedAt: null,
+      stream: null,
+      final: null,
+      errorMessage: null,
     });
   });
 
@@ -51,10 +52,11 @@ describe("mapJobToPlaybackDescriptor", () => {
     });
 
     expect(playback).toEqual({
-      mode: "preparing",
+      preferredModeForNewSessions: "none",
       isPlayable: false,
-      availableDurationSeconds: 0,
-      liveEdgeUpdatedAt: "2026-04-05T12:30:00.000Z",
+      stream: null,
+      final: null,
+      errorMessage: null,
     });
   });
 
@@ -71,15 +73,20 @@ describe("mapJobToPlaybackDescriptor", () => {
     });
 
     expect(playback).toEqual({
-      mode: "streaming",
+      preferredModeForNewSessions: "stream",
       isPlayable: true,
-      playlistUrl: "https://example.com/live.m3u8",
-      availableDurationSeconds: 27,
-      liveEdgeUpdatedAt: "2026-04-04T20:30:00.000Z",
+      stream: {
+        playlistUrl: "https://example.com/live.m3u8",
+        availableDurationSeconds: 27,
+        liveEdgeUpdatedAt: "2026-04-04T20:30:00.000Z",
+        isComplete: false,
+      },
+      final: null,
+      errorMessage: null,
     });
   });
 
-  it("returns final when the final asset is present", () => {
+  it("returns final as the preferred source for new sessions while keeping a completed stream source available", () => {
     const playback = mapJobToPlaybackDescriptor({
       state: "completed",
       streamPlaylistUrl: "https://example.com/live.m3u8",
@@ -92,11 +99,20 @@ describe("mapJobToPlaybackDescriptor", () => {
     });
 
     expect(playback).toEqual({
-      mode: "final",
+      preferredModeForNewSessions: "final",
       isPlayable: true,
-      audioUrl: "https://cdn.example.com/final.mp3",
-      durationSeconds: 42,
-      fileName: "Example BestAudio.mp3",
+      stream: {
+        playlistUrl: "https://example.com/live.m3u8",
+        availableDurationSeconds: 42,
+        liveEdgeUpdatedAt: "2026-04-04T20:30:00.000Z",
+        isComplete: true,
+      },
+      final: {
+        audioUrl: "https://cdn.example.com/final.mp3",
+        durationSeconds: 42,
+        fileName: "Example BestAudio.mp3",
+      },
+      errorMessage: null,
     });
   });
 
@@ -112,8 +128,10 @@ describe("mapJobToPlaybackDescriptor", () => {
     });
 
     expect(playback).toEqual({
-      mode: "failed",
+      preferredModeForNewSessions: "none",
       isPlayable: false,
+      stream: null,
+      final: null,
       errorMessage: "Something went wrong.",
     });
   });
@@ -131,11 +149,15 @@ describe("mapJobToPlaybackDescriptor", () => {
     });
 
     expect(playback).toEqual({
-      mode: "final",
+      preferredModeForNewSessions: "final",
       isPlayable: true,
-      audioUrl: "https://cdn.example.com/final.mp3",
-      durationSeconds: 42,
-      fileName: "audio.mp3",
+      stream: null,
+      final: {
+        audioUrl: "https://cdn.example.com/final.mp3",
+        durationSeconds: 42,
+        fileName: "audio.mp3",
+      },
+      errorMessage: null,
     });
   });
 
@@ -152,10 +174,11 @@ describe("mapJobToPlaybackDescriptor", () => {
     });
 
     expect(playback).toEqual({
-      mode: "preparing",
+      preferredModeForNewSessions: "none",
       isPlayable: false,
-      availableDurationSeconds: 0,
-      liveEdgeUpdatedAt: null,
+      stream: null,
+      final: null,
+      errorMessage: null,
     });
   });
 });

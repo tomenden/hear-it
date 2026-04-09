@@ -6,7 +6,7 @@ import { trackEvent } from "./analytics.js";
 import type { ExtractArticleInput, ExtractedArticle } from "./types.js";
 
 const WORDS_PER_MINUTE = 160;
-export const MAX_NARRATION_CHARS = 100_000;
+export const MAX_AUDIO_CHARS = 100_000;
 const DEFAULT_ARTICLE_FETCH_TIMEOUT_MS = 15_000;
 const MIN_PARAGRAPH_LENGTH = 40;
 const BOILERPLATE_PATTERNS = [
@@ -65,7 +65,7 @@ export class ArticleTooLongError extends Error {
     },
   ) {
     super(
-      `This article is too long to narrate right now (${details.characterCount.toLocaleString()} characters, limit ${details.maxCharacterCount.toLocaleString()}). Try a shorter article.`,
+      `This article is too long to turn into audio right now (${details.characterCount.toLocaleString()} characters, limit ${details.maxCharacterCount.toLocaleString()}). Try a shorter article.`,
     );
     this.name = "ArticleTooLongError";
   }
@@ -102,7 +102,7 @@ export async function extractArticle(
   if (!bodyText) {
     const err = new Error("Failed to extract article content.");
     Sentry.captureException(err, { tags: { url: input.url } });
-    trackEvent("extraction_failed", {
+    trackEvent("audio_extraction_failed", {
       url: input.url,
       domain: safeHostname(input.url),
       error: err.message,
@@ -115,18 +115,18 @@ export async function extractArticle(
   const canonicalUrl = detectCanonicalUrl(document, input.url);
   const estimatedMinutes = Math.max(1, Math.ceil(wordCount / WORDS_PER_MINUTE));
 
-  if (textContent.length > MAX_NARRATION_CHARS) {
+  if (textContent.length > MAX_AUDIO_CHARS) {
     const details = {
       url: canonicalUrl,
       title,
       characterCount: textContent.length,
-      maxCharacterCount: MAX_NARRATION_CHARS,
+      maxCharacterCount: MAX_AUDIO_CHARS,
       wordCount,
       estimatedMinutes,
     };
 
     console.warn("[extractor] article_too_long", details);
-    Sentry.captureMessage("Article too long for narration", {
+    Sentry.captureMessage("Article too long for audio generation", {
       level: "warning",
       tags: {
         url: canonicalUrl,
@@ -134,7 +134,7 @@ export async function extractArticle(
       },
       extra: details,
     });
-    trackEvent("article_too_long", {
+    trackEvent("audio_article_too_long", {
       url: canonicalUrl,
       domain: safeHostname(canonicalUrl),
       title,
@@ -180,7 +180,7 @@ async function fetchHtml(url: string): Promise<string> {
         tags: { url, phase: "fetch_html" },
         extra: { timeoutMs },
       });
-      trackEvent("article_fetch_timeout", {
+      trackEvent("audio_article_fetch_timeout", {
         url,
         domain: safeHostname(url),
         timeout_ms: timeoutMs,

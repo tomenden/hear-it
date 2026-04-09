@@ -14,8 +14,43 @@ export interface ExtractedArticle {
   estimatedMinutes: number;
 }
 
+import type { InternalAudioState } from "./audio-playback.js";
+
 export interface SpeechOptions {
   voice: string;
+}
+
+export type SpeechChunkFormat = "wav" | "pcm" | "mp3";
+
+export interface SpeechChunkMedia {
+  audioData: Buffer;
+  format: SpeechChunkFormat;
+  contentType: string;
+  durationSeconds: number;
+  sampleRateHz: number;
+  channelCount: number;
+}
+
+export interface PackagerChunkMedia extends SpeechChunkMedia {
+  format: "mp3";
+  contentType: "audio/mpeg";
+}
+
+export interface SpeechScriptNormalization {
+  whitespaceCollapsed: number;
+  separatorsRemoved: number;
+  headingsLabeled: number;
+  captionsLabeled: number;
+  urlsHumanized: number;
+  titleFallbackUsed: boolean;
+}
+
+export interface SpeechScript {
+  displayTitle: string;
+  script: string;
+  speechScript: string;
+  speechScriptVersion: number;
+  normalization: SpeechScriptNormalization;
 }
 
 export type AudioJobStatus =
@@ -31,16 +66,29 @@ export interface AudioRenderResult {
   durationSeconds: number;
   audioData?: Buffer;
   contentType?: string;
+  chunkMedia?: PackagerChunkMedia;
 }
 
 export interface AudioSegment {
   url: string;
   durationSeconds: number;
+  sampleRateHz?: number;
+  channelCount?: number;
 }
 
 export interface AudioJob {
   id: string;
   status: AudioJobStatus;
+  internalState?: InternalAudioState | null;
+  displayTitle?: string | null;
+  speechScript?: string | null;
+  availableDurationSeconds?: number | null;
+  liveEdgeUpdatedAt?: string | null;
+  publishedChunkCount?: number | null;
+  leaseOwner?: string | null;
+  leaseExpiresAt?: string | null;
+  runId?: string | null;
+  attempt?: number | null;
   article: ExtractedArticle;
   speechOptions: SpeechOptions;
   provider: string;

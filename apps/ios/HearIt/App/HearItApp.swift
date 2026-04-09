@@ -21,7 +21,7 @@ struct HearItApp: App {
                 options.beforeSend = { event in
                     if let exceptions = event.exceptions,
                        exceptions.contains(where: { ex in
-                           let msg = ex.value ?? ""
+                           let msg = ex.value
                            return msg.contains("fetch failed") ||
                                   msg.contains("network connection was lost") ||
                                   msg.contains("timed out") ||

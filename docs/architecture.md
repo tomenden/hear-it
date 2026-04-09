@@ -1,174 +1,102 @@
-# Hear It Architecture
+# Hear It System Overview
 
-## User Problem
+Hear It turns long-form web articles into spoken audio that can start playing before generation finishes and continue smoothly after the final asset is ready.
 
-People discover articles when they cannot or should not read them, especially while commuting. Most blogs do not provide clean audio, and browser reader modes are inconsistent.
+This document is the entry point for the current architecture. It stays intentionally high level and links to the focused docs for the details.
 
-## Product Hypothesis
+## Design Goals
 
-If sharing a URL to an app reliably produces high-quality spoken audio from the article body, users will treat it like "save to podcast."
+- start playback quickly without mid-listen starvation
+- keep completed playback simple, stable, and friendly to repeat on-device listening
+- preserve flexibility to switch speech providers later
+- keep product-facing concepts simpler than backend internals
+- stay cheap enough for day 1 while leaving a clean path to grow
 
-## Core Workflow
+## Document Map
 
-1. User taps `Share` on an article URL.
-2. iOS share extension hands the URL to Hear It.
-3. Hear It creates an ingestion job.
-4. Backend fetches the page and extracts the readable article.
-5. Backend normalizes the text for narration.
-6. Backend generates audio through a speech provider.
-7. Main app shows progress and plays the result.
+- [Ubiquitous Language](./ubiquitous-language.md)
+- [Audio Pipeline Architecture](./audio-pipeline-architecture.md)
+- [Streaming Playback Contract](./streaming-playback-contract.md)
+- [Design Spec: 2026-04-04 Audio Pipeline Redesign](./superpowers/specs/2026-04-04-audio-pipeline-redesign-design.md)
 
-## System Components
+## System At A Glance
 
-### 1. iOS App
+```mermaid
+flowchart LR
+    A["iOS App"] --> B["API Runtime"]
+    B --> C["Job pipeline role"]
+    B --> D["Supabase Auth"]
+    C --> E["Postgres"]
+    C --> F["Speech Provider"]
+    C --> G["ffmpeg"]
+    C --> H["Supabase Storage"]
+    C --> I["Maintenance loop"]
+    A --> H
+```
 
-Responsibilities:
+## Core Runtime Pieces
 
-- queue and library UI
-- audio playback
-- progress display
-- retry and error recovery
-- optional article preview
+### iOS App
 
-Likely stack:
+- submits and polls audio jobs
+- streams in-progress audio over HLS
+- plays completed audio from the canonical final MP3
+- keeps a local file copy as a silent optimization only
 
-- SwiftUI
-- AVFoundation / AVAudioSession
-- Background audio support
+### API Runtime
 
-### 2. iOS Share Extension
+- accepts job creation requests
+- returns job status plus playback descriptors
+- exposes a product-facing contract that hides backend plumbing
+- exposes both stream and final playback sources when a completed job still needs to honor pinned HLS sessions
+- currently kicks off job processing in-process after job creation
+- currently runs maintenance in the same Node runtime on the production entrypoint
 
-Responsibilities:
+### Job Pipeline Role
 
-- receive shared URLs
-- validate supported schemes
-- create a queue item fast
-- transfer control back to the main app
+- normalizes extracted text into a speech script
+- chunks text semantically
+- synthesizes speech with bounded parallelism
+- packages in-progress HLS and the final MP3
+- owns retries, recovery, and maintenance loops in v1
 
-Design rule:
+Today this role runs in the same Node service as the HTTP API. The code keeps the responsibilities separated so they can move into a dedicated worker deployment later.
 
-Keep it minimal. Share extensions are not the place to do network-heavy parsing or long TTS jobs.
+### Postgres
 
-### 3. API Service
+- canonical job state
+- job events timeline
+- worker leases, retries, and coordination state
 
-Responsibilities:
+### Supabase Storage
 
-- fetch page HTML
-- run article extraction
-- clean text for narration
-- create audio jobs
-- expose job status and playback metadata
+- temporary HLS playlists and segments
+- canonical completed MP3
+- simple public URL delivery for day 1
 
-This repo starts here.
+## Product Rules That Shape The Architecture
 
-### 4. Future Worker
+- processing playback uses real HLS
+- completed playback uses a canonical final MP3
+- active playback sessions never switch from HLS to MP3 mid-session
+- completed jobs may expose both retained HLS and final MP3 at the same time
+- the app distinguishes `what a new session should load` from `what the current session is already pinned to`
+- HLS publishing is append-only once playback becomes available
+- HLS stays available for 6 hours after completion
+- playback only becomes available after a real startup buffer exists
+- local device storage is not a user-facing state
 
-Responsibilities:
+## Day 1 Infrastructure
 
-- speech generation
-- retries
-- provider failover
-- caching rendered audio
+- Render Hobby workspace
+- one Starter web service for the API
+- one Starter background worker for speech generation and packaging once we split deployment
+- Supabase Free for Postgres and Storage
+- OpenAI as the primary speech provider behind a provider abstraction
 
-## Extraction Strategy
+## Deferred Decisions
 
-Target result:
-
-- page title
-- byline when available
-- site name
-- main article text
-- normalized speaking text
-
-Approach:
-
-1. Fetch raw HTML.
-2. Parse DOM in a headless-safe environment.
-3. Use a readability-style extractor as the first pass.
-4. Fall back to metadata and heuristic paragraph extraction when needed.
-5. Normalize whitespace and remove boilerplate fragments.
-
-## TTS Strategy
-
-Use a provider abstraction from the beginning. The app should not care whether speech comes from OpenAI, ElevenLabs, or a local engine later.
-
-Provider contract:
-
-- input: cleaned text plus voice settings
-- output: audio file URL, duration, provider metadata
-
-## Risks
-
-### Extraction Quality
-
-Some sites break readability parsers, render content client-side, or interleave newsletter/signup blocks with content.
-
-Mitigation:
-
-- keep raw extraction metadata
-- store fallback signals
-- add domain-specific overrides later
-
-### Cost
-
-Long articles can be expensive to synthesize.
-
-Mitigation:
-
-- cap free article length
-- chunk text
-- cache audio by canonical URL and voice
-
-### Copyright / Terms
-
-Some sites may disallow automated fetching or derivative audio generation.
-
-Mitigation:
-
-- respect robots and publisher rules where required by product policy
-- keep support initially focused on standard public blog/article pages
-
-## MVP API Surface
-
-### `POST /api/extract`
-
-Input:
-
-- `url`
-- optional `html`
-
-Output:
-
-- canonical URL
-- title
-- byline
-- site name
-- excerpt
-- article text
-- estimated speaking minutes
-
-### Future Endpoints
-
-- `POST /api/jobs`
-- `GET /api/jobs/:id`
-- `GET /api/feed`
-- `POST /api/tts/preview`
-
-## Delivery Plan
-
-### Phase 1
-
-- extraction API
-- tests with representative HTML fixtures
-
-### Phase 2
-
-- TTS provider abstraction
-- audio job model
-- storage contract
-
-### Phase 3
-
-- SwiftUI app
-- share extension
-- playback queue
+- whether to add a user-facing offline/download feature
+- whether to move maintenance from the worker interval to Render Cron
+- when to add a second speech provider or local TTS adapter
+- when to move from Supabase Free to a paid plan

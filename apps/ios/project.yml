@@ -114,6 +114,8 @@ targets:
       path: HearItShareExtension/Info.plist
       properties:
         CFBundleDisplayName: Hear It
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionAttributes:
             NSExtensionActivationRule:

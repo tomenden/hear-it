@@ -12,7 +12,7 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: AppTheme.Layout.sectionSpacing) {
                     header
                     inputCard
-                    narrationButton
+                    audioButton
                     featureList
                 }
                 .padding(.horizontal, AppTheme.Layout.screenPadding)
@@ -55,7 +55,7 @@ struct HomeView: View {
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(AppTheme.Colors.textSecondary)
 
-            Text("Paste a link below and let AI narrate it for you — hands-free reading, anywhere.")
+            Text("Paste a link below and Hear It turns it into natural audio built for hands-free reading.")
                 .font(.system(size: 14))
                 .foregroundStyle(AppTheme.Colors.textTertiary)
                 .lineSpacing(4)
@@ -92,6 +92,9 @@ struct HomeView: View {
                     .foregroundStyle(AppTheme.Colors.textPrimary)
                     .tint(AppTheme.Colors.accentGreen)
                     .padding(.horizontal, 16)
+                    .onChange(of: model.urlInput) { _, _ in
+                        model.invalidatePreviewIfNeededForCurrentURL()
+                    }
             }
             .frame(minHeight: AppTheme.Layout.controlHeight)
             .background(
@@ -117,14 +120,14 @@ struct HomeView: View {
         .background(cardBackground)
     }
 
-    private var narrationButton: some View {
+    private var audioButton: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button {
                 Task {
-                    await model.createNarration()
+                    await model.createAudio()
                 }
             } label: {
-                Label(model.isCreatingNarration ? "Creating…" : "Start Listening", systemImage: "play.fill")
+                Label(model.isCreatingAudio ? "Creating audio…" : "Create Audio", systemImage: "play.fill")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(Color.white)
                     .frame(maxWidth: .infinity, minHeight: 56)
@@ -135,7 +138,7 @@ struct HomeView: View {
                     .fill(AppTheme.Colors.accentGreen)
                     .shadow(color: AppTheme.Colors.accentGreen.opacity(0.12), radius: 8, y: 2)
             )
-            .disabled(model.isCreatingNarration)
+            .disabled(model.isCreatingAudio)
 
             if let message = model.homeMessage {
                 Text(message.text)
@@ -149,22 +152,22 @@ struct HomeView: View {
     private var featureList: some View {
         VStack(alignment: .leading, spacing: 14) {
             FeatureHighlightRow(
-                title: "Natural AI Voices",
-                subtitle: "Powered by OpenAI — sounds like a real narrator.",
+                title: "Natural Voices",
+                subtitle: "Choose a voice that makes long reads easy to stay with.",
                 color: AppTheme.Colors.accentGreenLight,
                 icon: "waveform.badge.mic"
             )
 
             FeatureHighlightRow(
-                title: "Listen Anywhere",
-                subtitle: "Save articles to your library for offline listening.",
+                title: "Smooth Start",
+                subtitle: "Hear It waits for a real listening buffer before playback begins.",
                 color: AppTheme.Colors.featureCoralBg,
                 icon: "headphones"
             )
 
             FeatureHighlightRow(
-                title: "Instant Conversion",
-                subtitle: "Paste a URL and get audio in under 30 seconds.",
+                title: "Come Back Anytime",
+                subtitle: "Finished audio stays in your library so it is easy to revisit later.",
                 color: AppTheme.Colors.featureWarmBg,
                 icon: "bolt.fill"
             )

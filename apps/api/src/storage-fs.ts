@@ -1,9 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { access, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
+import type { JobLeaseClaim } from "./job-events.js";
 import type { AudioJob } from "./types.js";
-import type { AudioStore, AudioStorePutOptions, JobStore } from "./storage.js";
+import type {
+  AudioStore,
+  AudioStorePutOptions,
+  ExpiredLeaseSnapshot,
+  JobOwnership,
+  JobStore,
+  ObservedJobLeaseSnapshot,
+} from "./storage.js";
 
 // ---------------------------------------------------------------------------
 // File-system JobStore  (same behaviour as before — JSON file on disk)
@@ -12,6 +20,11 @@ import type { AudioStore, AudioStorePutOptions, JobStore } from "./storage.js";
 export class FileJobStore implements JobStore {
   private readonly jobs = new Map<string, AudioJob>();
   private readonly filePath: string;
+  private maintenanceLease: {
+    leaseOwner: string;
+    leaseExpiresAt: string;
+    leaseName: string;
+  } | null = null;
 
   constructor(filePath?: string) {
     this.filePath = resolve(
@@ -62,7 +75,7 @@ export class FileJobStore implements JobStore {
     await this.persist();
   }
 
-  async claimQueued(jobId: string): Promise<AudioJob | null> {
+  async claimQueued(jobId: string, lease?: JobLeaseClaim): Promise<AudioJob | null> {
     const existing = this.jobs.get(jobId);
     if (!existing) return null;
     if (existing.status !== "queued") return null;
@@ -70,6 +83,10 @@ export class FileJobStore implements JobStore {
     const claimed = {
       ...existing,
       status: "processing" as const,
+      leaseOwner: lease?.leaseOwner ?? null,
+      leaseExpiresAt: lease?.leaseExpiresAt ?? null,
+      runId: lease?.runId ?? null,
+      attempt: lease?.attempt ?? existing.attempt ?? 1,
       updatedAt: new Date().toISOString(),
     };
     this.jobs.set(jobId, claimed);
@@ -81,6 +98,93 @@ export class FileJobStore implements JobStore {
     const existing = this.jobs.get(jobId);
     if (!existing) return false;
     this.jobs.set(jobId, { ...existing, ...patch, updatedAt: new Date().toISOString() });
+    await this.persist();
+    return true;
+  }
+
+  async updateOwned(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    ownership: JobOwnership,
+  ): Promise<boolean> {
+    const now = new Date().toISOString();
+    const existing = this.jobs.get(jobId);
+    if (!existing) return false;
+    if (
+      existing.leaseOwner !== ownership.leaseOwner ||
+      existing.runId !== ownership.runId ||
+      !existing.leaseExpiresAt ||
+      existing.leaseExpiresAt <= now
+    ) {
+      return false;
+    }
+
+    this.jobs.set(jobId, {
+      ...existing,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    });
+    await this.persist();
+    return true;
+  }
+
+  async updateIfLeaseSnapshotMatches(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    snapshot: ObservedJobLeaseSnapshot,
+  ): Promise<boolean> {
+    const existing = this.jobs.get(jobId);
+    if (!existing) {
+      return false;
+    }
+
+    if (
+      existing.status !== snapshot.status ||
+      existing.leaseOwner !== snapshot.leaseOwner ||
+      existing.leaseExpiresAt !== snapshot.leaseExpiresAt ||
+      existing.runId !== snapshot.runId
+    ) {
+      return false;
+    }
+
+    this.jobs.set(jobId, {
+      ...existing,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    });
+    await this.persist();
+    return true;
+  }
+
+  async requeueExpiredLease(
+    jobId: string,
+    snapshot: ExpiredLeaseSnapshot,
+  ): Promise<boolean> {
+    const existing = this.jobs.get(jobId);
+    if (!existing || existing.status !== "processing") {
+      return false;
+    }
+
+    if (
+      existing.leaseOwner !== snapshot.leaseOwner ||
+      existing.runId !== snapshot.runId ||
+      existing.leaseExpiresAt !== snapshot.leaseExpiresAt ||
+      !existing.leaseExpiresAt ||
+      existing.leaseExpiresAt > snapshot.now
+    ) {
+      return false;
+    }
+
+    this.jobs.set(jobId, {
+      ...existing,
+      status: "queued",
+      internalState: "queued",
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      runId: null,
+      error: "Job re-queued after lease expiry.",
+      updatedAt: snapshot.now,
+    });
     await this.persist();
     return true;
   }
@@ -112,6 +216,62 @@ export class FileJobStore implements JobStore {
     const job = this.jobs.get(jobId);
     if (!job || job.userId !== userId) return false;
     this.jobs.delete(jobId);
+    await this.persist();
+    return true;
+  }
+
+  async claimMaintenanceLease(
+    leaseOwner: string,
+    leaseExpiresAt: string,
+    leaseName = "maintenance",
+  ): Promise<boolean> {
+    const currentLease = this.maintenanceLease;
+    if (
+      currentLease &&
+      currentLease.leaseName === leaseName &&
+      currentLease.leaseOwner !== leaseOwner &&
+      currentLease.leaseExpiresAt > new Date().toISOString()
+    ) {
+      return false;
+    }
+
+    this.maintenanceLease = {
+      leaseOwner,
+      leaseExpiresAt,
+      leaseName,
+    };
+    return true;
+  }
+
+  async heartbeat(
+    jobId: string,
+    leaseOwner: string,
+    leaseExpiresAt: string,
+    runId: string,
+  ): Promise<boolean> {
+    const now = new Date().toISOString();
+    const existing = this.jobs.get(jobId);
+    if (!existing || existing.status !== "processing") {
+      return false;
+    }
+
+    if (
+      existing.leaseOwner !== leaseOwner ||
+      existing.runId !== runId ||
+      !existing.leaseExpiresAt ||
+      existing.leaseExpiresAt <= now
+    ) {
+      return false;
+    }
+
+    this.jobs.set(jobId, {
+      ...existing,
+      leaseExpiresAt:
+        existing.leaseExpiresAt > leaseExpiresAt
+          ? existing.leaseExpiresAt
+          : leaseExpiresAt,
+      updatedAt: new Date().toISOString(),
+    });
     await this.persist();
     return true;
   }
@@ -170,11 +330,34 @@ export class FileAudioStore implements AudioStore {
     }
   }
 
+  async get(key: string): Promise<Buffer | null> {
+    try {
+      return await readFile(join(this.outputDir, key));
+    } catch (error) {
+      const code =
+        error instanceof Error && "code" in error
+          ? (error as NodeJS.ErrnoException).code
+          : null;
+      if (code === "ENOENT") {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   async delete(key: string): Promise<void> {
     try {
       await unlink(join(this.outputDir, key));
     } catch {
       // Ignore — file may already be gone.
+    }
+  }
+
+  async deletePrefix(prefix: string): Promise<void> {
+    try {
+      await rm(join(this.outputDir, prefix), { recursive: true, force: true });
+    } catch {
+      // Ignore — directory may already be gone.
     }
   }
 

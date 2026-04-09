@@ -1,7 +1,7 @@
 const VOICE_TONES = {
   alloy: "Balanced and calm for long-form listening.",
   ash: "Clear and measured with a steady delivery.",
-  sage: "Warm and conversational for softer narration.",
+  sage: "Warm and conversational for softer delivery.",
   verse: "Brighter and more energetic for quick reads.",
 };
 
@@ -149,11 +149,12 @@ async function refreshJobs() {
     const signature = JSON.stringify(
       jobs.map((job) => ({
         id: job.id,
-        status: job.status,
+        state: job.state,
+        playbackMode: job.playback?.preferredModeForNewSessions,
+        playable: job.playback?.isPlayable,
         updatedAt: job.updatedAt,
-        audioDownloadPath: job.audioDownloadPath,
-        error: job.error,
-        voice: job.speechOptions?.voice,
+        error: job.playback?.errorMessage,
+        voice: job.voice,
       })),
     );
 
@@ -207,7 +208,7 @@ async function createJob({ navigateToPlayer }) {
     const createdJob = payload.job;
     state.selectedJobId = createdJob.id;
     elements.urlInput.value = "";
-    setMessage("Job queued. Polling for narration status...", false);
+    setMessage("Job queued. Polling for audio status...", false);
     await refreshJobs();
     if (navigateToPlayer) {
       setActiveTab("player");
@@ -282,7 +283,7 @@ function renderVoiceSamples() {
     const player = node.querySelector(".voice-preview-player");
 
     name.textContent = capitalize(voice);
-    tone.textContent = VOICE_TONES[voice] || "OpenAI-supported narration voice.";
+    tone.textContent = VOICE_TONES[voice] || "OpenAI-supported audio voice.";
     useButton.classList.toggle("voice-selected", voice === state.selectedVoice);
     useButton.textContent = voice === state.selectedVoice ? "Selected" : "Use";
 
@@ -327,15 +328,15 @@ function renderVoiceSamples() {
 function renderHomeSnapshot() {
   const jobs = state.jobs.slice(0, 3);
   if (!jobs.length) {
-    renderEmptyState(elements.homeSnapshot, "No jobs yet. Create your first narration from the card above.");
+    renderEmptyState(elements.homeSnapshot, "No jobs yet. Create your first audio from the card above.");
     return;
   }
 
   const fragment = document.createDocumentFragment();
   for (const job of jobs) {
     const node = elements.snapshotTemplate.content.firstElementChild.cloneNode(true);
-    node.querySelector(".snapshot-status").textContent = humanizeStatus(job.status);
-    node.querySelector(".snapshot-title").textContent = job.article.title || "Untitled article";
+    node.querySelector(".snapshot-status").textContent = humanizeStatus(job.state);
+    node.querySelector(".snapshot-title").textContent = job.title || "Untitled article";
     node.querySelector(".snapshot-open").addEventListener("click", () => openJob(job.id));
     fragment.appendChild(node);
   }
@@ -347,7 +348,7 @@ function renderLibrary() {
   renderStats();
 
   if (!state.jobs.length) {
-    renderEmptyState(elements.jobsList, "No narrations yet. Start one from the Home tab.");
+    renderEmptyState(elements.jobsList, "No audio yet. Start one from the Home tab.");
     return;
   }
 
@@ -366,21 +367,21 @@ function renderLibrary() {
     const variationSelect = node.querySelector(".job-voice-select");
     const variationButton = node.querySelector(".job-variation-button");
 
-    status.textContent = humanizeStatus(job.status);
-    status.dataset.status = job.status;
-    title.textContent = job.article.title || "Untitled article";
+    status.textContent = humanizeStatus(job.state);
+    status.dataset.status = job.state;
+    title.textContent = job.title || "Untitled article";
     meta.textContent = [
       job.article.siteName,
-      job.speechOptions.voice,
+      capitalize(job.voice),
       `${job.article.estimatedMinutes} min`,
       formatTimestamp(job.createdAt),
     ]
       .filter(Boolean)
       .join("  •  ");
-    excerpt.textContent = job.article.excerpt || job.article.textContent.slice(0, 160);
+    excerpt.textContent = job.article.excerpt || "No summary available.";
     note.textContent = buildStatusMessage(job);
 
-    const audioSource = resolveNarrationAudioSource(job);
+    const audioSource = resolvePlaybackAudioSource(job);
 
     if (audioSource) {
       audioLink.hidden = false;
@@ -399,7 +400,7 @@ function renderLibrary() {
 
     openPlayerButton.addEventListener("click", () => openJob(job.id));
 
-    syncVoiceSelectOptions(variationSelect, job.speechOptions.voice);
+    syncVoiceSelectOptions(variationSelect, job.voice);
     variationButton.addEventListener("click", async () => {
       variationButton.disabled = true;
       try {
@@ -419,7 +420,7 @@ function renderLibrary() {
 
 function renderStats() {
   const totalJobs = state.jobs.length;
-  const readyJobs = state.jobs.filter((job) => job.status === "completed").length;
+  const readyJobs = state.jobs.filter((job) => job.state === "ready").length;
   const totalMinutes = state.jobs.reduce((sum, job) => sum + (job.article.estimatedMinutes || 0), 0);
 
   elements.statTotal.textContent = String(totalJobs);
@@ -443,26 +444,27 @@ function renderPlayer() {
 
   elements.playerOpenLinkButton.disabled = false;
 
-  const source = resolveNarrationAudioSource(job);
+  const source = resolvePlaybackAudioSource(job);
+  const isPlayable = Boolean(job.playback?.isPlayable && source);
 
-  if (job.status !== "completed" || !source) {
+  if (!isPlayable) {
     elements.playerProcessingView.hidden = false;
     elements.processingTitle.textContent =
-      job.status === "failed" ? "Narration failed" : "Generating narration...";
+      job.state === "failed" ? "Audio failed" : "Generating audio...";
     elements.processingSubtitle.textContent =
-      job.status === "failed"
-        ? job.error || "This job failed before audio was generated."
-        : `${job.article.title || "Current article"} is still ${humanizeStatus(job.status).toLowerCase()}.`;
+      job.state === "failed"
+        ? job.playback.errorMessage || "This job failed before audio was generated."
+        : `${job.title || "Current article"} is still ${humanizeStatus(job.state).toLowerCase()}.`;
     detachAudioSource();
     return;
   }
 
   elements.playerReadyView.hidden = false;
-  elements.playerTitle.textContent = job.article.title || "Untitled article";
+  elements.playerTitle.textContent = job.title || "Untitled article";
   elements.playerSource.textContent = [job.article.siteName, `${job.article.estimatedMinutes} min read`]
     .filter(Boolean)
     .join("  •  ");
-  elements.playerVoice.textContent = `Narrated by ${capitalize(job.speechOptions.voice)}`;
+  elements.playerVoice.textContent = `Voice: ${capitalize(job.voice)}`;
 
   if (elements.playerAudio.dataset.jobId !== job.id) {
     elements.playerAudio.src = source;
@@ -507,16 +509,28 @@ function setMessage(text, isError) {
 function setLoading(isLoading) {
   elements.submitButton.disabled = isLoading;
   elements.voiceCreateButton.disabled = isLoading;
-  elements.submitButton.textContent = isLoading ? "Creating..." : "Start Narrating";
-  elements.voiceCreateButton.textContent = isLoading ? "Creating..." : "Create Narration";
+  elements.submitButton.textContent = isLoading ? "Creating..." : "Create Audio";
+  elements.voiceCreateButton.textContent = isLoading ? "Creating..." : "Create Audio";
 }
 
 function syncVoiceSummary() {
   elements.selectedVoiceLabel.textContent = state.selectedVoice;
 }
 
-function resolveNarrationAudioSource(job) {
-  return job.audioDownloadPath || job.audioUrl || job.playlistUrl || null;
+function resolvePlaybackAudioSource(job) {
+  if (!job.playback?.isPlayable) {
+    return null;
+  }
+
+  if (job.playback?.final?.audioUrl) {
+    return job.playback.final.audioUrl;
+  }
+
+  if (job.playback?.stream?.playlistUrl) {
+    return job.playback.stream.playlistUrl;
+  }
+
+  return null;
 }
 
 function syncVoiceSelectOptions(select, selectedValue) {
@@ -656,16 +670,20 @@ function detachAudioSource() {
 }
 
 function buildStatusMessage(job) {
-  if (job.status === "processing") {
+  if (job.playback?.preferredModeForNewSessions === "stream" && job.playback?.stream) {
+    return "Streaming playback is ready while the rest of the audio finishes.";
+  }
+
+  if (job.state === "processing") {
     return "Generating audio. This can take a moment for longer articles.";
   }
 
-  if (job.status === "queued") {
+  if (job.state === "queued") {
     return "Queued for audio generation.";
   }
 
-  if (job.status === "failed") {
-    return job.error || "Audio generation failed.";
+  if (job.state === "failed") {
+    return job.playback?.errorMessage || "Audio generation failed.";
   }
 
   return "Ready to play.";

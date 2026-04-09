@@ -71,6 +71,28 @@ export class SupabaseAudioStore implements AudioStore {
     }
   }
 
+  async get(key: string): Promise<Buffer | null> {
+    const { data, error } = await this.bucketClient().download(key);
+    if (error) {
+      const statusCode =
+        typeof error === "object" && error !== null && "statusCode" in error
+          ? String((error as { statusCode?: string | number }).statusCode)
+          : null;
+      if (statusCode === "404") {
+        return null;
+      }
+
+      captureStorageFailure("supabase_get", error, { bucket: this.bucket, key });
+      throw error;
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    return Buffer.from(await data.arrayBuffer());
+  }
+
   async delete(key: string): Promise<void> {
     const { error } = await this.bucketClient().remove([key]);
     if (error) {
@@ -79,8 +101,66 @@ export class SupabaseAudioStore implements AudioStore {
     }
   }
 
+  async deletePrefix(prefix: string): Promise<void> {
+    const directory = prefix.replace(/\/+$/, "");
+    const keys = await this.collectPrefixKeys(directory);
+
+    if (keys.length === 0) {
+      return;
+    }
+
+    const { error: removeError } = await this.bucketClient().remove(keys);
+    if (removeError) {
+      captureStorageFailure("supabase_delete_prefix", removeError, {
+        bucket: this.bucket,
+        prefix: directory,
+        keys,
+      });
+      throw removeError;
+    }
+  }
+
   private bucketClient() {
     return this.client.storage.from(this.bucket);
+  }
+
+  private async collectPrefixKeys(prefix: string): Promise<string[]> {
+    const keys: string[] = [];
+    let offset = 0;
+
+    while (true) {
+      const { data, error } = await this.bucketClient().list(prefix, { limit: 100, offset });
+      if (error) {
+        captureStorageFailure("supabase_delete_prefix", error, {
+          bucket: this.bucket,
+          prefix,
+        });
+        throw error;
+      }
+
+      const entries = data ?? [];
+      for (const entry of entries) {
+        if (!entry.name) {
+          continue;
+        }
+
+        const key = `${prefix}/${entry.name}`;
+        const isFolder = entry.id === null || entry.metadata === null;
+        if (isFolder) {
+          keys.push(...(await this.collectPrefixKeys(key)));
+        } else {
+          keys.push(key);
+        }
+      }
+
+      if (entries.length < 100) {
+        break;
+      }
+
+      offset += entries.length;
+    }
+
+    return keys;
   }
 
   private publicUrl(key: string): string {

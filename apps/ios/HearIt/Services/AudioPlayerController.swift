@@ -21,6 +21,14 @@ final class AudioPlayerController {
     @ObservationIgnored private let previewMode: Bool
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var playbackEndedObserver: NSObjectProtocol?
+    @ObservationIgnored private var seekOnReadyTask: Task<Void, Never>?
+    @ObservationIgnored private var isSeeking = false
+    @ObservationIgnored private var pendingStreamContinuation = false
+    @ObservationIgnored private var pendingStreamContinuationSourceURL: URL?
+    #if DEBUG
+    @ObservationIgnored private var lastObservedCurrentTime: Double?
+    @ObservationIgnored private var lastObservedDuration: Double?
+    #endif
 
     init(previewMode: Bool = false) {
         self.previewMode = previewMode
@@ -35,7 +43,7 @@ final class AudioPlayerController {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.isPlaying = false
+                self?.handlePlaybackItemDidReachEnd()
             }
         }
     }
@@ -52,29 +60,51 @@ final class AudioPlayerController {
 
     func load(url: URL, for jobID: String, knownDuration: Double? = nil) {
         guard loadedJobID != jobID || loadedSourceURL != url else {
-            // Already loaded — just update duration if we have a better value
-            if let knownDuration, knownDuration > 0, duration == nil {
+            // Already loaded — keep the seek range in sync as processing playlists grow.
+            if let knownDuration, knownDuration > 0 {
                 duration = knownDuration
             }
             return
         }
 
+        seekOnReadyTask?.cancel()
+        let targetTime = savedPosition(for: jobID)   // read once — before the task races with the time observer
         loadedJobID = jobID
         loadedSourceURL = url
-        currentTime = 0
+        pendingStreamContinuation = false
+        pendingStreamContinuationSourceURL = nil
+        currentTime = targetTime
         duration = knownDuration
         isPlaying = false
+        isSeeking = true
+        #if DEBUG
+        lastObservedCurrentTime = nil
+        lastObservedDuration = knownDuration
+        print("[HearIt][Player] load — job=\(jobID) source=\(url.lastPathComponent) knownDuration=\(knownDuration.map { String(format: "%.3f", $0) } ?? "nil") targetTime=\(String(format: "%.3f", targetTime))")
+        #endif
         guard !previewMode else { return }
-        player.replaceCurrentItem(with: AVPlayerItem(url: url))
-        player.seek(to: .zero)
+
+        let item = AVPlayerItem(url: url)
+        player.replaceCurrentItem(with: item)
+        seekOnReadyTask = Task { [weak self] in
+            await self?.seekWhenReady(item: item, to: targetTime)
+        }
     }
 
     func unload() {
+        seekOnReadyTask?.cancel()
         loadedJobID = nil
         loadedSourceURL = nil
+        pendingStreamContinuation = false
+        pendingStreamContinuationSourceURL = nil
         currentTime = 0
         duration = nil
         isPlaying = false
+        #if DEBUG
+        lastObservedCurrentTime = nil
+        lastObservedDuration = nil
+        print("[HearIt][Player] unload")
+        #endif
         guard !previewMode else { return }
         player.pause()
         player.replaceCurrentItem(with: nil)
@@ -82,12 +112,92 @@ final class AudioPlayerController {
 
     func updateKnownDuration(_ knownDuration: Double?) {
         guard let knownDuration, knownDuration > 0 else { return }
+        #if DEBUG
+        if let previous = duration, abs(previous - knownDuration) > 0.5 {
+            print("[HearIt][Player] updateKnownDuration — \(String(format: "%.3f", previous)) -> \(String(format: "%.3f", knownDuration)) source=\(loadedSourceURL?.lastPathComponent ?? "nil")")
+        }
+        #endif
         duration = knownDuration
     }
 
     func updateObservedDuration(_ observedDuration: Double) {
         guard observedDuration.isFinite, observedDuration > 0 else { return }
+        // For in-progress HLS playback, the backend's available-duration field is the
+        // authoritative timeline. AVPlayer's observed item duration can jump backward
+        // while an EVENT playlist is still growing, which makes the slider race ahead.
+        if isStreamingSource {
+            if duration == nil {
+                duration = observedDuration
+            }
+            return
+        }
         duration = observedDuration
+    }
+
+    func refreshPinnedSession(for jobID: String, knownDuration: Double?) -> Bool {
+        guard loadedJobID == jobID, loadedSourceURL != nil else { return false }
+        if let knownDuration, knownDuration > 0 {
+            #if DEBUG
+            if let previous = duration, abs(previous - knownDuration) > 0.5 {
+                print("[HearIt][Player] refreshPinnedSession — \(String(format: "%.3f", previous)) -> \(String(format: "%.3f", knownDuration)) source=\(loadedSourceURL?.lastPathComponent ?? "nil")")
+            }
+            #endif
+            duration = knownDuration
+        }
+        return true
+    }
+
+    func endPlaybackSession() {
+        if let jobID = loadedJobID {
+            clearPosition(for: jobID)
+        }
+        unload()
+    }
+
+    func handlePlaybackItemDidReachEnd() {
+        #if DEBUG
+        print("[HearIt][Player] didReachEnd — currentTime=\(String(format: "%.3f", currentTime)) duration=\(duration.map { String(format: "%.3f", $0) } ?? "nil") source=\(loadedSourceURL?.lastPathComponent ?? "nil") streaming=\(isStreamingSource)")
+        #endif
+        if isStreamingSource {
+            if let jobID = loadedJobID, currentTime > 0 {
+                savePosition(currentTime, for: jobID)
+            }
+            pendingStreamContinuation = true
+            pendingStreamContinuationSourceURL = loadedSourceURL
+            loadedSourceURL = nil
+            isPlaying = false
+            guard !previewMode else { return }
+            player.pause()
+            return
+        }
+
+        endPlaybackSession()
+    }
+
+    func consumePendingStreamContinuation() -> Bool {
+        let pending = pendingStreamContinuation
+        pendingStreamContinuation = false
+        if !pending {
+            pendingStreamContinuationSourceURL = nil
+        }
+        return pending
+    }
+
+    func consumePendingStreamContinuationSourceURL() -> URL? {
+        let pending = pendingStreamContinuation
+        let sourceURL = pendingStreamContinuationSourceURL
+        pendingStreamContinuation = false
+        pendingStreamContinuationSourceURL = nil
+        return pending ? sourceURL : nil
+    }
+
+    var hasPendingStreamContinuation: Bool {
+        pendingStreamContinuation
+    }
+
+    func clearSavedPositionForLoadedJob() {
+        guard let jobID = loadedJobID else { return }
+        clearPosition(for: jobID)
     }
 
     func togglePlayback() {
@@ -103,6 +213,9 @@ final class AudioPlayerController {
         }
 
         configureAudioSession()
+        #if DEBUG
+        print("[HearIt][Player] playImmediately — item=\(player.currentItem?.status.rawValue ?? -1) timeControlStatus=\(player.timeControlStatus.rawValue)")
+        #endif
         player.playImmediately(atRate: Float(playbackRate))
         isPlaying = true
     }
@@ -124,6 +237,9 @@ final class AudioPlayerController {
         }
         player.seek(to: CMTime(seconds: nextTime, preferredTimescale: 600))
         currentTime = nextTime
+        if let jobID = loadedJobID {
+            savePosition(nextTime, for: jobID)
+        }
     }
 
     func seek(toProgress progress: Double) {
@@ -131,12 +247,24 @@ final class AudioPlayerController {
 
         let clamped = min(max(progress, 0), 1)
         let newTime = duration * clamped
+        seek(toTime: newTime)
+    }
+
+    func seek(toTime time: Double) {
+        let clampedTime = max(time, 0)
         guard !previewMode else {
-            currentTime = newTime
+            currentTime = clampedTime
             return
         }
-        player.seek(to: CMTime(seconds: newTime, preferredTimescale: 600))
-        currentTime = newTime
+        player.seek(to: CMTime(seconds: clampedTime, preferredTimescale: 600))
+        currentTime = clampedTime
+        if let jobID = loadedJobID {
+            if clampedTime > 0 {
+                savePosition(clampedTime, for: jobID)
+            } else {
+                clearPosition(for: jobID)
+            }
+        }
     }
 
     func updatePlaybackRate(_ nextRate: Double) {
@@ -153,12 +281,16 @@ final class AudioPlayerController {
 
     var progress: Double {
         guard let duration, duration > 0 else { return 0 }
-        return currentTime / duration
+        return min(max(currentTime / duration, 0), 1)
     }
 
     var canSeek: Bool {
         guard let duration else { return false }
         return duration > 0
+    }
+
+    private var isStreamingSource: Bool {
+        loadedSourceURL?.pathExtension.lowercased() == "m3u8"
     }
 
     func configurePreviewState(
@@ -172,11 +304,68 @@ final class AudioPlayerController {
     ) {
         loadedJobID = jobID
         self.loadedSourceURL = loadedSourceURL
+        pendingStreamContinuation = false
+        pendingStreamContinuationSourceURL = nil
         self.duration = duration
         self.currentTime = min(max(currentTime, 0), duration ?? currentTime)
         self.isPlaying = isPlaying
         self.playbackRate = playbackRate
         self.volume = volume
+    }
+
+    // MARK: - Saved position
+
+    private static func positionKey(for jobID: String) -> String {
+        "hear-it.playback-position.\(jobID)"
+    }
+
+    private func savedPosition(for jobID: String) -> Double {
+        UserDefaults.standard.double(forKey: Self.positionKey(for: jobID))
+    }
+
+    private func savePosition(_ time: Double, for jobID: String) {
+        UserDefaults.standard.set(time, forKey: Self.positionKey(for: jobID))
+    }
+
+    private func clearPosition(for jobID: String) {
+        UserDefaults.standard.removeObject(forKey: Self.positionKey(for: jobID))
+    }
+
+    /// Waits for the AVPlayerItem to become ready, then seeks to the target offset.
+    /// Using a polling task because HLS items reject seeks issued before status == .readyToPlay.
+    private func seekWhenReady(item: AVPlayerItem, to targetTime: Double) async {
+        defer { isSeeking = false }
+        #if DEBUG
+        print("[HearIt][Player] seekWhenReady start — targetTime=\(targetTime) url=\(item.asset)")
+        #endif
+        while !Task.isCancelled {
+            guard item === player.currentItem else {
+                #if DEBUG
+                print("[HearIt][Player] seekWhenReady — item replaced, bailing")
+                #endif
+                return
+            }
+            if item.status == .readyToPlay {
+                #if DEBUG
+                print("[HearIt][Player] seekWhenReady — item ready, seeking to \(targetTime)")
+                #endif
+                if targetTime > 0 {
+                    let cmTime = CMTime(seconds: targetTime, preferredTimescale: 600)
+                    _ = await player.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
+                }
+                return
+            }
+            if item.status == .failed {
+                #if DEBUG
+                print("[HearIt][Player] seekWhenReady — item FAILED: \(item.error?.localizedDescription ?? "unknown")")
+                #endif
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        #if DEBUG
+        print("[HearIt][Player] seekWhenReady — cancelled")
+        #endif
     }
 
     private func configureAudioSession() {
@@ -193,10 +382,38 @@ final class AudioPlayerController {
             Task { @MainActor [weak self] in
                 guard let self else { return }
 
-                currentTime = player.currentTime().seconds.isFinite ? player.currentTime().seconds : 0
+                let time = player.currentTime().seconds
+                #if DEBUG
+                if let lastObservedCurrentTime,
+                   !isSeeking,
+                   time.isFinite {
+                    let delta = time - lastObservedCurrentTime
+                    if delta > 0.5 || delta < -0.25 {
+                        print("[HearIt][Player] timeJump — from=\(String(format: "%.3f", lastObservedCurrentTime)) to=\(String(format: "%.3f", time)) delta=\(String(format: "%.3f", delta)) itemDuration=\(String(format: "%.3f", player.currentItem?.duration.seconds ?? 0)) source=\(loadedSourceURL?.lastPathComponent ?? "nil") status=\(player.timeControlStatus.rawValue)")
+                    }
+                }
+                #endif
+                currentTime = time.isFinite ? time : 0
                 let itemDuration = player.currentItem?.duration.seconds ?? 0
+                #if DEBUG
+                if itemDuration.isFinite,
+                   itemDuration > 0,
+                   let lastObservedDuration,
+                   abs(itemDuration - lastObservedDuration) > 0.5 {
+                    print("[HearIt][Player] observedDurationChanged — \(String(format: "%.3f", lastObservedDuration)) -> \(String(format: "%.3f", itemDuration)) source=\(loadedSourceURL?.lastPathComponent ?? "nil")")
+                }
+                lastObservedCurrentTime = currentTime
+                if itemDuration.isFinite, itemDuration > 0 {
+                    lastObservedDuration = itemDuration
+                }
+                #endif
                 updateObservedDuration(itemDuration)
                 isPlaying = player.timeControlStatus == .playing
+                // Persist position so we can resume after the app is closed.
+                // Skip while seeking to avoid corrupting the saved position.
+                if let jobID = loadedJobID, currentTime > 0, !isSeeking {
+                    savePosition(currentTime, for: jobID)
+                }
             }
         }
     }

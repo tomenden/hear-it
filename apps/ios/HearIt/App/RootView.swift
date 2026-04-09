@@ -10,6 +10,37 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
+            tabContent
+            connectionOverlay
+        }
+        .animation(.easeInOut(duration: 0.25), value: model.connectionState)
+    }
+
+    @ViewBuilder
+    private var connectionOverlay: some View {
+        switch model.connectionState {
+        case .loading:
+            ZStack {
+                AppTheme.Gradients.page.ignoresSafeArea()
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .scaleEffect(1.2)
+                        .tint(AppTheme.Colors.accentGreen)
+                    Text("Connecting…")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(AppTheme.Colors.textSecondary)
+                }
+            }
+        case .failed:
+            EmptyView()
+        case .connected, .needsConfiguration:
+            EmptyView()
+        }
+    }
+
+    private var tabContent: some View {
+        ZStack {
             switch model.selectedTab {
             case .home:
                 NavigationStack {
@@ -47,6 +78,8 @@ struct RootView: View {
         }
         .task {
             await model.bootstrap()
+            await model.runDebugAutostartIfNeeded()
+            model.runDebugAutomationIfNeeded()
         }
         .onChange(of: scenePhase, initial: true) { _, newPhase in
             model.handleScenePhaseChange(newPhase)

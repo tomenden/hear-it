@@ -1,6 +1,18 @@
 import Foundation
 import Sentry
 
+protocol HearItAPIProviding: Sendable {
+    var tokenProvider: (@Sendable () async -> String?)? { get set }
+
+    func fetchConfig(baseURL: URL) async throws -> ServerConfig
+    func fetchVoices(baseURL: URL) async throws -> [String]
+    func fetchJobs(baseURL: URL, reportErrors: Bool) async throws -> [AudioJob]
+    func extractArticle(articleURL: String, baseURL: URL) async throws -> Article
+    func deleteJob(jobID: String, baseURL: URL) async throws
+    func createJob(articleURL: String, voiceID: String, baseURL: URL) async throws -> AudioJob
+    func downloadAudioData(from url: URL) async throws -> Data
+}
+
 struct HearItAPIClient {
     private let session: URLSession
     private let encoder = JSONEncoder()
@@ -107,10 +119,6 @@ struct HearItAPIClient {
         return data
     }
 
-    func downloadNarrationAudio(from url: URL) async throws -> Data {
-        try await downloadAudioData(from: url)
-    }
-
     static func resolveURL(_ rawValue: String?, relativeTo baseURL: URL) -> URL? {
         guard let rawValue, !rawValue.isEmpty else { return nil }
 
@@ -208,6 +216,8 @@ struct HearItAPIClient {
         }
     }
 }
+
+extension HearItAPIClient: HearItAPIProviding {}
 
 extension HearItAPIClient {
     enum HTTPMethod: String {

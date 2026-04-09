@@ -1,15 +1,19 @@
-import * as Sentry from "@sentry/node";
+import { randomUUID } from "node:crypto";
+
 import { trackEvent } from "./analytics.js";
 import { extractArticle } from "./extractor.js";
+import type { FfmpegMediaPackager } from "./ffmpeg-media-packager.js";
+import { createFfmpegMediaPackager } from "./ffmpeg-media-packager.js";
+import { createJobPipeline, LostJobLeaseError } from "./job-pipeline.js";
+import type { AudioStore, JobOwnership, JobStore } from "./storage.js";
 import {
-  DEFAULT_SPEECH_OPTIONS,
   AVAILABLE_VOICES,
+  DEFAULT_SPEECH_OPTIONS,
   VOICE_PREVIEW_TEXT,
   buildAudioFileKey,
   createSpeechProvider,
   type SpeechProvider,
 } from "./tts.js";
-import type { AudioStore, JobStore } from "./storage.js";
 import type {
   AudioJob,
   AudioJobStatus,
@@ -17,25 +21,46 @@ import type {
   SpeechOptions,
 } from "./types.js";
 
+const DEFAULT_JOB_LEASE_MS = 60_000;
+const DEFAULT_JOB_HEARTBEAT_MS = 15_000;
+
 export class AudioJobService {
   private readonly jobStore: JobStore;
   private readonly audioStore: AudioStore;
   private readonly speechProvider: SpeechProvider;
+  private readonly mediaPackager: FfmpegMediaPackager;
+  private readonly leaseOwner: string;
+  private readonly leaseDurationMs: number;
+  private readonly heartbeatIntervalMs: number;
   private initPromise: Promise<void> | null = null;
 
   constructor(options: {
     jobStore: JobStore;
     audioStore: AudioStore;
     speechProvider?: SpeechProvider;
+    mediaPackager?: FfmpegMediaPackager;
+    leaseOwner?: string;
+    leaseDurationMs?: number;
+    heartbeatIntervalMs?: number;
   }) {
     this.jobStore = options.jobStore;
     this.audioStore = options.audioStore;
     this.speechProvider = options.speechProvider ?? createSpeechProvider();
+    this.mediaPackager = options.mediaPackager ?? createFfmpegMediaPackager();
+    this.leaseOwner =
+      options.leaseOwner?.trim() ||
+      `job-worker-${process.pid}-${randomUUID().slice(0, 8)}`;
+    this.leaseDurationMs = options.leaseDurationMs ?? DEFAULT_JOB_LEASE_MS;
+    this.heartbeatIntervalMs =
+      options.heartbeatIntervalMs ?? DEFAULT_JOB_HEARTBEAT_MS;
   }
 
   async init(): Promise<void> {
     if (!this.initPromise) {
-      this.initPromise = this.jobStore.init();
+      this.initPromise = this.jobStore.init().catch((error) => {
+        this.initPromise = null;
+        throw error;
+      });
     }
     await this.initPromise;
   }
@@ -69,7 +94,7 @@ export class AudioJobService {
     await this.jobStore.save(job);
 
     const domain = safeHostname(article.url);
-    trackEvent("narration_created", {
+    trackEvent("audio_created", {
       url: article.url,
       domain,
       voice: speechOptions.voice,
@@ -97,172 +122,112 @@ export class AudioJobService {
     const existingJob = userId
       ? await this.jobStore.getForUser(jobId, userId)
       : await this.jobStore.get(jobId);
+
     if (existingJob) {
-      await this.deleteNarrationArtifacts(jobId, existingJob.audioSegments.length);
+      await this.deleteJobArtifacts(jobId);
     }
+
     if (userId) return this.jobStore.deleteForUser(jobId, userId);
     return this.jobStore.delete(jobId);
   }
 
   async processJob(jobId: string): Promise<void> {
     await this.init();
-    const claimedJob = await this.jobStore.claimQueued(jobId);
+    const runId = randomUUID();
+    const claimedJob = await this.jobStore.claimQueued(jobId, {
+      leaseOwner: this.leaseOwner,
+      leaseExpiresAt: createLeaseExpiry(this.leaseDurationMs),
+      runId,
+    });
     if (!claimedJob) {
       return;
     }
 
-    const hadPersistedSegments = claimedJob.audioSegments.length > 0;
-    if (!hadPersistedSegments) {
-      await this.deleteNarrationArtifacts(jobId, 0);
-      await this.updateJob(jobId, {
-        error: null,
-        audioUrl: null,
-        playlistUrl: null,
-        audioSegments: [],
-        durationSeconds: null,
-      });
-    }
+    const ownership: JobOwnership = {
+      leaseOwner: this.leaseOwner,
+      runId,
+    };
+    const leaseState = { lost: false };
+    const stopHeartbeat = this.startLeaseHeartbeat(jobId, ownership, leaseState);
+
+    const shouldStartFresh =
+      claimedJob.audioSegments.length === 0 &&
+      !claimedJob.audioUrl &&
+      !claimedJob.playlistUrl;
 
     try {
-      const segmentTexts = chunkNarrationText(
-        claimedJob.article.textContent,
-      );
-      const audioSegments: AudioJob["audioSegments"] = [...claimedJob.audioSegments];
-      const playlistKey = buildNarrationPlaylistKey(jobId);
-      let playlistUrl: string | null = claimedJob.playlistUrl;
-      const nextSegmentIndex = { value: audioSegments.length };
-      const pendingSegments = new Map<number, AudioJob["audioSegments"][number]>();
-      let nextPlaylistIndex = audioSegments.length;
-      let playlistWrite = Promise.resolve();
-      let workerError: unknown = null;
-      const queuePlaylistFlush = () => {
-        playlistWrite = playlistWrite.then(async () => {
-          let didAdvance = false;
-          while (pendingSegments.has(nextPlaylistIndex)) {
-            audioSegments.push(pendingSegments.get(nextPlaylistIndex)!);
-            pendingSegments.delete(nextPlaylistIndex);
-            nextPlaylistIndex += 1;
-            didAdvance = true;
-          }
-
-          if (!didAdvance) {
-            return;
-          }
-
-          playlistUrl = await this.audioStore.put(
-            playlistKey,
-            Buffer.from(buildPlaylist(audioSegments, false), "utf8"),
-            "application/vnd.apple.mpegurl",
-            { overwrite: true },
+      if (shouldStartFresh) {
+        try {
+          await this.deleteJobArtifacts(jobId);
+        } catch (error) {
+          const cleanupFailed = await this.updateOwnedJob(
+            jobId,
+            {
+              status: "failed",
+              internalState: "failed",
+              audioUrl: null,
+              playlistUrl: null,
+              audioSegments: [],
+              availableDurationSeconds: 0,
+              liveEdgeUpdatedAt: null,
+              durationSeconds: null,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Failed to clean up previous audio artifacts.",
+            },
+            ownership,
           );
-
-          await this.updateJob(jobId, {
-            status: "processing",
-            playlistUrl,
-            audioSegments: [...audioSegments],
-            durationSeconds: null,
-          });
-        });
-
-        return playlistWrite;
-      };
-      const runWorker = async () => {
-        while (workerError === null) {
-          const index = nextSegmentIndex.value;
-          nextSegmentIndex.value += 1;
-          if (index >= segmentTexts.length) {
-            return;
+          if (!cleanupFailed) {
+            leaseState.lost = true;
           }
-
-          try {
-            const textChunk = segmentTexts[index]!;
-            const result = await synthesizeSegmentWithRetry(
-              this.speechProvider,
-              textChunk,
-              claimedJob.speechOptions,
-              {
-                audioStore: this.audioStore,
-                fileKey: buildNarrationSegmentKey(jobId, index),
-              },
-            );
-
-            if (!result.audioUrl || !result.audioData) {
-              throw new Error("Segment generation did not return playable audio.");
-            }
-
-            pendingSegments.set(index, {
-              url: result.audioUrl,
-              durationSeconds: result.durationSeconds,
-            });
-            await queuePlaylistFlush();
-          } catch (error) {
-            workerError ??= error;
-            return;
-          }
+          return;
         }
-      };
-      const workerCount = Math.min(
-        getTtsConcurrency(),
-        Math.max(segmentTexts.length - audioSegments.length, 1),
-      );
-
-      await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
-      await playlistWrite;
-
-      if (workerError) {
-        throw workerError;
       }
 
-      playlistUrl = await this.audioStore.put(
-        playlistKey,
-        Buffer.from(buildPlaylist(audioSegments, true), "utf8"),
-        "application/vnd.apple.mpegurl",
-        { overwrite: true },
-      );
-      const durationSeconds = audioSegments.reduce(
-        (total, segment) => total + segment.durationSeconds,
-        0,
-      );
+      const pipeline = createJobPipeline({
+        audioStore: this.audioStore,
+        speechProvider: this.speechProvider,
+        mediaPackager: this.mediaPackager,
+        shouldAbort: () => leaseState.lost,
+        onJobUpdate: async (patch) => {
+          if (leaseState.lost) {
+            throw new LostJobLeaseError();
+          }
 
-      await this.updateJob(jobId, {
-        status: "completed",
-        audioUrl: null,
-        playlistUrl,
-        audioSegments,
-        durationSeconds,
+          const updated = await this.updateOwnedJob(jobId, patch, ownership);
+          if (!updated) {
+            leaseState.lost = true;
+            throw new LostJobLeaseError();
+          }
+        },
       });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Speech generation failed.";
-      Sentry.captureException(error, {
-        tags: {
-          jobId,
+
+      const result = await pipeline.processClaimedJob(claimedJob);
+      if (result.job.status === "failed" && result.job.error) {
+        trackEvent("audio_failed", {
+          job_id: jobId,
           voice: claimedJob.speechOptions.voice,
-          provider: claimedJob.provider,
-        },
-        contexts: {
-          job: {
-            id: jobId,
-            articleUrl: claimedJob.article.url,
-            articleTitle: claimedJob.article.title,
-            wordCount: claimedJob.article.wordCount,
-            voice: claimedJob.speechOptions.voice,
-            provider: claimedJob.provider,
-          },
-        },
-      });
-      trackEvent("tts_failed", {
-        job_id: jobId,
-        voice: claimedJob.speechOptions.voice,
-        error: message,
-      });
-      await this.updateJob(jobId, {
-        status: "failed",
-        playlistUrl: null,
-        audioSegments: [],
-        durationSeconds: null,
-        error: message,
-      });
+          error: result.job.error,
+        });
+      }
+    } finally {
+      stopHeartbeat();
+      const released = !leaseState.lost
+        ? await this.updateOwnedJob(
+            jobId,
+            {
+              leaseOwner: null,
+              leaseExpiresAt: null,
+              runId: null,
+            },
+            ownership,
+          )
+        : false;
+
+      if (!released) {
+        await this.releaseObservedTerminalLease(jobId, ownership);
+      }
     }
   }
 
@@ -280,8 +245,6 @@ export class AudioJobService {
     }
 
     const fileKey = `previews/${buildAudioFileKey("voice-preview", voice)}`;
-
-    // Return cached preview if it exists
     const existingUrl = await this.audioStore.head(fileKey);
     if (existingUrl) {
       return { voice, audioUrl: existingUrl };
@@ -303,15 +266,38 @@ export class AudioJobService {
   async requeueInterruptedJobs(): Promise<void> {
     await this.init();
     const jobs = await this.jobStore.getAll();
+    const resumedJobs: Promise<void>[] = [];
 
     for (const job of jobs) {
       if (job.status === "processing") {
         await this.updateJob(job.id, {
           status: "queued",
+          internalState: "queued",
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          runId: null,
           error: "Job resumed after server restart.",
         });
-        void this.processJob(job.id);
+        resumedJobs.push(this.processJob(job.id));
+      } else if (job.status === "queued") {
+        resumedJobs.push(this.processJob(job.id));
       }
+    }
+
+    const results = await Promise.allSettled(resumedJobs);
+    const failedResults = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+
+    if (failedResults.length > 0) {
+      if (failedResults.length === 1) {
+        throw failedResults[0].reason;
+      }
+
+      throw new AggregateError(
+        failedResults.map((result) => result.reason),
+        "One or more interrupted jobs failed to resume.",
+      );
     }
   }
 
@@ -319,15 +305,82 @@ export class AudioJobService {
     await this.jobStore.update(jobId, patch);
   }
 
-  private async deleteNarrationArtifacts(
+  private async updateOwnedJob(
     jobId: string,
-    segmentCount: number,
-  ): Promise<void> {
-    await this.audioStore.delete(buildNarrationPlaylistKey(jobId));
+    patch: Partial<AudioJob>,
+    ownership: JobOwnership,
+  ) {
+    return this.jobStore.updateOwned(jobId, patch, ownership);
+  }
 
-    for (let index = 0; index < segmentCount; index += 1) {
-      await this.audioStore.delete(buildNarrationSegmentKey(jobId, index));
+  private async releaseObservedTerminalLease(
+    jobId: string,
+    ownership: JobOwnership,
+  ): Promise<void> {
+    const observedJob = await this.jobStore.get(jobId);
+    if (
+      !observedJob ||
+      !isTerminalStatus(observedJob.status) ||
+      observedJob.leaseOwner !== ownership.leaseOwner ||
+      observedJob.runId !== ownership.runId
+    ) {
+      return;
     }
+
+    await this.jobStore.updateIfLeaseSnapshotMatches(
+      jobId,
+      {
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        runId: null,
+      },
+      {
+        status: observedJob.status,
+        leaseOwner: observedJob.leaseOwner,
+        leaseExpiresAt: observedJob.leaseExpiresAt ?? null,
+        runId: observedJob.runId,
+      },
+    );
+  }
+
+  private async deleteJobArtifacts(jobId: string): Promise<void> {
+    const pipeline = createJobPipeline({
+      audioStore: this.audioStore,
+      speechProvider: this.speechProvider,
+      mediaPackager: this.mediaPackager,
+    });
+    await pipeline.deleteJobArtifacts(jobId);
+  }
+
+  private startLeaseHeartbeat(
+    jobId: string,
+    ownership: JobOwnership,
+    leaseState: { lost: boolean },
+  ): () => void {
+    if (!this.jobStore.heartbeat || this.heartbeatIntervalMs <= 0) {
+      return () => {};
+    }
+
+    const timer = setInterval(() => {
+      void this.jobStore
+        .heartbeat?.(
+          jobId,
+          ownership.leaseOwner,
+          createLeaseExpiry(this.leaseDurationMs),
+          ownership.runId,
+        )
+        .then((updated) => {
+          if (!updated) {
+            leaseState.lost = true;
+          }
+        })
+        .catch(() => {
+          leaseState.lost = true;
+        });
+    }, this.heartbeatIntervalMs);
+    timer.unref?.();
+
+    return () => clearInterval(timer);
   }
 }
 
@@ -349,164 +402,6 @@ function safeHostname(url: string): string | null {
   }
 }
 
-const MAX_SEGMENT_CHARS = 800;
-const DEFAULT_TTS_CONCURRENCY = 5;
-const DEFAULT_SEGMENT_RETRY_ATTEMPTS = 2;
-const SEGMENT_RETRY_BASE_DELAY_MS = 500;
-
-function getTtsConcurrency(): number {
-  const parsed = Number(process.env.TTS_CONCURRENCY ?? DEFAULT_TTS_CONCURRENCY);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_TTS_CONCURRENCY;
-}
-
-function getSegmentRetryAttempts(): number {
-  const parsed = Number(
-    process.env.TTS_SEGMENT_RETRY_ATTEMPTS ?? DEFAULT_SEGMENT_RETRY_ATTEMPTS,
-  );
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : DEFAULT_SEGMENT_RETRY_ATTEMPTS;
-}
-
-async function synthesizeSegmentWithRetry(
-  speechProvider: SpeechProvider,
-  text: string,
-  speechOptions: SpeechOptions,
-  context: { audioStore: AudioStore; fileKey: string },
-) {
-  let attempt = 0;
-  let lastError: unknown;
-  const maxRetries = getSegmentRetryAttempts();
-
-  while (attempt <= maxRetries) {
-    try {
-      return await speechProvider.synthesizeText(text, speechOptions, context);
-    } catch (error) {
-      lastError = error;
-      if (attempt >= maxRetries || !isRetryableSegmentError(error)) {
-        throw error;
-      }
-
-      await delay(SEGMENT_RETRY_BASE_DELAY_MS * (attempt + 1));
-      attempt += 1;
-    }
-  }
-
-  throw lastError;
-}
-
-function isRetryableSegmentError(error: unknown): boolean {
-  if (error instanceof Error) {
-    const message = error.message.toLowerCase();
-    return (
-      /(^|\s)bad gateway(\s|$)/i.test(error.message) ||
-      /gateway timeout/i.test(message) ||
-      /timed out/i.test(message) ||
-      /timeout/i.test(message) ||
-      /fetch failed/i.test(message) ||
-      /econnreset/i.test(message) ||
-      /eai_again/i.test(message) ||
-      /temporarily unavailable/i.test(message) ||
-      /openai speech generation failed: 5\d\d/i.test(message)
-    );
-  }
-
-  return false;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-export function chunkNarrationText(text: string, maxChars = MAX_SEGMENT_CHARS): string[] {
-  const trimmed = text.trim();
-  if (!trimmed) return [];
-
-  const blocks = trimmed
-    .split(/\n+/)
-    .map((block) => block.trim())
-    .filter(Boolean);
-
-  const chunks: string[] = [];
-  let currentChunk = "";
-
-  const pushPiece = (piece: string) => {
-    if (!piece) return;
-
-    if (!currentChunk) {
-      currentChunk = piece;
-      return;
-    }
-
-    if (currentChunk.length + 2 + piece.length <= maxChars) {
-      currentChunk = `${currentChunk}\n\n${piece}`;
-      return;
-    }
-
-    chunks.push(currentChunk);
-    currentChunk = piece;
-  };
-
-  const splitLongBlock = (block: string) =>
-    block.split(/(?<=[.!?])\s+/).map((piece) => piece.trim()).filter(Boolean);
-
-  for (const block of blocks.length > 0 ? blocks : [trimmed]) {
-    if (block.length <= maxChars) {
-      pushPiece(block);
-      continue;
-    }
-
-    for (const sentence of splitLongBlock(block)) {
-      if (sentence.length <= maxChars) {
-        pushPiece(sentence);
-        continue;
-      }
-
-      let startIndex = 0;
-      while (startIndex < sentence.length) {
-        pushPiece(sentence.slice(startIndex, startIndex + maxChars).trim());
-        startIndex += maxChars;
-      }
-    }
-  }
-
-  if (currentChunk) {
-    chunks.push(currentChunk);
-  }
-
-  return chunks.length > 0 ? chunks : [trimmed];
-}
-
-function buildNarrationPlaylistKey(jobId: string): string {
-  return `narrations/job-${jobId}/playlist.m3u8`;
-}
-
-function buildNarrationSegmentKey(jobId: string, index: number): string {
-  return `narrations/job-${jobId}/segment-${index}.mp3`;
-}
-
-function buildPlaylist(
-  audioSegments: AudioJob["audioSegments"],
-  isComplete: boolean,
-): string {
-  const targetDuration = Math.max(
-    1,
-    ...audioSegments.map((segment) => Math.ceil(segment.durationSeconds)),
-  );
-  const lines = [
-    "#EXTM3U",
-    "#EXT-X-VERSION:3",
-    "#EXT-X-TARGETDURATION:" + targetDuration,
-    "#EXT-X-MEDIA-SEQUENCE:0",
-    "#EXT-X-PLAYLIST-TYPE:EVENT",
-  ];
-
-  for (const segment of audioSegments) {
-    lines.push(`#EXTINF:${segment.durationSeconds.toFixed(3)},`);
-    lines.push(segment.url);
-  }
-
-  if (isComplete) {
-    lines.push("#EXT-X-ENDLIST");
-  }
-
-  return lines.join("\n") + "\n";
+function createLeaseExpiry(durationMs: number): string {
+  return new Date(Date.now() + durationMs).toISOString();
 }

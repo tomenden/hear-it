@@ -16,8 +16,10 @@ struct SettingsView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
+                        #if DEBUG
                         apiSection
                         testingSection
+                        #endif
                         accountSection
                     }
                     .padding(.horizontal, 24)
@@ -45,11 +47,20 @@ struct SettingsView: View {
 
             Spacer()
 
-            pillHeaderButton(title: "Save") {
+            #if DEBUG
+            pillHeaderButton(title: model.isSavingBaseURL ? "Saving…" : "Save") {
                 Task {
-                    await model.saveBaseURL(draftBaseURL)
+                    if await model.saveBaseURL(draftBaseURL) {
+                        dismiss()
+                    }
                 }
             }
+            .disabled(model.isSavingBaseURL)
+            #else
+            pillHeaderButton(title: "Done") {
+                dismiss()
+            }
+            #endif
         }
         .padding(.horizontal, 24)
         .padding(.top, 8)
@@ -101,6 +112,12 @@ struct SettingsView: View {
                         infoRow(title: "Provider", value: config.provider.capitalized)
                         infoRow(title: "Mode", value: config.modeLabel)
                     }
+                }
+
+                if let message = model.settingsMessage {
+                    Text(message.text)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(messageColor(message.kind))
                 }
             }
             .padding(20)
@@ -157,7 +174,10 @@ struct SettingsView: View {
                 }
 
                 Button {
-                    Task { await model.signOut() }
+                    Task {
+                        await model.signOut()
+                        dismiss()
+                    }
                 } label: {
                     HStack {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -209,6 +229,17 @@ struct SettingsView: View {
                 )
         }
         .buttonStyle(.plain)
+    }
+
+    private func messageColor(_ kind: AppModel.InlineMessage.Kind) -> Color {
+        switch kind {
+        case .neutral:
+            AppTheme.Colors.textSecondary
+        case .success:
+            AppTheme.Colors.accentGreen
+        case .error:
+            AppTheme.Colors.accentRed
+        }
     }
 
     private var cardBackground: some View {

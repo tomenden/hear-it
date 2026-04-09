@@ -569,7 +569,8 @@ input[type="range"]:focus {
   padding: 16px;
 }
 
-.job-status[data-status="completed"] {
+.job-status[data-status="completed"],
+.job-status[data-status="ready"] {
   color: var(--accent-green);
 }
 

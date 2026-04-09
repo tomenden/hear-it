@@ -7,7 +7,6 @@ apps/api/data/
 
 # Yarn PnP (machine-specific)
 .pnp.*
-yarn.lock
 .yarn/install-state.gz
 .yarn/unplugged/
 
@@ -15,6 +14,7 @@ yarn.lock
 *.xcuserstate
 xcuserdata/
 DerivedData/
+.derivedData-device/
 .derived-data-local/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 
@@ -28,3 +28,36 @@ apps/ios/local.xcconfig
 
 # dev-3.0 local config
 .dev3/config.local.json
+
+# Local AI tooling state
+.adal/
+.agents/
+.augment/
+.claude/
+.codebuddy/
+.commandcode/
+.continue/
+.cortex/
+.crush/
+.factory/
+.goose/
+.iflow/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.roo/
+.trae/
+.vibe/
+.windsurf/
+.zencoder/
+skills/
+skills-lock.json

@@ -23,6 +23,13 @@ final class AppModel {
         case failed(String)
     }
 
+    private struct ServerSnapshot {
+        let baseURL: URL
+        let config: ServerConfig
+        let voices: [VoiceChoice]
+        let jobs: [AudioJob]
+    }
+
     var selectedTab: RootTab = .home
     var settings: AppSettings
     var player: AudioPlayerController
@@ -36,39 +43,47 @@ final class AppModel {
     var previewMessage: InlineMessage?
     var voiceSelectionPresented = false
     var settingsPresented = false
-    var isCreatingNarration = false
+    var isCreatingAudio = false
     var isRefreshingPreview = false
     var isRefreshingLibrary = false
+    var isSavingBaseURL = false
+    var settingsMessage: InlineMessage?
     var libraryFilter: LibraryFilter = .all
     var playerPresentation: PlayerPresentation?
     var jobPendingDeletion: AudioJob?
 
     let authManager: AuthManager
-    @ObservationIgnored private var apiClient: HearItAPIClient
-    @ObservationIgnored private let localAudioStore: LocalNarrationAudioStore
+    @ObservationIgnored private var apiClient: any HearItAPIProviding
+    @ObservationIgnored private let localAudioStore: LocalAudioAssetStore
     @ObservationIgnored private let previewMode: Bool
     @ObservationIgnored private var hasBootstrapped = false
     @ObservationIgnored private var pollingTask: Task<Void, Never>?
-    @ObservationIgnored private var narrationDownloadTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var localAudioAssetTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var jobsRequestGeneration = 0
+    @ObservationIgnored private var serverStateRequestGeneration = 0
+    @ObservationIgnored private var hasRunDebugAutostart = false
+    @ObservationIgnored private var debugAutomationTask: Task<Void, Never>?
+    @ObservationIgnored private var hasStartedDebugAutomation = false
 
     init(
         settings: AppSettings = AppSettings(),
-        apiClient: HearItAPIClient = HearItAPIClient(),
-        localAudioStore: LocalNarrationAudioStore = LocalNarrationAudioStore(),
+        apiClient: any HearItAPIProviding = HearItAPIClient(),
+        localAudioStore: LocalAudioAssetStore = LocalAudioAssetStore(),
         player: AudioPlayerController = AudioPlayerController(),
         authManager: AuthManager = AuthManager(),
         previewMode: Bool = false
     ) {
         self.settings = settings
-        self.apiClient = apiClient
         self.localAudioStore = localAudioStore
         self.player = player
         self.authManager = authManager
         self.previewMode = previewMode
 
-        self.apiClient.tokenProvider = { [authManager] in
+        var configuredAPIClient = apiClient
+        configuredAPIClient.tokenProvider = { [authManager] in
             await authManager.accessToken
         }
+        self.apiClient = configuredAPIClient
     }
 
     var selectedVoice: VoiceChoice {
@@ -99,6 +114,40 @@ final class AppModel {
         startPolling()
     }
 
+    func runDebugAutostartIfNeeded(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) async {
+        #if DEBUG
+        guard !previewMode else { return }
+        guard !hasRunDebugAutostart else { return }
+        guard let articleURL = Self.debugAutostartURL(from: environment) else { return }
+
+        hasRunDebugAutostart = true
+        urlInput = articleURL
+        invalidatePreviewIfNeededForCurrentURL()
+        await createAudio()
+        #else
+        _ = environment
+        #endif
+    }
+
+    func runDebugAutomationIfNeeded(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
+        #if DEBUG
+        guard !previewMode else { return }
+        guard !hasStartedDebugAutomation else { return }
+        guard let scenario = Self.debugAutomationScenario(from: environment) else { return }
+
+        hasStartedDebugAutomation = true
+        debugAutomationTask = Task { @MainActor [weak self] in
+            await self?.performDebugAutomation(named: scenario)
+        }
+        #else
+        _ = environment
+        #endif
+    }
+
     func handleScenePhaseChange(_ phase: ScenePhase) {
         guard !previewMode else { return }
         switch phase {
@@ -123,6 +172,9 @@ final class AppModel {
     }
 
     func signOut() async {
+        #if DEBUG
+        print("[HearIt][Auth] AppModel.signOut currentBaseURL=\(settings.apiBaseURLString)")
+        #endif
         do {
             try await authManager.signOut()
         } catch {
@@ -138,6 +190,7 @@ final class AppModel {
     }
 
     func openSettings() {
+        settingsMessage = nil
         settingsPresented = true
     }
 
@@ -153,57 +206,105 @@ final class AppModel {
         let cleaned = pastedValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         urlInput = cleaned
+        invalidatePreviewIfNeededForCurrentURL()
         homeMessage = InlineMessage(text: "Pasted a URL from your clipboard.", kind: .success)
     }
 
-    func saveBaseURL(_ draftValue: String) async {
-        settings.apiBaseURLString = draftValue
-        settingsPresented = false
-        await refreshServerState(showLoadingState: true)
+    func invalidatePreviewIfNeededForCurrentURL() {
+        let normalizedInput = urlInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard previewArticle?.url != normalizedInput else { return }
+        previewArticle = nil
+        previewMessage = nil
     }
 
-    func refreshServerState(showLoadingState: Bool) async {
-        guard !previewMode else { return }
+    @discardableResult
+    func saveBaseURL(_ draftValue: String) async -> Bool {
+        let normalizedBaseURL = AppSettings.normalizeBaseURLString(draftValue)
+        guard let baseURL = Self.baseURL(from: normalizedBaseURL) else {
+            settingsMessage = InlineMessage(text: "Enter a valid http or https base URL.", kind: .error)
+            return false
+        }
+
+        isSavingBaseURL = true
+        defer { isSavingBaseURL = false }
+        settingsMessage = InlineMessage(text: "Checking connection…", kind: .neutral)
+
+        let requestGeneration = nextServerStateRequestGeneration()
+        invalidateJobsRequests()
+
+        do {
+            let snapshot = try await fetchServerSnapshot(baseURL: baseURL, reportJobErrors: true)
+            guard isLatestServerStateRequest(requestGeneration) else { return false }
+
+            settings.apiBaseURLString = normalizedBaseURL
+            applyServerSnapshot(snapshot)
+            homeMessage = InlineMessage(
+                text: "Connected to \(snapshot.baseURL.host ?? snapshot.baseURL.absoluteString).",
+                kind: .success
+            )
+            settingsMessage = nil
+            return true
+        } catch HearItAPIClient.APIError.unauthorized {
+            guard isLatestServerStateRequest(requestGeneration) else { return false }
+            await signOut()
+            return false
+        } catch {
+            guard isLatestServerStateRequest(requestGeneration) else { return false }
+            settingsMessage = InlineMessage(text: error.localizedDescription, kind: .error)
+            return false
+        }
+    }
+
+    @discardableResult
+    func refreshServerState(showLoadingState: Bool) async -> Bool {
+        guard !previewMode else { return false }
         guard let baseURL = settings.apiBaseURL else {
             connectionState = .needsConfiguration
             serverConfig = nil
             availableVoices = []
             previewArticle = nil
+            settingsMessage = nil
             homeMessage = InlineMessage(
                 text: "Set your Hear It API URL in Settings before testing on iPhone.",
                 kind: .neutral
             )
-            return
+            return false
         }
+
+        let requestGeneration = nextServerStateRequestGeneration()
+        invalidateJobsRequests()
 
         if showLoadingState {
             connectionState = .loading
         }
 
         do {
-            async let loadedConfig = apiClient.fetchConfig(baseURL: baseURL)
-            async let loadedVoices = apiClient.fetchVoices(baseURL: baseURL)
-            async let loadedJobs = apiClient.fetchJobs(baseURL: baseURL)
+            let snapshot = try await fetchServerSnapshot(baseURL: baseURL, reportJobErrors: true)
+            guard isLatestServerStateRequest(requestGeneration) else { return false }
 
-            serverConfig = try await loadedConfig
-            availableVoices = VoiceChoice.catalog(from: try await loadedVoices)
-            applyVoiceFallbackIfNeeded()
-            applyJobs(try await loadedJobs)
-            connectionState = .connected
+            applyServerSnapshot(snapshot)
+            settingsMessage = nil
 
             if showLoadingState {
                 homeMessage = InlineMessage(
-                    text: "Connected to \(baseURL.host ?? baseURL.absoluteString).",
+                    text: "Connected to \(snapshot.baseURL.host ?? snapshot.baseURL.absoluteString).",
                     kind: .success
                 )
             }
+            return true
         } catch HearItAPIClient.APIError.unauthorized {
+            guard isLatestServerStateRequest(requestGeneration) else { return false }
             await signOut()
+            return false
         } catch {
+            guard isLatestServerStateRequest(requestGeneration) else { return false }
             connectionState = .failed(error.localizedDescription)
+            serverConfig = nil
+            availableVoices = []
             if showLoadingState {
                 homeMessage = InlineMessage(text: error.localizedDescription, kind: .error)
             }
+            return false
         }
     }
 
@@ -224,19 +325,21 @@ final class AppModel {
         }
 
         isRefreshingPreview = true
+        invalidatePreviewIfNeededForCurrentURL()
         previewMessage = InlineMessage(text: "Reviewing article…", kind: .neutral)
 
         do {
             previewArticle = try await apiClient.extractArticle(articleURL: articleURL, baseURL: baseURL)
             previewMessage = InlineMessage(text: "Article preview ready.", kind: .success)
         } catch {
+            previewArticle = nil
             previewMessage = InlineMessage(text: error.localizedDescription, kind: .error)
         }
 
         isRefreshingPreview = false
     }
 
-    func createNarration() async {
+    func createAudio() async {
         guard !previewMode else { return }
         guard let baseURL = settings.apiBaseURL else {
             homeMessage = InlineMessage(
@@ -253,11 +356,11 @@ final class AppModel {
             return
         }
 
-        isCreatingNarration = true
+        isCreatingAudio = true
         homeMessage = InlineMessage(text: "Creating your audio…", kind: .neutral)
 
-        let breadcrumb = Breadcrumb(level: .info, category: "narration")
-        breadcrumb.message = "Create narration"
+        let breadcrumb = Breadcrumb(level: .info, category: "audio")
+        breadcrumb.message = "Create audio"
         breadcrumb.data = ["url": articleURL, "voice": selectedVoice.id]
         SentrySDK.addBreadcrumb(breadcrumb)
 
@@ -268,46 +371,55 @@ final class AppModel {
                 baseURL: baseURL
             )
             previewArticle = job.article
+            invalidateJobsRequests()
             applyUpsert(job)
             urlInput = ""
             voiceSelectionPresented = false
             selectedTab = .library
             homeMessage = InlineMessage(text: "Audio queued successfully.", kind: .success)
             openPlayer(for: job.id)
-            trackFirstNarrationCreated()
+            trackFirstAudioCreated()
         } catch HearItAPIClient.APIError.unauthorized {
             await signOut()
         } catch {
             SentrySDK.capture(error: error) { scope in
-                scope.setTag(value: "create_narration", key: "action")
+                scope.setTag(value: "create_audio", key: "action")
                 scope.setExtra(value: articleURL, key: "articleURL")
             }
             homeMessage = InlineMessage(text: error.localizedDescription, kind: .error)
         }
 
-        isCreatingNarration = false
+        isCreatingAudio = false
     }
 
     func refreshJobs(silent: Bool = false) async {
         guard !previewMode else { return }
         guard let baseURL = settings.apiBaseURL else { return }
+        let requestGeneration = nextJobsRequestGeneration()
 
         if !silent {
             isRefreshingLibrary = true
         }
 
         defer {
-            isRefreshingLibrary = false
+            if !silent, isLatestJobsRequest(requestGeneration) {
+                isRefreshingLibrary = false
+            }
         }
 
         do {
-            applyJobs(try await apiClient.fetchJobs(baseURL: baseURL, reportErrors: !silent))
+            let updatedJobs = try await apiClient.fetchJobs(baseURL: baseURL, reportErrors: !silent)
+            guard isLatestJobsRequest(requestGeneration) else { return }
+            applyJobs(updatedJobs)
+            connectionState = .connected
             if !silent {
                 homeMessage = InlineMessage(text: "Library refreshed.", kind: .success)
             }
         } catch HearItAPIClient.APIError.unauthorized {
             await signOut()
         } catch {
+            guard isLatestJobsRequest(requestGeneration) else { return }
+            connectionState = .failed(error.localizedDescription)
             if !silent {
                 homeMessage = InlineMessage(text: error.localizedDescription, kind: .error)
             }
@@ -318,9 +430,10 @@ final class AppModel {
         guard !previewMode else { return }
         guard let job = jobPendingDeletion else { return }
         guard let baseURL = settings.apiBaseURL else { return }
+        invalidateJobsRequests()
 
-        narrationDownloadTasks[job.id]?.cancel()
-        narrationDownloadTasks[job.id] = nil
+        localAudioAssetTasks[job.id]?.cancel()
+        localAudioAssetTasks[job.id] = nil
 
         // If the player is showing this job, close it
         if playerPresentation?.jobID == job.id {
@@ -328,21 +441,21 @@ final class AppModel {
             player.unload()
         }
 
-        let crumb = Breadcrumb(level: .info, category: "narration")
-        crumb.message = "Delete narration"
+        let crumb = Breadcrumb(level: .info, category: "audio")
+        crumb.message = "Delete audio"
         crumb.data = ["jobID": job.id]
         SentrySDK.addBreadcrumb(crumb)
 
         do {
             try await apiClient.deleteJob(jobID: job.id, baseURL: baseURL)
-            try? await localAudioStore.removeCachedNarration(forJobID: job.id)
+            try? await localAudioStore.removeCachedAudio(forJobID: job.id)
             jobs.removeAll(where: { $0.id == job.id })
-            Analytics.track("narration_deleted", properties: ["job_id": job.id])
+            Analytics.track("audio_deleted", properties: ["job_id": job.id])
         } catch HearItAPIClient.APIError.unauthorized {
             await signOut()
         } catch {
             SentrySDK.capture(error: error) { scope in
-                scope.setTag(value: "delete_narration", key: "action")
+                scope.setTag(value: "delete_audio", key: "action")
                 scope.setExtra(value: job.id, key: "jobID")
             }
             homeMessage = InlineMessage(text: error.localizedDescription, kind: .error)
@@ -362,60 +475,98 @@ final class AppModel {
             return
         }
 
-        let knownPlaybackDuration = playbackDuration(for: job)
+        let knownPlaybackDuration = sessionPlaybackDuration(for: job)
+        let pendingContinuationSourceURL = player.consumePendingStreamContinuationSourceURL()
+        let shouldTreatPinnedStreamingSessionAsFinished =
+            shouldTreatPinnedStreamingSessionAsFinished(
+                pendingContinuationSourceURL: pendingContinuationSourceURL,
+                for: job
+            )
+        let shouldResumeAfterLoad =
+            pendingContinuationSourceURL != nil && !shouldTreatPinnedStreamingSessionAsFinished
 
         settings.lastPresentedJobID = jobID
 
-        if job.status == .failed {
+        if job.playback.hasFinalSource {
+            ensureLocalAudioAssetRequested(for: job)
+        }
+
+        if job.playback.mode == .failed {
             player.unload()
             return
         }
 
-        if player.loadedJobID == jobID,
-           let currentSource = player.loadedSourceURL,
-           !currentSource.isFileURL {
-            player.updateKnownDuration(knownPlaybackDuration)
+        if player.refreshPinnedSession(for: jobID, knownDuration: knownPlaybackDuration) {
             return
         }
 
-        if let playbackURL = localAudioStore.playbackURLIfExists(forJobID: jobID) {
+        if shouldTreatPinnedStreamingSessionAsFinished {
+            player.clearSavedPositionForLoadedJob()
+        }
+
+        if !shouldTreatPinnedStreamingSessionAsFinished,
+           let pendingContinuationSourceURL,
+           pendingContinuationSourceURL.pathExtension.lowercased() == "m3u8" {
+            player.load(
+                url: pendingContinuationSourceURL,
+                for: jobID,
+                knownDuration: continuationPlaybackDuration(for: job)
+            )
+            if !player.isPlaying {
+                player.togglePlayback()
+            }
+            return
+        }
+
+        if job.playback.prefersFinalForNewSessions,
+           let playbackURL = localAudioStore.playbackURLIfExists(forJobID: jobID) {
+            #if DEBUG
+            print("[HearIt][Player] Loading local file: \(playbackURL)")
+            #endif
             player.load(url: playbackURL, for: jobID, knownDuration: knownPlaybackDuration)
+            if shouldResumeAfterLoad, !player.isPlaying {
+                player.togglePlayback()
+            }
             return
         }
 
-        if job.status == .completed {
-            ensureNarrationAudioDownloadRequested(for: job)
-        }
+        #if DEBUG
+        print("[HearIt][Player] No local file for \(jobID), status=\(job.status)")
+        #endif
 
         guard let baseURL = settings.apiBaseURL,
               let playbackURL = job.playbackURL(relativeTo: baseURL) else {
+            #if DEBUG
+            print("[HearIt][Player] No playback URL — unloading")
+            #endif
             player.unload()
             return
         }
 
+        #if DEBUG
+        print("[HearIt][Player] Loading remote URL: \(playbackURL)")
+        #endif
         player.load(
             url: playbackURL,
             for: jobID,
             knownDuration: knownPlaybackDuration
         )
+        if shouldResumeAfterLoad, !player.isPlaying {
+            player.togglePlayback()
+        }
     }
 
     func hasPlayableAudio(for job: AudioJob) -> Bool {
-        if hasLocallyCachedAudio(for: job) {
-            return true
-        }
-
-        if job.status == .failed {
+        if job.playback.mode == .failed {
             return false
         }
 
-        if let baseURL = settings.apiBaseURL,
-           job.playbackURL(relativeTo: baseURL) != nil {
+        if job.playback.isPlayable {
             return true
         }
 
-        if previewMode {
-            return job.status == .completed || job.playlistUrl != nil
+        if job.playback.hasFinalSource, hasLocallyCachedAudio(for: job) {
+            return true
         }
 
         return false
@@ -426,21 +577,111 @@ final class AppModel {
     }
 
     func displayedTotalDuration(for job: AudioJob) -> Double? {
-        if isStreamingPlayback(for: job) {
-            return nil
+        if usesStreamingTimeline(for: job) {
+            if job.playback.isStreamComplete,
+               let finalDuration = job.playback.final?.durationSeconds,
+               finalDuration > 0 {
+                return finalDuration
+            }
+
+            guard let resolvedDuration = sessionPlaybackDuration(for: job) else {
+                return estimatedTimelineDuration(for: job)
+            }
+
+            if let estimatedTimelineDuration = estimatedTimelineDuration(for: job) {
+                return max(resolvedDuration, estimatedTimelineDuration)
+            }
+
+            return resolvedDuration
         }
 
-        return player.duration
+        if let finalDuration = job.playback.final?.durationSeconds,
+           finalDuration > 0 {
+            return finalDuration
+        }
+
+        return player.duration ?? playbackDuration(for: job)
+    }
+
+    func isUsingEstimatedTimelineEnvelope(for job: AudioJob) -> Bool {
+        guard usesStreamingTimeline(for: job),
+              !(job.playback.isStreamComplete && (job.playback.final?.durationSeconds ?? 0) > 0),
+              let estimatedTimelineDuration = estimatedTimelineDuration(for: job),
+              let playbackDuration = sessionPlaybackDuration(for: job) else {
+            return false
+        }
+
+        return estimatedTimelineDuration > playbackDuration
+    }
+
+    func displayedTimelineProgress(for job: AudioJob) -> Double {
+        guard let displayedDuration = displayedTotalDuration(for: job),
+              displayedDuration > 0 else {
+            return player.progress
+        }
+
+        return min(max(player.currentTime / displayedDuration, 0), 1)
+    }
+
+    func seekDisplayedTimeline(for job: AudioJob, toProgress progress: Double) {
+        let clampedProgress = min(max(progress, 0), 1)
+
+        guard usesStreamingTimeline(for: job),
+              let displayedDuration = displayedTotalDuration(for: job),
+              displayedDuration > 0,
+              let seekableDuration = sessionPlaybackDuration(for: job),
+              seekableDuration > 0 else {
+            player.seek(toProgress: clampedProgress)
+            return
+        }
+
+        let targetTime = displayedDuration * clampedProgress
+        player.seek(toTime: min(targetTime, seekableDuration))
     }
 
     func isStreamingPlayback(for job: AudioJob) -> Bool {
-        guard let baseURL = settings.apiBaseURL else { return false }
-        guard let playbackURL = job.playbackURL(relativeTo: baseURL) else { return false }
-        return !playbackURL.isFileURL && job.status == .processing
+        job.playback.prefersStreamingForNewSessions
+    }
+
+    func areAdvancedPlaybackControlsEnabled(for job: AudioJob) -> Bool {
+        if player.loadedJobID == job.id {
+            guard let sourceURL = player.loadedSourceURL else {
+                return false
+            }
+            return sourceURL.pathExtension.lowercased() != "m3u8"
+        }
+
+        return job.playback.prefersFinalForNewSessions || (job.status == .completed && job.playback.hasFinalSource)
+    }
+
+    func isStreamingPlaybackSession(for job: AudioJob) -> Bool {
+        if player.loadedJobID == job.id {
+            return player.loadedSourceURL?.pathExtension.lowercased() == "m3u8"
+        }
+
+        return job.playback.prefersStreamingForNewSessions
+    }
+
+    func togglePlayback(for jobID: String) {
+        guard let job = job(with: jobID) else { return }
+
+        if player.loadedJobID != jobID || player.loadedSourceURL == nil {
+            preparePlayer(for: jobID)
+            ensurePlaybackIsActive(for: jobID, job: job)
+            return
+        }
+
+        player.togglePlayback()
+    }
+
+    func playFromLibrary(for jobID: String) {
+        openPlayer(for: jobID)
+        guard let job = job(with: jobID) else { return }
+        ensurePlaybackIsActive(for: jobID, job: job)
     }
 
     private func shouldAutoPlay(jobID: String) -> Bool {
-        player.loadedJobID != jobID
+        player.loadedJobID != jobID || player.loadedSourceURL == nil
     }
 
     func openPlayer(for jobID: String) {
@@ -454,80 +695,84 @@ final class AppModel {
         playerPresentation = PlayerPresentation(jobID: jobID)
         preparePlayer(for: jobID)
         if shouldAutoPlay,
-           let job = job(with: jobID),
-           hasPlayableAudio(for: job) {
-            player.togglePlayback()
-            Analytics.track("narration_played", properties: [
-                "job_id": jobID,
-                "duration_listened": 0,
-                "pct_completed": 0,
-            ])
-            trackFirstNarrationCompleted()
+           let job = job(with: jobID) {
+            ensurePlaybackIsActive(for: jobID, job: job)
         }
     }
 
     func isDownloadingAudio(for job: AudioJob) -> Bool {
-        return narrationDownloadTasks[job.id] != nil
+        return localAudioAssetTasks[job.id] != nil
     }
 
-    private func ensureNarrationAudioDownloadRequested(for job: AudioJob) {
+    private func ensureLocalAudioAssetRequested(for job: AudioJob) {
         guard !previewMode else { return }
-        guard job.status == .completed else { return }
-        guard narrationDownloadTasks[job.id] == nil else { return }
+        guard job.playback.hasFinalSource else { return }
+        guard localAudioAssetTasks[job.id] == nil else { return }
         guard localAudioStore.playbackURLIfExists(forJobID: job.id) == nil else { return }
         guard let baseURL = settings.apiBaseURL else { return }
-        guard !job.audioSegments.isEmpty else { return }
+        let finalAudioURL = HearItAPIClient.resolveURL(job.playback.final?.audioUrl ?? job.audioUrl, relativeTo: baseURL)
+        guard finalAudioURL != nil || !job.audioSegments.isEmpty else { return }
 
-        narrationDownloadTasks[job.id] = Task { [weak self] in
+        localAudioAssetTasks[job.id] = Task { [weak self] in
             guard let self else { return }
 
             defer {
-                narrationDownloadTasks[job.id] = nil
+                localAudioAssetTasks[job.id] = nil
             }
 
             do {
-                var cachedSegments: [LocalNarrationAudioStore.StoredSegment] = []
-                for (index, segment) in job.audioSegments.enumerated() {
-                    guard let segmentURL = HearItAPIClient.resolveURL(segment.url, relativeTo: baseURL) else {
-                        throw CacheError.invalidSegmentURL(segment.url)
+                if let finalAudioURL {
+                    do {
+                        let audioData = try await apiClient.downloadAudioData(from: finalAudioURL)
+                        _ = try await localAudioStore.saveAudioFile(forJobID: job.id, audioData: audioData)
+                    } catch {
+                        guard !job.audioSegments.isEmpty else {
+                            throw error
+                        }
+                        try await persistSegmentBundleFallback(for: job, baseURL: baseURL)
                     }
-
-                    cachedSegments.append(LocalNarrationAudioStore.StoredSegment(
-                        fileName: "segment-\(index).mp3",
-                        durationSeconds: segment.durationSeconds,
-                        audioData: try await apiClient.downloadAudioData(from: segmentURL)
-                    ))
-                }
-                _ = try await localAudioStore.savePlaylistBundle(forJobID: job.id, segments: cachedSegments)
-
-                await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    if playerPresentation?.jobID == job.id {
-                        preparePlayer(for: job.id)
-                    }
+                } else {
+                    try await persistSegmentBundleFallback(for: job, baseURL: baseURL)
                 }
             } catch is CancellationError {
                 return
             } catch {
                 SentrySDK.capture(error: error) { scope in
-                    scope.setTag(value: "download_narration_audio", key: "action")
+                    scope.setTag(value: "persist_local_audio_asset", key: "action")
                     scope.setExtra(value: job.id, key: "jobID")
                 }
             }
         }
     }
 
-    private func synchronizeNarrationDownloads(with updatedJobs: [AudioJob]) {
-        let activeJobIDs = Set(updatedJobs.map(\.id))
-        let staleJobIDs = narrationDownloadTasks.keys.filter { !activeJobIDs.contains($0) }
-
-        for jobID in staleJobIDs {
-            narrationDownloadTasks[jobID]?.cancel()
-            narrationDownloadTasks[jobID] = nil
+    private func ensurePlaybackIsActive(for jobID: String, job: AudioJob) {
+        guard !player.isPlaying,
+              player.loadedJobID == jobID,
+              player.loadedSourceURL != nil,
+              hasPlayableAudio(for: job) else {
+            return
         }
 
-        for job in updatedJobs where job.status == .completed {
-            ensureNarrationAudioDownloadRequested(for: job)
+        player.togglePlayback()
+        Analytics.track("audio_played", properties: [
+            "job_id": jobID,
+            "duration_listened": 0,
+            "pct_completed": 0,
+        ])
+        trackFirstAudioCompleted()
+    }
+
+    private func synchronizeLocalAudioAssets(with updatedJobs: [AudioJob]) {
+        let activeJobIDs = Set(updatedJobs.map(\.id))
+        let staleJobIDs = localAudioAssetTasks.keys.filter { !activeJobIDs.contains($0) }
+
+        for jobID in staleJobIDs {
+            localAudioAssetTasks[jobID]?.cancel()
+            localAudioAssetTasks[jobID] = nil
+        }
+
+        for job in updatedJobs where job.playback.hasFinalSource {
+            ensureLocalAudioAssetRequested(for: job)
         }
     }
 
@@ -586,10 +831,20 @@ final class AppModel {
 
     private func applyJobs(_ updatedJobs: [AudioJob]) {
         let previousJobs = jobs
-        synchronizeNarrationDownloads(with: updatedJobs)
+        synchronizeLocalAudioAssets(with: updatedJobs)
 
-        guard jobs != updatedJobs else { return }
-        jobs = updatedJobs
+        let jobsChanged = jobs != updatedJobs
+        if jobsChanged {
+            jobs = updatedJobs
+        }
+
+        guard jobsChanged || player.hasPendingStreamContinuation else { return }
+        if player.hasPendingStreamContinuation,
+           playerPresentation == nil,
+           let loadedJobID = player.loadedJobID,
+           updatedJobs.contains(where: { $0.id == loadedJobID }) {
+            preparePlayer(for: loadedJobID)
+        }
         preparePresentedPlayerIfNeeded(for: updatedJobs, previousJobs: previousJobs)
     }
 
@@ -597,16 +852,268 @@ final class AppModel {
         jobs.removeAll(where: { $0.id == job.id })
         jobs.insert(job, at: 0)
         settings.lastPresentedJobID = job.id
-        ensureNarrationAudioDownloadRequested(for: job)
+        ensureLocalAudioAssetRequested(for: job)
+    }
+
+    private func persistSegmentBundleFallback(for job: AudioJob, baseURL: URL) async throws {
+        var cachedSegments: [LocalAudioAssetStore.StoredSegment] = []
+        for (index, segment) in job.audioSegments.enumerated() {
+            guard let segmentURL = HearItAPIClient.resolveURL(segment.url, relativeTo: baseURL) else {
+                throw CacheError.invalidSegmentURL(segment.url)
+            }
+
+            cachedSegments.append(LocalAudioAssetStore.StoredSegment(
+                fileName: "segment-\(index).mp3",
+                durationSeconds: segment.durationSeconds,
+                audioData: try await apiClient.downloadAudioData(from: segmentURL)
+            ))
+        }
+
+        _ = try await localAudioStore.savePlaylistBundle(forJobID: job.id, segments: cachedSegments)
+    }
+
+    private func fetchServerSnapshot(baseURL: URL, reportJobErrors: Bool) async throws -> ServerSnapshot {
+        async let loadedConfig = apiClient.fetchConfig(baseURL: baseURL)
+        async let loadedVoices = apiClient.fetchVoices(baseURL: baseURL)
+        async let loadedJobs = apiClient.fetchJobs(baseURL: baseURL, reportErrors: reportJobErrors)
+
+        return ServerSnapshot(
+            baseURL: baseURL,
+            config: try await loadedConfig,
+            voices: VoiceChoice.catalog(from: try await loadedVoices),
+            jobs: try await loadedJobs
+        )
+    }
+
+    private func applyServerSnapshot(_ snapshot: ServerSnapshot) {
+        serverConfig = snapshot.config
+        availableVoices = snapshot.voices
+        applyVoiceFallbackIfNeeded()
+        applyJobs(snapshot.jobs)
+        connectionState = .connected
+    }
+
+    private func nextJobsRequestGeneration() -> Int {
+        jobsRequestGeneration += 1
+        return jobsRequestGeneration
+    }
+
+    private func isLatestJobsRequest(_ generation: Int) -> Bool {
+        generation == jobsRequestGeneration
+    }
+
+    private func invalidateJobsRequests() {
+        jobsRequestGeneration += 1
+    }
+
+    private func nextServerStateRequestGeneration() -> Int {
+        serverStateRequestGeneration += 1
+        return serverStateRequestGeneration
+    }
+
+    private func isLatestServerStateRequest(_ generation: Int) -> Bool {
+        generation == serverStateRequestGeneration
+    }
+
+    private static func baseURL(from rawValue: String) -> URL? {
+        guard let url = URL(string: rawValue),
+              let scheme = url.scheme,
+              ["http", "https"].contains(scheme.lowercased()) else {
+            return nil
+        }
+
+        return url
+    }
+
+    private static func debugAutostartURL(from environment: [String: String]) -> String? {
+        let rawValue = environment["HEAR_IT_DEBUG_AUTOCREATE_URL"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let rawValue, !rawValue.isEmpty else { return nil }
+        guard let url = URL(string: rawValue),
+              let scheme = url.scheme,
+              ["http", "https"].contains(scheme.lowercased()) else {
+            return nil
+        }
+
+        return url.absoluteString
+    }
+
+    private static func debugAutomationScenario(from environment: [String: String]) -> String? {
+        let scenario = environment["HEAR_IT_DEBUG_AUTOMATION"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let scenario, !scenario.isEmpty else { return nil }
+        return scenario
+    }
+
+    private func performDebugAutomation(named scenario: String) async {
+        #if DEBUG
+        switch scenario {
+        case "seek-and-reopen":
+            await performDebugSeekAndReopenAutomation()
+        default:
+            print("[HearIt][Debug] Unknown automation scenario: \(scenario)")
+        }
+        #else
+        _ = scenario
+        #endif
+    }
+
+    private func performDebugSeekAndReopenAutomation() async {
+        #if DEBUG
+        guard let jobID = await waitForDebugCondition(timeout: .seconds(30), pollInterval: .milliseconds(250), value: {
+            self.playerPresentation?.jobID ?? self.settings.lastPresentedJobID
+        }) else {
+            print("[HearIt][Debug] Automation timed out waiting for a presented job")
+            return
+        }
+
+        let didReachStreamingPlayback = await waitForDebugCondition(timeout: .seconds(45), pollInterval: .milliseconds(250)) {
+            guard let job = self.job(with: jobID) else { return false }
+            return job.playback.prefersStreamingForNewSessions && self.player.isPlaying && self.player.currentTime >= 5
+        }
+
+        guard didReachStreamingPlayback else {
+            print("[HearIt][Debug] Automation timed out waiting for streaming playback")
+            return
+        }
+
+        guard let streamingJob = job(with: jobID),
+              let duration = displayedTotalDuration(for: streamingJob),
+              duration > 0 else {
+            print("[HearIt][Debug] Automation could not resolve streaming duration")
+            return
+        }
+
+        let seekTarget = min(max(duration * 0.35, 15), duration * 0.7)
+        let seekProgress = seekTarget / duration
+        player.seek(toProgress: seekProgress)
+        print("[HearIt][Debug] Automation sought streaming playback to \(seekTarget)s (\(seekProgress))")
+
+        let didReachFinal = await waitForDebugCondition(timeout: .seconds(90), pollInterval: .milliseconds(250)) {
+            if let job = self.job(with: jobID) {
+                return job.state == .ready && job.playback.hasFinalSource
+            }
+            return false
+        }
+
+        guard didReachFinal else {
+            print("[HearIt][Debug] Automation timed out waiting for final playback")
+            return
+        }
+
+        closePlayer()
+        print("[HearIt][Debug] Automation closed player after finalization")
+        try? await Task.sleep(for: .seconds(1))
+        openPlayer(for: jobID)
+        print("[HearIt][Debug] Automation reopened final playback session")
+        #endif
+    }
+
+    private func waitForDebugCondition<T>(
+        timeout: Duration,
+        pollInterval: Duration,
+        value: @escaping @MainActor () -> T?
+    ) async -> T? {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if let resolved = value() {
+                return resolved
+            }
+            try? await Task.sleep(for: pollInterval)
+        }
+        return nil
+    }
+
+    private func waitForDebugCondition(
+        timeout: Duration,
+        pollInterval: Duration,
+        predicate: @escaping @MainActor () -> Bool
+    ) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while ContinuousClock.now < deadline {
+            if predicate() {
+                return true
+            }
+            try? await Task.sleep(for: pollInterval)
+        }
+        return false
     }
 
     private func playbackDuration(for job: AudioJob) -> Double? {
+        if let durationSeconds = job.playback.final?.durationSeconds, durationSeconds > 0 {
+            return durationSeconds
+        }
+
         if let durationSeconds = job.durationSeconds, durationSeconds > 0 {
             return durationSeconds
         }
 
+        if let availableDurationSeconds = job.playback.stream?.availableDurationSeconds,
+           availableDurationSeconds > 0 {
+            return availableDurationSeconds
+        }
+
         guard !job.audioSegments.isEmpty else { return nil }
         return job.audioSegments.reduce(0) { $0 + $1.durationSeconds }
+    }
+
+    private func sessionPlaybackDuration(for job: AudioJob) -> Double? {
+        if isStreamingPlaybackSession(for: job) {
+            if let currentSessionDuration = player.duration, currentSessionDuration > 0 {
+                return currentSessionDuration
+            }
+
+            if let availableDurationSeconds = job.playback.stream?.availableDurationSeconds,
+               availableDurationSeconds > 0 {
+                return availableDurationSeconds
+            }
+
+            return player.duration
+        }
+
+        return playbackDuration(for: job)
+    }
+
+    private func continuationPlaybackDuration(for job: AudioJob) -> Double? {
+        if let finalDuration = job.playback.final?.durationSeconds, finalDuration > 0 {
+            return finalDuration
+        }
+
+        if let availableDurationSeconds = job.playback.stream?.availableDurationSeconds,
+           availableDurationSeconds > 0 {
+            return availableDurationSeconds
+        }
+
+        if let playbackDuration = playbackDuration(for: job), playbackDuration > 0 {
+            return playbackDuration
+        }
+
+        return player.duration
+    }
+
+    private func shouldTreatPinnedStreamingSessionAsFinished(
+        pendingContinuationSourceURL: URL?,
+        for job: AudioJob
+    ) -> Bool {
+        guard let pendingContinuationSourceURL,
+              pendingContinuationSourceURL.pathExtension.lowercased() == "m3u8",
+              job.playback.isStreamComplete,
+              job.playback.hasFinalSource,
+              let finalDuration = continuationPlaybackDuration(for: job),
+              finalDuration > 0 else {
+            return false
+        }
+
+        return player.currentTime >= finalDuration - 0.5
+    }
+
+    private func usesStreamingTimeline(for job: AudioJob) -> Bool {
+        isStreamingPlaybackSession(for: job) || isStreamingPlayback(for: job)
+    }
+
+    private func estimatedTimelineDuration(for job: AudioJob) -> Double? {
+        guard job.article.estimatedMinutes > 0 else { return nil }
+        return Double(job.article.estimatedMinutes * 60)
     }
 
     private enum CacheError: LocalizedError {
@@ -620,17 +1127,17 @@ final class AppModel {
         }
     }
 
-    private func trackFirstNarrationCreated() {
-        let key = "analytics_first_narration_created"
+    private func trackFirstAudioCreated() {
+        let key = "analytics_first_audio_created"
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         UserDefaults.standard.set(true, forKey: key)
-        Analytics.track("first_narration_created")
+        Analytics.track("first_audio_created")
     }
 
-    private func trackFirstNarrationCompleted() {
-        let key = "analytics_first_narration_completed"
+    private func trackFirstAudioCompleted() {
+        let key = "analytics_first_audio_completed"
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         UserDefaults.standard.set(true, forKey: key)
-        Analytics.track("first_narration_completed")
+        Analytics.track("first_audio_completed")
     }
 }

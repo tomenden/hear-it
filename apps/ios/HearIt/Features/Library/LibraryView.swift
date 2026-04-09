@@ -13,7 +13,7 @@ struct LibraryView: View {
                     header
                     filterPicker
                     statsRow
-                    narrationList
+                    audioList
                 }
                 .padding(AppTheme.Layout.screenPadding)
             }
@@ -89,7 +89,7 @@ struct LibraryView: View {
     ]
 
     @ViewBuilder
-    private var narrationList: some View {
+    private var audioList: some View {
         if model.filteredJobs.isEmpty {
             ContentUnavailableView(
                 "Nothing here yet",
@@ -151,7 +151,7 @@ struct LibraryView: View {
 
                         // Play button
                         Button {
-                            model.openPlayer(for: job.id)
+                            model.playFromLibrary(for: job.id)
                         } label: {
                             Circle()
                                 .fill(AppTheme.Colors.accentGreen)
@@ -179,20 +179,13 @@ struct LibraryView: View {
 
     private func statusBadge(for job: AudioJob) -> some View {
         let palette: (label: String, systemImage: String, tint: Color, background: Color) = {
-            if job.status == .completed, model.isDownloadingAudio(for: job) {
-                return ("Caching", "arrow.down.circle.fill", AppTheme.Colors.textSecondary, AppTheme.Colors.page)
-            }
-
-            if job.status == .completed, model.hasLocallyCachedAudio(for: job) {
-                return ("Saved", "checkmark.circle.fill", AppTheme.Colors.accentGreen, AppTheme.Colors.accentGreenLight)
-            }
-
-            switch job.status {
-            case .queued:
-                return ("Queued", "clock", AppTheme.Colors.textSecondary, AppTheme.Colors.page)
-            case .processing:
-                return ("In progress", "waveform", AppTheme.Colors.accentGreen, AppTheme.Colors.accentGreenLight)
-            case .completed:
+            switch job.playback.mode {
+            case .preparing:
+                let label = job.state == .queued ? "Preparing audio" : "Generating audio"
+                return (label, "clock", AppTheme.Colors.textSecondary, AppTheme.Colors.page)
+            case .streaming:
+                return ("Available now", "dot.radiowaves.left.and.right", AppTheme.Colors.accentGreen, AppTheme.Colors.accentGreenLight)
+            case .final:
                 return ("Ready", "checkmark.circle.fill", AppTheme.Colors.accentGreen, AppTheme.Colors.accentGreenLight)
             case .failed:
                 return ("Failed", "exclamationmark.triangle.fill", AppTheme.Colors.accentRed, AppTheme.Colors.accentRedLight)

@@ -3,8 +3,16 @@ import { resolve } from "node:path";
 
 config({ path: resolve(import.meta.dirname, "../../../.env") });
 
+import { randomUUID } from "node:crypto";
+
 import { createApp } from "./app.js";
 import { AudioJobService } from "./jobs.js";
+import {
+  FinalizationRepairer,
+  HlsRetentionCleaner,
+  JobReconciler,
+  startMaintenanceWorker,
+} from "./maintenance.js";
 import { PostgresJobStore } from "./storage-postgres.js";
 import { SupabaseAudioStore } from "./storage-supabase.js";
 
@@ -18,14 +26,39 @@ const audioStore = new SupabaseAudioStore(
   process.env.SUPABASE_STORAGE_BUCKET ?? "audio",
 );
 const audioJobService = new AudioJobService({ jobStore, audioStore });
+const maintenanceLeaseOwner =
+  process.env.MAINTENANCE_LEASE_OWNER?.trim() ||
+  `api-${process.pid}-${randomUUID().slice(0, 8)}`;
+const kickQueuedJob = (jobId: string) => {
+  void audioJobService.processJob(jobId).catch((error) => {
+    console.error(`Failed to kick queued job ${jobId}`, error);
+  });
+};
 
 const app = createApp({
   audioJobService,
   jobStore,
   audioStore,
-  recoverInterruptedJobsOnStartup: true,
+  recoverInterruptedJobsOnStartup: false,
   supabaseUrl,
   supabaseJwtSecret: process.env.SUPABASE_JWT_SECRET,
+});
+
+await audioJobService.init();
+
+startMaintenanceWorker({
+  jobStore,
+  leaseOwner: maintenanceLeaseOwner,
+  intervalMs: Number(process.env.MAINTENANCE_INTERVAL_MS ?? 60_000),
+  leaseDurationMs: Number(process.env.MAINTENANCE_LEASE_MS ?? 55_000),
+  services: [
+    new FinalizationRepairer({ jobStore, audioStore }),
+    new JobReconciler({ jobStore, audioStore, onJobQueued: kickQueuedJob }),
+    new HlsRetentionCleaner({ jobStore, audioStore }),
+  ],
+  onError: (error) => {
+    console.error("Maintenance worker failed", error);
+  },
 });
 
 app.listen(port, () => {

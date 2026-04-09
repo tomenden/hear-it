@@ -9,6 +9,13 @@ import {
   ArticleTooLongError,
   extractArticle,
 } from "./extractor.js";
+import {
+  mapInternalStateToPublicState,
+  mapJobToPlaybackDescriptor,
+  type InternalAudioState,
+  type PlaybackDescriptor,
+  type PublicAudioState,
+} from "./audio-playback.js";
 import { createAuthMiddleware } from "./auth.js";
 import { AudioJobService } from "./jobs.js";
 import type { AudioStore, JobStore } from "./storage.js";
@@ -57,6 +64,31 @@ export interface CreateAppOptions {
   allowJwtSecretFallback?: boolean;
 }
 
+interface AudioJobResponse {
+  id: string;
+  title: string;
+  state: PublicAudioState;
+  article: AudioJob["article"];
+  voice: string;
+  playback: PlaybackDescriptor;
+  progress: {
+    chunksTotal: number | null;
+    chunksReady: number;
+    availableDurationSeconds: number;
+  };
+  status: AudioJob["status"];
+  speechOptions: AudioJob["speechOptions"];
+  provider: string;
+  audioUrl: string | null;
+  audioDownloadPath: string | null;
+  playlistUrl: string | null;
+  audioSegments: AudioJob["audioSegments"];
+  durationSeconds: number | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Rate limiting uses the default in-memory store. It is intentionally simple for
 // the current single-service deployment, but counters reset on process restarts.
 const rateLimitMessage = { error: "Too many requests. Please try again later." };
@@ -80,10 +112,42 @@ const writeEndpointLimiter = rateLimit({
 export function createApp(options: CreateAppOptions) {
   const { audioJobService, jobStore, audioStore } = options;
   const app = express();
-  const serializeJob = (job: AudioJob) => ({
-    ...job,
-    audioDownloadPath: null,
-  });
+  const serializeJob = (job: AudioJob): AudioJobResponse => {
+    const title = resolveJobTitle(job);
+    const state = mapInternalStateToPublicState(resolveInternalState(job));
+    const playback = mapJobToPlaybackDescriptor({
+      state: state === "queued" ? "queued" : resolveInternalState(job),
+      streamPlaylistUrl: job.playlistUrl,
+      finalAudioUrl: job.audioUrl,
+      availableDurationSeconds: state === "queued" ? 0 : resolveAvailableDurationSeconds(job),
+      durationSeconds: job.durationSeconds,
+      title,
+      error: job.error,
+      liveEdgeUpdatedAt: state === "queued" ? null : job.liveEdgeUpdatedAt,
+    });
+    const chunksReady = job.audioSegments.length;
+    const compatibilityFields = buildLegacyCompatibilityFields(
+      job,
+      playback,
+    );
+
+    return {
+      id: job.id,
+      title,
+      state,
+      article: job.article,
+      voice: job.speechOptions.voice,
+      playback,
+      progress: {
+        chunksTotal: state === "ready" ? chunksReady : null,
+        chunksReady,
+        availableDurationSeconds: resolveAvailableDurationSeconds(job),
+      },
+      ...compatibilityFields,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+    };
+  };
   const errorResponse = (
     error: unknown,
     fallbackMessage: string,
@@ -122,7 +186,10 @@ export function createApp(options: CreateAppOptions) {
   };
 
   if (options.recoverInterruptedJobsOnStartup ?? false) {
-    void audioJobService.init().then(() => audioJobService.requeueInterruptedJobs());
+    runBackgroundTask(
+      audioJobService.init().then(() => audioJobService.requeueInterruptedJobs()),
+      "startup_recovery",
+    );
   }
 
   app.use(express.json({ limit: "1mb" }));
@@ -160,7 +227,7 @@ export function createApp(options: CreateAppOptions) {
 <ul>
   <li><strong>Account info</strong> — your email address, used solely for authentication (managed by Supabase Auth).</li>
   <li><strong>Article URLs</strong> — the links you submit, used to fetch and convert articles. We store the URL and extracted text on our server while the audio job is active.</li>
-  <li><strong>Generated audio</strong> — stored on your device so you can listen offline. The audio is generated server-side and downloaded to your device; we do not retain it on our servers after delivery.</li>
+  <li><strong>Generated audio</strong> — stored on our servers so it remains available in your library, and may also be cached on your device to make repeat or offline playback smoother.</li>
   <li><strong>Analytics events</strong> — anonymous product-interaction data (e.g. screens viewed, features used) sent to PostHog to help us improve the app. No personally identifiable information is included.</li>
   <li><strong>Crash &amp; performance data</strong> — sent to Sentry so we can fix bugs. This may include device model and OS version but not personal content.</li>
 </ul>
@@ -182,7 +249,7 @@ export function createApp(options: CreateAppOptions) {
 </ul>
 
 <h2>Data Retention</h2>
-<p>Your account and generated audio persist until you delete them. You can delete individual articles from the app at any time. If you want your account fully removed, contact us.</p>
+<p>Your account and generated audio persist until you delete them. You can delete individual audio items from the app at any time. If you want your account fully removed, contact us.</p>
 
 <h2>Your Rights</h2>
 <p>You can request access to, correction of, or deletion of your personal data at any time by emailing us.</p>
@@ -313,7 +380,10 @@ export function createApp(options: CreateAppOptions) {
       );
       res.status(202).json({ job: serializeJob(job) });
 
-      void audioJobService.processJob(job.id);
+      runBackgroundTask(
+        audioJobService.processJob(job.id),
+        `process_job:${job.id}`,
+      );
     } catch (error) {
       const response = errorResponse(error, "Failed to create audio job.");
       res.status(response.status).json(response.body);
@@ -349,4 +419,92 @@ export function createApp(options: CreateAppOptions) {
   Sentry.setupExpressErrorHandler(app);
 
   return app;
+}
+
+function resolveJobTitle(job: AudioJob): string {
+  return job.displayTitle?.trim() || job.article.title?.trim() || "Untitled audio";
+}
+
+function resolveInternalState(job: AudioJob): InternalAudioState {
+  if (job.internalState) {
+    return job.internalState;
+  }
+
+  switch (job.status) {
+    case "queued":
+      return "queued";
+    case "processing":
+      return "synthesizing";
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    default:
+      return assertNever(job.status);
+  }
+}
+
+function resolveAvailableDurationSeconds(job: AudioJob): number {
+  if (job.status === "completed" && typeof job.durationSeconds === "number") {
+    return job.durationSeconds;
+  }
+
+  if (typeof job.availableDurationSeconds === "number") {
+    return job.availableDurationSeconds;
+  }
+
+  if (typeof job.durationSeconds === "number") {
+    return job.durationSeconds;
+  }
+
+  return job.audioSegments.reduce(
+    (total, segment) => total + segment.durationSeconds,
+    0,
+  );
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled audio job status: ${String(value)}`);
+}
+
+function buildLegacyCompatibilityFields(
+  job: AudioJob,
+  playback: PlaybackDescriptor,
+): Pick<
+  AudioJobResponse,
+  | "status"
+  | "speechOptions"
+  | "provider"
+  | "audioUrl"
+  | "audioDownloadPath"
+  | "playlistUrl"
+  | "audioSegments"
+  | "durationSeconds"
+  | "error"
+> {
+  return {
+    status: job.status,
+    speechOptions: job.speechOptions,
+    provider: job.provider,
+    audioUrl: job.audioUrl,
+    audioDownloadPath: null,
+    playlistUrl: job.playlistUrl,
+    audioSegments: job.audioSegments,
+    durationSeconds: job.durationSeconds,
+    error: playback.errorMessage ?? job.error,
+  };
+}
+
+function runBackgroundTask(
+  task: Promise<unknown>,
+  taskName: string,
+): void {
+  void task.catch((error) => {
+    console.error(`Background task failed: ${taskName}`, error);
+    Sentry.captureException(error, {
+      tags: {
+        backgroundTask: taskName,
+      },
+    });
+  });
 }

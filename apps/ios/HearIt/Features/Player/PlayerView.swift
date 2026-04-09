@@ -9,9 +9,17 @@ struct PlayerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var seekProgress = 0.0
+    @State private var isEditingSeek = false
     @State private var volume = 1.0
 
     private let playbackRates = [0.75, 1.0, 1.25, 1.5]
+
+    private struct ProcessingPresentation {
+        let title: String
+        let message: String
+        let systemImage: String?
+        let isError: Bool
+    }
 
     private var currentJob: AudioJob? {
         model.job(with: presentation.jobID)
@@ -37,11 +45,10 @@ struct PlayerView: View {
         }
         .task(id: presentation.jobID) {
             model.preparePlayer(for: presentation.jobID)
-            seekProgress = model.player.progress
+            if let job = currentJob {
+                seekProgress = model.displayedTimelineProgress(for: job)
+            }
             volume = model.player.volume
-        }
-        .onChange(of: model.player.progress) { _, newValue in
-            seekProgress = newValue
         }
         .onChange(of: model.player.volume) { _, newValue in
             volume = newValue
@@ -98,7 +105,9 @@ struct PlayerView: View {
     }
 
     private func readyView(for job: AudioJob) -> some View {
-        VStack(spacing: 24) {
+        let advancedControlsEnabled = model.areAdvancedPlaybackControlsEnabled(for: job)
+
+        return VStack(spacing: 24) {
             RoundedRectangle(cornerRadius: 28)
                 .fill(AppTheme.Gradients.artwork)
                 .frame(maxWidth: .infinity)
@@ -129,18 +138,22 @@ struct PlayerView: View {
                     .foregroundStyle(AppTheme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
 
-                Text("Narrated by \(job.speechOptions.voice.capitalized)")
+                Text("Voice: \(job.speechOptions.voice.capitalized)")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(AppTheme.Colors.accentCoral)
             }
 
             VStack(spacing: 12) {
                 Slider(
-                    value: $seekProgress,
+                    value: seekBinding(for: job),
                     in: 0 ... 1,
                     onEditingChanged: { editing in
-                        if !editing {
-                            model.player.seek(toProgress: seekProgress)
+                        if editing {
+                            isEditingSeek = true
+                            seekProgress = model.displayedTimelineProgress(for: job)
+                        } else {
+                            isEditingSeek = false
+                            model.seekDisplayedTimeline(for: job, toProgress: seekProgress)
                         }
                     }
                 )
@@ -150,7 +163,7 @@ struct PlayerView: View {
                 HStack {
                     Text(Self.formatTime(model.player.currentTime))
                     Spacer()
-                    Text(Self.formatTime(model.displayedTotalDuration(for: job)))
+                    Text(displayedDurationLabel(for: job))
                 }
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(AppTheme.Colors.textSecondary)
@@ -164,7 +177,7 @@ struct PlayerView: View {
                 .tint(AppTheme.Colors.textPrimary)
 
                 Button(model.player.isPlaying ? "Pause" : "Play", systemImage: model.player.isPlaying ? "pause.fill" : "play.fill") {
-                    model.player.togglePlayback()
+                    model.togglePlayback(for: job.id)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(AppTheme.Colors.accentGreen)
@@ -174,6 +187,7 @@ struct PlayerView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(AppTheme.Colors.textPrimary)
+                .disabled(!advancedControlsEnabled)
             }
             .labelStyle(.titleAndIcon)
 
@@ -184,20 +198,32 @@ struct PlayerView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(model.player.playbackRate == rate ? AppTheme.Colors.accentGreen : AppTheme.Colors.textPrimary)
+                    .disabled(!advancedControlsEnabled)
                 }
             }
 
             VStack(spacing: 8) {
-                if model.isStreamingPlayback(for: job) {
-                    Label("Playing while audio is being created", systemImage: "dot.radiowaves.left.and.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.Colors.accentGreen)
-                } else if model.isDownloadingAudio(for: job) {
-                    Label("Saving audio to this device", systemImage: "arrow.down.circle")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.Colors.textSecondary)
-                } else if model.hasLocallyCachedAudio(for: job) {
-                    Label("Saved on this device", systemImage: "checkmark.circle")
+                let isStreamingSession = model.isStreamingPlaybackSession(for: job)
+                if isStreamingSession {
+                    VStack(spacing: 6) {
+                        Label("Playing the audio available so far", systemImage: "dot.radiowaves.left.and.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.Colors.accentGreen)
+
+                        Text("More audio is still being generated. If you scrub ahead, playback stays within what is ready right now.")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.Colors.textSecondary)
+                            .multilineTextAlignment(.center)
+
+                        if !advancedControlsEnabled {
+                            Text("Playback speed and quick-skip unlock when the full audio is ready.")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.Colors.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                } else {
+                    Label("Ready", systemImage: "checkmark.circle")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(AppTheme.Colors.accentGreen)
                 }
@@ -225,13 +251,33 @@ struct PlayerView: View {
         }
     }
 
+    private func displayedDurationLabel(for job: AudioJob) -> String {
+        let formattedDuration = Self.formatTime(model.displayedTotalDuration(for: job))
+        if model.isUsingEstimatedTimelineEnvelope(for: job) {
+            return "~\(formattedDuration)"
+        }
+        return formattedDuration
+    }
+
+    private func seekBinding(for job: AudioJob) -> Binding<Double> {
+        Binding(
+            get: {
+                if isEditingSeek {
+                    return seekProgress
+                }
+                return model.displayedTimelineProgress(for: job)
+            },
+            set: { newValue in
+                seekProgress = newValue
+            }
+        )
+    }
+
     @State private var waveformPhase: CGFloat = 0
     @State private var progressOffset: CGFloat = 0
 
     private func processingView(for job: AudioJob) -> some View {
-        let isFailed = job.status == .failed
-        let isDownloadingToDevice = job.status == .completed && !hasPlayableAudio && model.isDownloadingAudio(for: job)
-        let isAudioUnavailable = job.status == .completed && !hasPlayableAudio && !model.isDownloadingAudio(for: job)
+        let presentation = processingPresentation(for: job)
         let barCount = 15
         let barWidth: CGFloat = 4
         let barSpacing: CGFloat = 5
@@ -242,7 +288,7 @@ struct PlayerView: View {
             Ellipse()
                 .fill(
                     RadialGradient(
-                        colors: (isFailed || isAudioUnavailable)
+                        colors: presentation.isError
                             ? [AppTheme.Colors.error.opacity(0.094), AppTheme.Colors.error.opacity(0)]
                             : [AppTheme.Colors.accentGreen.opacity(0.094), AppTheme.Colors.accentGreen.opacity(0)],
                         center: .center,
@@ -253,10 +299,10 @@ struct PlayerView: View {
                 .frame(width: 140, height: 140)
 
             // Waveform bars
-            if isFailed || isAudioUnavailable {
-                Image(systemName: isFailed ? "exclamationmark.triangle.fill" : "arrow.trianglehead.2.clockwise")
+            if let systemImage = presentation.systemImage {
+                Image(systemName: systemImage)
                     .font(.system(size: 42, weight: .bold))
-                    .foregroundStyle(AppTheme.Colors.error)
+                    .foregroundStyle(presentation.isError ? AppTheme.Colors.error : AppTheme.Colors.accentGreen)
             } else {
                 HStack(spacing: barSpacing) {
                     ForEach(0..<barCount, id: \.self) { index in
@@ -281,17 +327,9 @@ struct PlayerView: View {
 
             // Status text
             VStack(spacing: 10) {
-                Text(
-                    isFailed
-                        ? "Audio failed"
-                        : isAudioUnavailable
-                            ? "Audio unavailable"
-                            : isDownloadingToDevice
-                                ? "Downloading audio…"
-                                : "Creating audio…"
-                )
+                Text(presentation.title)
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle((isFailed || isAudioUnavailable) ? AppTheme.Colors.error : AppTheme.Colors.textPrimary)
+                    .foregroundStyle(presentation.isError ? AppTheme.Colors.error : AppTheme.Colors.textPrimary)
 
                 Text(job.article.displayTitle)
                     .font(.system(size: 15, weight: .medium))
@@ -310,7 +348,7 @@ struct PlayerView: View {
                     .fill(AppTheme.Colors.muted)
                     .frame(width: 200, height: 4)
 
-                if isFailed || isAudioUnavailable {
+                if presentation.isError {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(AppTheme.Colors.error)
                         .frame(width: 200, height: 4)
@@ -331,20 +369,45 @@ struct PlayerView: View {
             .clipped()
 
             // Tertiary hint
-            Text(
-                isFailed
-                    ? job.statusMessage
-                    : isAudioUnavailable
-                        ? "Delete this audio and create a new one to listen again."
-                        : isDownloadingToDevice
-                            ? "Saving audio to your device."
-                            : "This may take a moment"
-            )
+            Text(presentation.message)
                 .font(.system(size: 12))
-                .foregroundStyle((isFailed || isAudioUnavailable) ? AppTheme.Colors.error : AppTheme.Colors.textTertiary)
+                .foregroundStyle(presentation.isError ? AppTheme.Colors.error : AppTheme.Colors.textTertiary)
                 .multilineTextAlignment(.center)
         }
         .padding(.top, 80)
+    }
+
+    private func processingPresentation(for job: AudioJob) -> ProcessingPresentation {
+        switch job.playback.mode {
+        case .failed:
+            return ProcessingPresentation(
+                title: "Audio failed",
+                message: job.playback.errorMessage ?? job.statusMessage,
+                systemImage: "exclamationmark.triangle.fill",
+                isError: true
+            )
+        case .final:
+            return ProcessingPresentation(
+                title: "Final audio is almost ready",
+                message: "The final file is still settling. Try again in a moment.",
+                systemImage: "waveform.badge.clock",
+                isError: false
+            )
+        case .preparing:
+            return ProcessingPresentation(
+                title: "Preparing audio",
+                message: "We are building the opening buffer so playback can start smoothly.",
+                systemImage: nil,
+                isError: false
+            )
+        case .streaming:
+            return ProcessingPresentation(
+                title: "Generating audio",
+                message: "More audio is on the way. Playback opens once there is enough ready to listen without interruption.",
+                systemImage: nil,
+                isError: false
+            )
+        }
     }
 
     private static func formatTime(_ seconds: Double?) -> String {
@@ -356,18 +419,34 @@ struct PlayerView: View {
     }
 }
 
+#Preview("Player Preparing") {
+    let model = AppModel.previewPlayerPreparing()
+    return PlayerView(
+        model: model,
+        presentation: PlayerPresentation(jobID: PlaybackStateSamples.preparingJob.id)
+    )
+}
+
+#Preview("Player Streaming") {
+    let model = AppModel.previewPlayerProcessing()
+    return PlayerView(
+        model: model,
+        presentation: PlayerPresentation(jobID: PlaybackStateSamples.streamingJob.id)
+    )
+}
+
 #Preview("Player Ready") {
     let model = AppModel.previewPlayerReady()
     return PlayerView(
         model: model,
-        presentation: PlayerPresentation(jobID: PreviewSamples.readyJob.id)
+        presentation: PlayerPresentation(jobID: PlaybackStateSamples.finalJob.id)
     )
 }
 
-#Preview("Player Processing") {
-    let model = AppModel.previewPlayerProcessing()
+#Preview("Player Failed") {
+    let model = AppModel.previewPlayerFailed()
     return PlayerView(
         model: model,
-        presentation: PlayerPresentation(jobID: PreviewSamples.processingJob.id)
+        presentation: PlayerPresentation(jobID: PlaybackStateSamples.failedJob.id)
     )
 }

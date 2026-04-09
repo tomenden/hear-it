@@ -10,12 +10,21 @@ final class AppSettings {
         static let lastPresentedJobID = "hear-it.last-presented-job-id"
     }
 
+    #if DEBUG
+    private enum EnvironmentKey {
+        static let debugAPIBaseURL = "HEAR_IT_DEBUG_API_BASE_URL"
+    }
+    #endif
+
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let sharedDefaults = UserDefaults(suiteName: "group.com.tome.hearit")
+    @ObservationIgnored private let hasDebugAPIBaseURLOverride: Bool
 
     var apiBaseURLString: String {
         didSet {
-            defaults.set(Self.normalizeBaseURLString(apiBaseURLString), forKey: Key.apiBaseURL)
+            let normalized = Self.normalizeBaseURLString(apiBaseURLString)
+            defaults.set(normalized, forKey: Key.apiBaseURL)
+            sharedDefaults?.set(normalized, forKey: Key.apiBaseURL)
         }
     }
 
@@ -42,11 +51,23 @@ final class AppSettings {
         return url
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
         self.defaults = defaults
-        self.apiBaseURLString = defaults.string(forKey: Key.apiBaseURL) ?? Self.defaultBaseURLString
+        let persistedBaseURL = defaults.string(forKey: Key.apiBaseURL) ?? Self.defaultBaseURLString
+        let debugAPIBaseURLOverride = Self.debugAPIBaseURLOverride(from: environment)
+        let resolvedBaseURL = debugAPIBaseURLOverride ?? persistedBaseURL
+        self.hasDebugAPIBaseURLOverride = debugAPIBaseURLOverride != nil
+
+        self.apiBaseURLString = resolvedBaseURL
         self.selectedVoiceID = defaults.string(forKey: Key.selectedVoiceID) ?? "alloy"
         self.lastPresentedJobID = defaults.string(forKey: Key.lastPresentedJobID)
+        if !hasDebugAPIBaseURLOverride {
+            defaults.set(Self.normalizeBaseURLString(apiBaseURLString), forKey: Key.apiBaseURL)
+            sharedDefaults?.set(Self.normalizeBaseURLString(apiBaseURLString), forKey: Key.apiBaseURL)
+        }
         sharedDefaults?.set(selectedVoiceID, forKey: Key.selectedVoiceID)
     }
 
@@ -58,5 +79,19 @@ final class AppSettings {
 
     private static var defaultBaseURLString: String {
         "https://hear-it.onrender.com"
+    }
+
+    private static func debugAPIBaseURLOverride(from environment: [String: String]) -> String? {
+        #if DEBUG
+        guard let rawValue = environment[EnvironmentKey.debugAPIBaseURL] else {
+            return nil
+        }
+
+        let normalized = normalizeBaseURLString(rawValue)
+        return normalized.isEmpty ? nil : normalized
+        #else
+        _ = environment
+        return nil
+        #endif
     }
 }

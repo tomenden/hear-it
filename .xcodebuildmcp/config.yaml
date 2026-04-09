@@ -7,4 +7,3 @@ enabledWorkflows:
   - utilities
   - simulator-management
   - workflow-discovery
-

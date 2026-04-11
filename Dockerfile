@@ -14,6 +14,10 @@ RUN yarn workspace @hear-it/api build
 FROM node:22-slim AS runtime
 WORKDIR /app
 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY --from=base /app/package.json ./package.json
 COPY --from=base /app/.yarnrc.yml ./.yarnrc.yml
 COPY --from=base /app/node_modules ./node_modules

@@ -1,0 +1,23 @@
+# source: https://www.quantamagazine.org/how-smell-guides-our-inner-world-20250703/
+# title: How Smell Guides Our Inner World
+# publication: Quanta Magazine
+# author: Yasemin Saplakoglu
+# published: July 3, 2025
+
+When Thomas Hummel encounters the scent of an unripe green tomato, he is transported to his childhood home in Bavaria. The smell is "grassy, green, pungent, rough and bitter," he explains, yet "it is always to some degree emotional," as he notes that "every smell is emotional."
+
+Smell connects deeply with emotion and memory centers in the brain. Lavender perfume might evoke a cherished friend, cheap vodka might bring grimaces from college memories, and a familiar laundry detergent might trigger tears by linking to grandparents' homes.
+
+Smell represents our most ancient sense, tracing back billions of years to the first chemical-sensing cells. Yet scientists know comparatively little about it compared to vision and hearing, partly because smell has been deemed less critical for survival and humans have been wrongly labeled as poor smellers for over a century. Additionally, studying smell proves difficult due to its highly dimensional nature.
+
+The misconception originated with Paul Broca, a 19th-century French neuroanatomist who observed that human olfactory bulbs are relatively small compared to overall brain size, unlike in mice or horses. He concluded that smell drives animal behavior while humans can choose to ignore smells, labeling humans as "anosmatique" or non-smellers. Later, English anatomist Sir William Turner mistranslated Broca's work, suggesting humans simply cannot smell well. This misunderstanding persisted through the 20th century, reinforced by Freud's claims that smell was a primitive, animalistic sense.
+
+In reality, humans possess approximately 400 types of olfactory receptors in the nose, with millions lining the nasal passages. When you smell a rose, over 800 different odorants enter your nose and bind to these receptors, creating patterns interpreted by the brain. Yet humans underestimate their smell because lacking vocabulary for it. While describing a pineapple visually is straightforward, describing what it smells like proves difficult.
+
+Researchers now address this vocabulary problem systematically. One recent study had over 1,200 people evaluate 74 single-molecule odorants, describing smells in their own words and rating them using set descriptors. Results revealed crucial differences in olfactory perception. For example, around 250 participants described benzyl acetate as smelling like nail polish remover, while 170 others said it smelled like banana. Both interpretations prove correct because benzyl acetate exists in both substances.
+
+At the neural level, recent research reveals how brains process smells. Unlike other senses, smell information bypasses the thalamus, traveling directly to the amygdala and hippocampus through short pathways. Neurobiologist Florian Mormann's team, recording from epilepsy patients' implanted electrodes, discovered that neurons in the piriform cortex encode an odor's chemical identity, while hippocampal neurons encode its perceived identity. Remarkably, these neurons respond not only to actual scents but also to pictures or words associated with them, functioning as concept neurons that represent abstract ideas.
+
+Despite historical misconceptions, humans actually possess surprisingly good smell abilities. Humans prove more sensitive to fruity and flowery scents than dogs, who evolved as carnivores with sensitivity to fatty acids composing prey body odor instead. This species-specific sensitivity reflects evolutionary pressures rather than overall olfactory inferiority.
+
+As researchers digitize olfaction through databases and AI tools, they hope to create electronic noses detecting disease markers in body odor and helping those who've lost smell through aging, neurodegenerative diseases, or conditions like COVID-19 regain this critical connection to their world.

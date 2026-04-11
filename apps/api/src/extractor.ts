@@ -9,6 +9,10 @@ const WORDS_PER_MINUTE = 160;
 export const MAX_AUDIO_CHARS = 100_000;
 const DEFAULT_ARTICLE_FETCH_TIMEOUT_MS = 15_000;
 const MIN_PARAGRAPH_LENGTH = 40;
+const BROWSER_LIKE_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15";
+const HEAR_IT_BOT_USER_AGENT =
+  "HearItBot/0.1 (+https://local.dev/hear-it; article extraction prototype)";
 const BOILERPLATE_PATTERNS = [
   /subscribe/i,
   /newsletter/i,
@@ -163,16 +167,58 @@ async function fetchHtml(url: string): Promise<string> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort("timeout"), timeoutMs);
 
-  let response: Response;
+  let response: Response | null = null;
+  let lastError: unknown;
   try {
-    response = await fetch(url, {
-      headers: {
-        "user-agent":
-          "HearItBot/0.1 (+https://local.dev/hear-it; article extraction prototype)",
-        accept: "text/html,application/xhtml+xml",
+    const fetchProfiles = [
+      {
+        attempt: "browser_like",
+        headers: {
+          "user-agent": BROWSER_LIKE_USER_AGENT,
+          accept: "text/html,application/xhtml+xml",
+          "accept-language": "en-US,en;q=0.9",
+          "cache-control": "no-cache",
+        },
       },
-      signal: controller.signal,
-    });
+      {
+        attempt: "hearit_bot",
+        headers: {
+          "user-agent": HEAR_IT_BOT_USER_AGENT,
+          accept: "text/html,application/xhtml+xml",
+        },
+      },
+    ] as const;
+
+    for (const profile of fetchProfiles) {
+      try {
+        response = await fetch(url, {
+          headers: profile.headers,
+          signal: controller.signal,
+        });
+        lastError = undefined;
+        break;
+      } catch (error) {
+        if (controller.signal.aborted) {
+          throw error;
+        }
+
+        lastError = error;
+        console.error("[extractor] fetch_html_attempt_failed", {
+          url,
+          timeoutMs,
+          attempt: profile.attempt,
+          error: serializeErrorDetails(error),
+        });
+        Sentry.captureException(error, {
+          tags: { url, phase: "fetch_html", attempt: profile.attempt },
+          extra: { timeoutMs, attempt: profile.attempt },
+        });
+      }
+    }
+
+    if (lastError !== undefined) {
+      throw lastError;
+    }
   } catch (error) {
     if (controller.signal.aborted) {
       const timeoutError = new ArticleFetchTimeoutError({ url, timeoutMs });
@@ -188,10 +234,19 @@ async function fetchHtml(url: string): Promise<string> {
       throw timeoutError;
     }
 
+    console.error("[extractor] fetch_html_failed", {
+      url,
+      timeoutMs,
+      error: serializeErrorDetails(error),
+    });
     Sentry.captureException(error, { tags: { url, phase: "fetch_html" } });
     throw error;
   } finally {
     clearTimeout(timeoutId);
+  }
+
+  if (!response) {
+    throw new Error("Article fetch completed without a response.");
   }
 
   if (!response.ok) {
@@ -201,6 +256,24 @@ async function fetchHtml(url: string): Promise<string> {
   }
 
   return await response.text();
+}
+
+function serializeErrorDetails(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) {
+    return { value: error };
+  }
+
+  return {
+    name: error.name,
+    message: error.message,
+    cause:
+      error.cause instanceof Error
+        ? {
+            name: error.cause.name,
+            message: error.cause.message,
+          }
+        : error.cause,
+  };
 }
 
 function normalizeText(text: string): string {

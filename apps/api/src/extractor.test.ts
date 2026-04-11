@@ -113,6 +113,44 @@ describe("article extraction", () => {
       }),
     ).rejects.toThrow("Timed out fetching article content.");
   });
+
+  it("retries article fetches with a fallback profile when the first request errors", async () => {
+    globalThis.fetch = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(
+        new Response(simpleArticleHtml, {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        }),
+      ) as typeof fetch;
+
+    const article = await extractArticle({
+      url: "https://example.com/posts/side-projects",
+    });
+
+    expect(article.title).toContain("How to Ship Better Side Projects");
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      1,
+      "https://example.com/posts/side-projects",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "user-agent": expect.stringContaining("Safari"),
+          "accept-language": "en-US,en;q=0.9",
+        }),
+      }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      2,
+      "https://example.com/posts/side-projects",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "user-agent": expect.stringContaining("HearItBot"),
+        }),
+      }),
+    );
+  });
 });
 
 afterEach(() => {

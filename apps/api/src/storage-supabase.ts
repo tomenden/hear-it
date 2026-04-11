@@ -58,7 +58,7 @@ export class SupabaseAudioStore implements AudioStore {
 
     try {
       const response = await fetch(url, { method: "HEAD" });
-      if (response.status === 404) {
+      if (response.status === 404 || response.status === 400) {
         return null;
       }
       if (!response.ok) {

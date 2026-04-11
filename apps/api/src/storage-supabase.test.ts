@@ -100,6 +100,9 @@ describe("SupabaseAudioStore", () => {
 
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 404 }));
     await expect(store.head("jobs/missing.mp3")).resolves.toBeNull();
+
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 400 }));
+    await expect(store.head("jobs/missing-bad-request.mp3")).resolves.toBeNull();
   });
 
   it("deletes keys and performs a lightweight connectivity check", async () => {

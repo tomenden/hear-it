@@ -152,8 +152,6 @@ struct AudioJobDecodingTests {
           "provider": "openai",
           "audioUrl": null,
           "audioDownloadPath": null,
-          "playlistUrl": "https://example.com/audio/job-legacy/live.m3u8",
-          "liveEdgeUpdatedAt": "2026-04-05T12:30:00Z",
           "audioSegments": [
             {
               "url": "https://cdn.example.com/audio/job-legacy/segment-1.mp3",

@@ -109,7 +109,6 @@ class IndexedSpeechProvider implements SpeechProvider {
 
     return {
       audioUrl,
-      playlistUrl: null,
       audioSegments: audioUrl
         ? [{ url: audioUrl, durationSeconds: segment.durationSeconds }]
         : [],
@@ -194,7 +193,6 @@ class UnsupportedChunkMediaSpeechProvider implements SpeechProvider {
 
     return {
       audioUrl,
-      playlistUrl: null,
       audioSegments: audioUrl ? [{ url: audioUrl, durationSeconds: 24 }] : [],
       durationSeconds: 24,
       audioData,
@@ -235,7 +233,6 @@ class MissingChunkMediaSpeechProvider implements SpeechProvider {
 
     return {
       audioUrl,
-      playlistUrl: null,
       audioSegments: audioUrl ? [{ url: audioUrl, durationSeconds: 24 }] : [],
       durationSeconds: 24,
       audioData,
@@ -255,7 +252,6 @@ function createClaimedJob(overrides: Partial<AudioJob> = {}): AudioJob {
     internalState: "queued",
     displayTitle: null,
     speechScript: null,
-    availableDurationSeconds: 0,
     leaseOwner: "worker-1",
     leaseExpiresAt: "2026-04-05T10:30:00.000Z",
     runId: "run-1",
@@ -279,8 +275,6 @@ function createClaimedJob(overrides: Partial<AudioJob> = {}): AudioJob {
     },
     provider: "indexed-test",
     audioUrl: null,
-    audioDownloadPath: null,
-    playlistUrl: null,
     audioSegments: [],
     durationSeconds: null,
     error: null,
@@ -445,7 +439,6 @@ describe("job pipeline", () => {
         Array.from({ length: 64 }, (_, index) => `resume-b${index}`).join(" "),
         Array.from({ length: 64 }, (_, index) => `resume-c${index}`).join(" "),
       ].join("\n\n"),
-      availableDurationSeconds: 12,
       audioSegments: [
         {
           url: "/audio/jobs/job-123/tmp/chunk-0000.mp3",

@@ -81,7 +81,6 @@ interface AudioJobResponse {
   provider: string;
   audioUrl: string | null;
   audioDownloadPath: string | null;
-  playlistUrl: string | null;
   audioSegments: AudioJob["audioSegments"];
   durationSeconds: number | null;
   error: string | null;
@@ -470,7 +469,6 @@ function buildLegacyCompatibilityFields(
   | "provider"
   | "audioUrl"
   | "audioDownloadPath"
-  | "playlistUrl"
   | "audioSegments"
   | "durationSeconds"
   | "error"
@@ -481,7 +479,6 @@ function buildLegacyCompatibilityFields(
     provider: job.provider,
     audioUrl: job.audioUrl,
     audioDownloadPath: null,
-    playlistUrl: null,
     audioSegments: job.audioSegments,
     durationSeconds: job.durationSeconds,
     error: playback.errorMessage ?? job.error,

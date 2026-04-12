@@ -155,7 +155,7 @@ describe("audio job API contract", () => {
       provider: "contract-test",
       audioUrl: null,
       audioDownloadPath: null,
-      playlistUrl: null,
+
       audioSegments: [
         { url: "/audio/jobs/job-processing/chunk-0.mp3", durationSeconds: 11 },
         { url: "/audio/jobs/job-processing/chunk-1.mp3", durationSeconds: 16 },
@@ -218,7 +218,7 @@ describe("audio job API contract", () => {
       provider: "contract-test",
       audioUrl: null,
       audioDownloadPath: null,
-      playlistUrl: null,
+
       audioSegments: [
         { url: "/audio/jobs/job-packaging/chunk-0.mp3", durationSeconds: 11 },
         { url: "/audio/jobs/job-packaging/chunk-1.mp3", durationSeconds: 16 },
@@ -308,7 +308,7 @@ describe("audio job API contract", () => {
         provider: "contract-test",
         audioUrl: null,
         audioDownloadPath: null,
-        playlistUrl: null,
+  
         audioSegments: [],
         durationSeconds: null,
         error: "Audio generation failed.",
@@ -347,7 +347,7 @@ describe("audio job API contract", () => {
         provider: "contract-test",
         audioUrl: "/audio/jobs/job-ready/final.mp3",
         audioDownloadPath: null,
-        playlistUrl: null,
+  
         audioSegments: [
           { url: "/audio/jobs/job-ready/chunk-0.mp3", durationSeconds: 12 },
           { url: "/audio/jobs/job-ready/chunk-1.mp3", durationSeconds: 18 },
@@ -393,7 +393,7 @@ describe("audio job API contract", () => {
         provider: "contract-test",
         audioUrl: null,
         audioDownloadPath: null,
-        playlistUrl: null,
+  
         audioSegments: [],
         durationSeconds: null,
         error: null,

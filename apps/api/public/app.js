@@ -526,10 +526,6 @@ function resolvePlaybackAudioSource(job) {
     return job.playback.final.audioUrl;
   }
 
-  if (job.playback?.stream?.playlistUrl) {
-    return job.playback.stream.playlistUrl;
-  }
-
   return null;
 }
 

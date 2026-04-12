@@ -75,7 +75,6 @@ export class FakeSpeechProvider implements SpeechProvider {
 
     return {
       audioUrl,
-      playlistUrl: null,
       audioSegments: audioUrl ? [{ url: audioUrl, durationSeconds }] : [],
       durationSeconds,
       audioData,
@@ -173,7 +172,6 @@ export class OpenAISpeechProvider implements SpeechProvider {
 
     return {
       audioUrl,
-      playlistUrl: null,
       audioSegments: audioUrl ? [{ url: audioUrl, durationSeconds }] : [],
       durationSeconds,
       audioData: buffer,

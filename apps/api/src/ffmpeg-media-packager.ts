@@ -5,18 +5,9 @@ import { spawn } from "node:child_process";
 
 import { inspectMP3Audio } from "./tts.js";
 import {
-  buildBatchInitSegmentKey,
-  buildBatchSegmentKey,
-  buildChunkMediaKey,
   buildFinalAudioKey,
-  buildHlsEventPlaylist,
-  buildInitSegmentKey,
-  buildPlaylistKey,
-  buildPlaylistUri,
   type MediaChunkInput,
   type MediaPackagingFinalAudio,
-  type MediaPackagingResult,
-  type StreamBatchPackagingResult,
 } from "./media-packager.js";
 
 export interface FfmpegCommandResult {
@@ -33,7 +24,6 @@ export interface FfmpegMediaPackagerOptions {
   ffmpegPath?: string;
   commandRunner?: FfmpegCommandRunner;
   run?: FfmpegCommandRunner["run"];
-  startupBufferSeconds?: number;
 }
 
 export class EmptyMediaChunkInputError extends Error {
@@ -80,16 +70,10 @@ export class FfmpegCommandFailedError extends Error {
 }
 
 export interface FfmpegMediaPackager {
-  packageStreamBatch(
-    jobId: string,
-    batchStartChunkIndex: number,
-    chunks: readonly MediaChunkInput[],
-  ): Promise<StreamBatchPackagingResult>;
   packageFinalAudio(
     jobId: string,
     chunks: readonly MediaChunkInput[],
   ): Promise<MediaPackagingFinalAudio>;
-  packageMedia(jobId: string, chunks: readonly MediaChunkInput[]): Promise<MediaPackagingResult>;
 }
 
 export function createFfmpegMediaPackager(
@@ -100,88 +84,8 @@ export function createFfmpegMediaPackager(
     options.commandRunner ??
     (options.run ? { run: options.run } : null) ??
     createDefaultCommandRunner();
-  const startupBufferSeconds = options.startupBufferSeconds ?? 20;
 
   return {
-    async packageStreamBatch(jobId, batchStartChunkIndex, chunks) {
-      assertChunks(chunks);
-      const workingDir = await mkdtemp(join(tmpdir(), "hear-it-packager-"));
-
-      try {
-        const { concatListPath, outputsDir } = await stageWorkingInputs(chunks, workingDir);
-        const hlsPlaylistPath = join(outputsDir, "playlist.m3u8");
-        const hlsInitSegmentPath = join(outputsDir, "init.mp4");
-        const hlsSegmentPattern = join(outputsDir, "chunk-%04d.m4s");
-
-        await runFfmpegCommand(commandRunner, ffmpegPath, [
-          "-y",
-          "-hide_banner",
-          "-loglevel",
-          "error",
-          "-f",
-          "concat",
-          "-safe",
-          "0",
-          "-i",
-          concatListPath,
-          "-c:a",
-          "aac",
-          "-ar",
-          String(chunks[0]!.chunkMedia.sampleRateHz),
-          "-ac",
-          String(chunks[0]!.chunkMedia.channelCount),
-          "-f",
-          "hls",
-          "-hls_playlist_type",
-          "event",
-          "-hls_segment_type",
-          "fmp4",
-          "-hls_fmp4_init_filename",
-          "init.mp4",
-          "-hls_segment_filename",
-          hlsSegmentPattern,
-          hlsPlaylistPath,
-        ]);
-
-        const rawPlaylistText = (await readFile(hlsPlaylistPath)).toString("utf8");
-        const initSegmentData = await readFile(hlsInitSegmentPath);
-        const playlistSegments = parsePlaylistSegments(rawPlaylistText);
-        const initSegmentKey = buildBatchInitSegmentKey(jobId, batchStartChunkIndex);
-
-        const segments = await Promise.all(
-          playlistSegments.map(async (segment) => {
-            const segmentPath = join(outputsDir, segment.fileName);
-            const audioData = await readFile(segmentPath);
-            const key = buildBatchSegmentKey(jobId, batchStartChunkIndex, segment.index);
-            return {
-              index: segment.index,
-              key,
-              uri: buildPlaylistUri(jobId, key),
-              audioData,
-              contentType: "video/mp4" as const,
-              durationSeconds: segment.durationSeconds,
-            };
-          }),
-        );
-
-        return {
-          initSegment: {
-            key: initSegmentKey,
-            uri: buildPlaylistUri(jobId, initSegmentKey),
-            audioData: initSegmentData,
-            contentType: "video/mp4",
-          },
-          segments,
-          batchDurationSeconds: segments.reduce(
-            (total, segment) => total + segment.durationSeconds,
-            0,
-          ),
-        };
-      } finally {
-        await rm(workingDir, { recursive: true, force: true });
-      }
-    },
-
     async packageFinalAudio(jobId, chunks) {
       assertChunks(chunks);
       const workingDir = await mkdtemp(join(tmpdir(), "hear-it-packager-"));
@@ -229,88 +133,7 @@ export function createFfmpegMediaPackager(
         await rm(workingDir, { recursive: true, force: true });
       }
     },
-
-    async packageMedia(jobId, chunks) {
-      const streamBatch = await this.packageStreamBatch(jobId, 0, chunks);
-      const finalAudio = await this.packageFinalAudio(jobId, chunks);
-      const startupBuffer = {
-        bufferedSeconds: streamBatch.batchDurationSeconds,
-        isPlayable: streamBatch.batchDurationSeconds >= startupBufferSeconds,
-      };
-
-      return {
-        playlist: {
-          key: buildPlaylistKey(jobId),
-          audioData: Buffer.from(
-            buildHlsEventPlaylist(jobId, chunks, {
-              startupBufferPlayable: startupBuffer.isPlayable,
-            }),
-            "utf8",
-          ),
-          contentType: "application/vnd.apple.mpegurl",
-        },
-        initSegment: {
-          key: buildInitSegmentKey(jobId),
-          audioData: streamBatch.initSegment.audioData,
-          contentType: streamBatch.initSegment.contentType,
-        },
-        segments: streamBatch.segments.map((segment, index) => ({
-          index,
-          key: buildChunkMediaKey(jobId, index),
-          audioData: segment.audioData,
-          contentType: segment.contentType,
-          durationSeconds: segment.durationSeconds,
-        })),
-        startupBuffer,
-        finalAudio,
-      };
-    },
   };
-}
-
-type PlaylistSegmentReference = {
-  index: number;
-  fileName: string;
-  durationSeconds: number;
-};
-
-function parsePlaylistSegments(playlistText: string): PlaylistSegmentReference[] {
-  const segments: PlaylistSegmentReference[] = [];
-  const lines = playlistText.split(/\r?\n/);
-  let pendingDurationSeconds: number | null = null;
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) {
-      continue;
-    }
-
-    if (line.startsWith("#EXTINF:")) {
-      const durationToken = line.slice("#EXTINF:".length).split(",", 1)[0];
-      const durationSeconds = Number(durationToken);
-      pendingDurationSeconds = Number.isFinite(durationSeconds) ? durationSeconds : 0;
-      continue;
-    }
-
-    if (line.startsWith("#")) {
-      continue;
-    }
-
-    const fileName = line.split("/").at(-1) ?? line;
-    const indexMatch = fileName.match(/^chunk-(\d+)\.m4s$/);
-    if (!indexMatch) {
-      continue;
-    }
-
-    segments.push({
-      index: Number(indexMatch[1]),
-      fileName,
-      durationSeconds: pendingDurationSeconds ?? 0,
-    });
-    pendingDurationSeconds = null;
-  }
-
-  return segments;
 }
 
 function createDefaultCommandRunner(): FfmpegCommandRunner {

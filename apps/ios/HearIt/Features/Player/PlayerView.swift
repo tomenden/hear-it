@@ -203,30 +203,9 @@ struct PlayerView: View {
             }
 
             VStack(spacing: 8) {
-                let isStreamingSession = model.isStreamingPlaybackSession(for: job)
-                if isStreamingSession {
-                    VStack(spacing: 6) {
-                        Label("Playing the audio available so far", systemImage: "dot.radiowaves.left.and.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(AppTheme.Colors.accentGreen)
-
-                        Text("More audio is still being generated. If you scrub ahead, playback stays within what is ready right now.")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.Colors.textSecondary)
-                            .multilineTextAlignment(.center)
-
-                        if !advancedControlsEnabled {
-                            Text("Playback speed and quick-skip unlock when the full audio is ready.")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.Colors.textSecondary)
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-                } else {
-                    Label("Ready", systemImage: "checkmark.circle")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.Colors.accentGreen)
-                }
+                Label("Ready", systemImage: "checkmark.circle")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.Colors.accentGreen)
 
                 HStack {
                     Image(systemName: "speaker.fill")
@@ -252,11 +231,7 @@ struct PlayerView: View {
     }
 
     private func displayedDurationLabel(for job: AudioJob) -> String {
-        let formattedDuration = Self.formatTime(model.displayedTotalDuration(for: job))
-        if model.isUsingEstimatedTimelineEnvelope(for: job) {
-            return "~\(formattedDuration)"
-        }
-        return formattedDuration
+        Self.formatTime(model.displayedTotalDuration(for: job))
     }
 
     private func seekBinding(for job: AudioJob) -> Binding<Double> {
@@ -386,24 +361,27 @@ struct PlayerView: View {
                 systemImage: "exclamationmark.triangle.fill",
                 isError: true
             )
-        case .final:
+        case .ready:
             return ProcessingPresentation(
-                title: "Final audio is almost ready",
-                message: "The final file is still settling. Try again in a moment.",
-                systemImage: "waveform.badge.clock",
+                title: "Audio is ready",
+                message: "Your audio is ready to play.",
+                systemImage: "checkmark.circle.fill",
                 isError: false
             )
         case .preparing:
+            let progress = job.progress
+            if let total = progress.chunksTotal, total > 0 {
+                let pct = Int(Double(progress.chunksReady) / Double(total) * 100)
+                return ProcessingPresentation(
+                    title: "Generating audio... \(pct)%",
+                    message: "Your audio is being generated. This usually finishes in under a minute.",
+                    systemImage: nil,
+                    isError: false
+                )
+            }
             return ProcessingPresentation(
                 title: "Preparing audio",
-                message: "We are building the opening buffer so playback can start smoothly.",
-                systemImage: nil,
-                isError: false
-            )
-        case .streaming:
-            return ProcessingPresentation(
-                title: "Generating audio",
-                message: "More audio is on the way. Playback opens once there is enough ready to listen without interruption.",
+                message: "Your audio is being prepared. This usually finishes in under a minute.",
                 systemImage: nil,
                 isError: false
             )
@@ -424,14 +402,6 @@ struct PlayerView: View {
     return PlayerView(
         model: model,
         presentation: PlayerPresentation(jobID: PlaybackStateSamples.preparingJob.id)
-    )
-}
-
-#Preview("Player Streaming") {
-    let model = AppModel.previewPlayerProcessing()
-    return PlayerView(
-        model: model,
-        presentation: PlayerPresentation(jobID: PlaybackStateSamples.streamingJob.id)
     )
 }
 

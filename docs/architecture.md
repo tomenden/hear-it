@@ -16,8 +16,8 @@ This document is the entry point for the current architecture. It stays intentio
 
 - [Ubiquitous Language](./ubiquitous-language.md)
 - [Audio Pipeline Architecture](./audio-pipeline-architecture.md)
-- [Playback Contract](./streaming-playback-contract.md)
-- [Design Spec: 2026-04-04 Audio Pipeline Redesign](./superpowers/specs/2026-04-04-audio-pipeline-redesign-design.md)
+- [Playback Contract](./playback-contract.md)
+- [Streaming Learnings (Historical Reference)](./streaming-learnings.md)
 
 ## System At A Glance
 

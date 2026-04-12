@@ -125,14 +125,14 @@ export class FinalizationRepairer implements MaintenanceService {
       await this.jobStore.updateIfLeaseSnapshotMatches(
         job.id,
         {
-        status: "completed",
-        internalState: "completed",
-        audioUrl: finalAudioUrl,
-        leaseOwner: null,
-        leaseExpiresAt: null,
-        runId: null,
-        error: null,
-        updatedAt: now.toISOString(),
+          status: "completed",
+          internalState: "completed",
+          audioUrl: finalAudioUrl,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          runId: null,
+          error: null,
+          updatedAt: now.toISOString(),
         },
         {
           status: job.status,

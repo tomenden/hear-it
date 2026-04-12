@@ -67,9 +67,6 @@ export class PostgresJobStore implements JobStore {
           internal_state TEXT,
           display_title TEXT,
           speech_script TEXT,
-          available_duration_seconds DOUBLE PRECISION,
-          published_chunk_count INTEGER,
-          live_edge_updated_at TEXT,
           lease_owner TEXT,
           lease_expires_at TEXT,
           run_id TEXT,
@@ -78,7 +75,6 @@ export class PostgresJobStore implements JobStore {
           speech_options JSONB NOT NULL,
           provider TEXT NOT NULL,
           audio_url TEXT,
-          playlist_url TEXT,
           audio_segments JSONB NOT NULL DEFAULT '[]',
           duration_seconds DOUBLE PRECISION,
           error TEXT,
@@ -150,18 +146,6 @@ export class PostgresJobStore implements JobStore {
 
       await this.sql`
         ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS speech_script TEXT
-      `;
-
-      await this.sql`
-        ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS available_duration_seconds DOUBLE PRECISION
-      `;
-
-      await this.sql`
-        ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS published_chunk_count INTEGER
-      `;
-
-      await this.sql`
-        ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS live_edge_updated_at TEXT
       `;
 
       await this.sql`

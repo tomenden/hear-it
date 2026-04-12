@@ -19,6 +19,7 @@ import {
 import { createAuthMiddleware } from "./auth.js";
 import { AudioJobService } from "./jobs.js";
 import type { AudioStore, JobStore } from "./storage.js";
+import { chunkSpeechScript } from "./text-chunker.js";
 import { AVAILABLE_VOICES } from "./tts.js";
 import type { AudioJob, CreateAudioJobInput, ExtractArticleInput } from "./types.js";
 
@@ -122,6 +123,7 @@ export function createApp(options: CreateAppOptions) {
       error: job.error,
     });
     const chunksReady = job.audioSegments.length;
+    const chunksTotal = resolveChunksTotal(job, state, chunksReady);
     const compatibilityFields = buildLegacyCompatibilityFields(
       job,
       playback,
@@ -135,7 +137,7 @@ export function createApp(options: CreateAppOptions) {
       voice: job.speechOptions.voice,
       playback,
       progress: {
-        chunksTotal: state === "ready" ? chunksReady : null,
+        chunksTotal,
         chunksReady,
         availableDurationSeconds: resolveAvailableDurationSeconds(job),
       },
@@ -453,6 +455,23 @@ function resolveAvailableDurationSeconds(job: AudioJob): number {
     (total, segment) => total + segment.durationSeconds,
     0,
   );
+}
+
+function resolveChunksTotal(
+  job: AudioJob,
+  state: PublicAudioState,
+  chunksReady: number,
+): number | null {
+  if (state === "ready") {
+    return chunksReady;
+  }
+
+  if (state !== "processing" || !job.speechScript) {
+    return null;
+  }
+
+  const chunkCount = chunkSpeechScript({ script: job.speechScript }).length;
+  return chunkCount > 0 ? Math.max(chunkCount, chunksReady) : null;
 }
 
 function assertNever(value: never): never {

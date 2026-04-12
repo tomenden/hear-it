@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import { AudioJobService } from "./jobs.js";
 import { FileAudioStore, FileJobStore } from "./storage-fs.js";
+import { chunkSpeechScript } from "./text-chunker.js";
 import type {
   AudioJob,
   AudioRenderResult,
@@ -107,6 +108,12 @@ async function closeServer(server: ReturnType<typeof createServer>) {
 
 describe("audio job API contract", () => {
   const servers: Array<ReturnType<typeof createServer>> = [];
+  const multiChunkSpeechScript = [
+    Array.from({ length: 64 }, (_, index) => `alpha${index}`).join(" "),
+    Array.from({ length: 64 }, (_, index) => `beta${index}`).join(" "),
+    Array.from({ length: 64 }, (_, index) => `gamma${index}`).join(" "),
+  ].join("\n\n");
+  const multiChunkTotal = chunkSpeechScript({ script: multiChunkSpeechScript }).length;
 
   afterEach(async () => {
     while (servers.length > 0) {
@@ -119,6 +126,7 @@ describe("audio job API contract", () => {
       id: "job-processing",
       status: "processing",
       internalState: "synthesizing",
+      speechScript: multiChunkSpeechScript,
       audioSegments: [
         { url: "/audio/jobs/job-processing/chunk-0.mp3", durationSeconds: 11 },
         { url: "/audio/jobs/job-processing/chunk-1.mp3", durationSeconds: 16 },
@@ -168,7 +176,7 @@ describe("audio job API contract", () => {
         errorMessage: null,
       },
       progress: {
-        chunksTotal: null,
+        chunksTotal: multiChunkTotal,
         chunksReady: 2,
         availableDurationSeconds: 27,
       },
@@ -182,6 +190,7 @@ describe("audio job API contract", () => {
       id: "job-packaging",
       status: "processing",
       internalState: "packaging",
+      speechScript: multiChunkSpeechScript,
       audioSegments: [
         { url: "/audio/jobs/job-packaging/chunk-0.mp3", durationSeconds: 11 },
         { url: "/audio/jobs/job-packaging/chunk-1.mp3", durationSeconds: 16 },
@@ -231,7 +240,7 @@ describe("audio job API contract", () => {
         errorMessage: null,
       },
       progress: {
-        chunksTotal: null,
+        chunksTotal: multiChunkTotal,
         chunksReady: 2,
         availableDurationSeconds: 27,
       },
@@ -308,7 +317,6 @@ describe("audio job API contract", () => {
         provider: "contract-test",
         audioUrl: null,
         audioDownloadPath: null,
-  
         audioSegments: [],
         durationSeconds: null,
         error: "Audio generation failed.",
@@ -347,7 +355,6 @@ describe("audio job API contract", () => {
         provider: "contract-test",
         audioUrl: "/audio/jobs/job-ready/final.mp3",
         audioDownloadPath: null,
-  
         audioSegments: [
           { url: "/audio/jobs/job-ready/chunk-0.mp3", durationSeconds: 12 },
           { url: "/audio/jobs/job-ready/chunk-1.mp3", durationSeconds: 18 },
@@ -393,7 +400,6 @@ describe("audio job API contract", () => {
         provider: "contract-test",
         audioUrl: null,
         audioDownloadPath: null,
-  
         audioSegments: [],
         durationSeconds: null,
         error: null,

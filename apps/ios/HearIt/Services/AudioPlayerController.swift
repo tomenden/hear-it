@@ -58,7 +58,7 @@ final class AudioPlayerController {
 
     func load(url: URL, for jobID: String, knownDuration: Double? = nil) {
         guard loadedJobID != jobID || loadedSourceURL != url else {
-            // Already loaded — keep the seek range in sync as processing playlists grow.
+            // Already loaded — keep the known duration in sync if fresher metadata arrives.
             if let knownDuration, knownDuration > 0 {
                 duration = knownDuration
             }
@@ -277,7 +277,7 @@ final class AudioPlayerController {
     }
 
     /// Waits for the AVPlayerItem to become ready, then seeks to the target offset.
-    /// Using a polling task because HLS items reject seeks issued before status == .readyToPlay.
+    /// Using a polling task because AVPlayer items can reject seeks before status == .readyToPlay.
     private func seekWhenReady(item: AVPlayerItem, to targetTime: Double) async {
         defer { isSeeking = false }
         #if DEBUG

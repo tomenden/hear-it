@@ -65,10 +65,10 @@ describe("extractor analytics", () => {
   });
 
   it("emits audio_article_too_long when audio exceeds the max length", async () => {
-    const filler = "A".repeat(1_000);
+    const filler = "Alpha beta gamma delta epsilon zeta eta theta iota kappa ".repeat(18).trim();
     const paragraphs = Array.from(
       { length: Math.ceil((MAX_AUDIO_CHARS + 500) / 1_000) },
-      () => `<p>${filler}</p>`,
+      (_, index) => `<p>Section ${index + 1}. ${filler}</p>`,
     ).join("\n");
 
     await expect(

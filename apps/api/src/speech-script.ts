@@ -7,6 +7,7 @@ export interface SpeechScriptInput {
 
 const SPEECH_SCRIPT_VERSION = 1;
 const TITLE_FALLBACK_WORD_LIMIT = 7;
+const STANDALONE_HEADING_WORD_LIMIT = 10;
 const SEPARATOR_LINE = /^[\s\-*_~•·=]{3,}$/;
 const HEADING_LINE = /^(#{1,6})\s+(.+)$/;
 const CAPTION_LINE = /^(?:image\s+)?caption:\s*(.+)$/i;
@@ -22,14 +23,30 @@ export function buildSpeechScript(input: SpeechScriptInput): SpeechScript {
     titleFallbackUsed: false,
   };
 
-  const cleanedLines: string[] = [];
+  const cleanedBlocks: string[][] = [];
   const rawLines = normalizeLineBreaks(input.textContent).split("\n");
   const bodyFallbackSourceLines: string[] = [];
   const headingFallbackSourceLines: string[] = [];
+  const cleanedTitle = cleanupWhitespace(input.title ?? "");
+  let currentBlock: string[] = [];
+
+  const flushBlock = () => {
+    if (currentBlock.length === 0) {
+      return;
+    }
+
+    cleanedBlocks.push(currentBlock);
+    currentBlock = [];
+  };
+
+  const pushToCurrentBlock = (line: string) => {
+    currentBlock.push(line);
+  };
 
   for (const rawLine of rawLines) {
     const trimmedLine = cleanupWhitespace(rawLine);
     if (!trimmedLine) {
+      flushBlock();
       continue;
     }
 
@@ -39,6 +56,7 @@ export function buildSpeechScript(input: SpeechScriptInput): SpeechScript {
 
     if (isSeparatorLine(trimmedLine)) {
       normalization.separatorsRemoved += 1;
+      flushBlock();
       continue;
     }
 
@@ -47,7 +65,18 @@ export function buildSpeechScript(input: SpeechScriptInput): SpeechScript {
       const { text: headingText, urlsHumanized } = humanizeUrls(
         cleanupWhitespace(headingMatch[2]!),
       );
-      cleanedLines.push(`Heading: ${headingText}`);
+      flushBlock();
+      cleanedBlocks.push([headingText]);
+      normalization.headingsLabeled += 1;
+      normalization.urlsHumanized += urlsHumanized;
+      headingFallbackSourceLines.push(headingText);
+      continue;
+    }
+
+    if (trimmedLine !== cleanedTitle && isStandaloneHeading(trimmedLine)) {
+      const { text: headingText, urlsHumanized } = humanizeUrls(trimmedLine);
+      flushBlock();
+      cleanedBlocks.push([headingText]);
       normalization.headingsLabeled += 1;
       normalization.urlsHumanized += urlsHumanized;
       headingFallbackSourceLines.push(headingText);
@@ -59,19 +88,21 @@ export function buildSpeechScript(input: SpeechScriptInput): SpeechScript {
       const { text: captionText, urlsHumanized } = humanizeUrls(
         cleanupWhitespace(captionMatch[1]!),
       );
-      cleanedLines.push(`Image caption: ${captionText}`);
+      pushToCurrentBlock(`Image caption: ${captionText}`);
       normalization.captionsLabeled += 1;
       normalization.urlsHumanized += urlsHumanized;
       continue;
     }
 
     const { text: humanizedLine, urlsHumanized } = humanizeUrls(trimmedLine);
-    cleanedLines.push(humanizedLine);
+    pushToCurrentBlock(humanizedLine);
     normalization.urlsHumanized += urlsHumanized;
     bodyFallbackSourceLines.push(humanizedLine);
   }
 
-  const script = cleanedLines.join("\n");
+  flushBlock();
+
+  const script = cleanedBlocks.map((block) => block.join("\n")).join("\n\n");
   const displayTitle = buildDisplayTitle(
     input.title,
     bodyFallbackSourceLines,
@@ -128,6 +159,15 @@ function cleanupWhitespace(text: string): string {
 
 function isSeparatorLine(line: string): boolean {
   return SEPARATOR_LINE.test(line);
+}
+
+function isStandaloneHeading(line: string): boolean {
+  if (/[.!?]$/.test(line) || line.includes(":")) {
+    return false;
+  }
+
+  const words = line.match(/\S+/g) ?? [];
+  return words.length > 0 && words.length <= STANDALONE_HEADING_WORD_LIMIT && line.length <= 80;
 }
 
 function humanizeUrls(text: string): { text: string; urlsHumanized: number } {

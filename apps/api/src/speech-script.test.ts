@@ -16,13 +16,14 @@ describe("buildSpeechScript", () => {
     expect(result.normalization.whitespaceCollapsed).toBe(0);
   });
 
-  it("preserves headings with a light cue", () => {
+  it("preserves headings as standalone beat markers without saying heading literally", () => {
     const result = buildSpeechScript({
       title: "Example",
       textContent: "## Overview\nThe system works.",
     });
 
-    expect(result.script).toContain("Heading: Overview");
+    expect(result.script).toContain("Overview\n\nThe system works.");
+    expect(result.script).not.toContain("Heading:");
     expect(result.script).toContain("The system works.");
     expect(result.normalization.headingsLabeled).toBe(1);
   });
@@ -44,7 +45,8 @@ describe("buildSpeechScript", () => {
       textContent: "##   Overview   \nCaption:   A  helpful   chart.   \nBody   text with   extra spaces.",
     });
 
-    expect(result.script).toContain("Heading: Overview");
+    expect(result.script).toContain("Overview");
+    expect(result.script).not.toContain("Heading:");
     expect(result.script).toContain("Image caption: A helpful chart.");
     expect(result.script).toContain("Body text with extra spaces.");
     expect(result.normalization.whitespaceCollapsed).toBe(3);
@@ -74,5 +76,31 @@ describe("buildSpeechScript", () => {
     expect(result.displayTitle).toBe("This article explains how the cache behaves");
     expect(result.speechScriptVersion).toBe(1);
     expect(result.normalization.titleFallbackUsed).toBe(true);
+  });
+
+  it("preserves paragraph breaks and keeps standalone headings as pause-worthy lines", () => {
+    const result = buildSpeechScript({
+      title: "How Missions Work",
+      textContent: [
+        "How Missions Work",
+        "",
+        "The architecture behind Missions explains why narrow context and explicit validation produce more reliable autonomous work.",
+        "",
+        "Agent sessions work well for focused tasks, but most real projects are too broad and complex for a single context window to hold.",
+        "",
+        "Rationale",
+        "",
+        "Most of the architecture follows from one core observation: agents are highly reactive to their context.",
+      ].join("\n"),
+    });
+
+    expect(result.script).toContain(
+      "How Missions Work\n\nThe architecture behind Missions explains why narrow context and explicit validation produce more reliable autonomous work.",
+    );
+    expect(result.script).toContain(
+      "\n\nAgent sessions work well for focused tasks, but most real projects are too broad and complex for a single context window to hold.\n\nRationale\n\nMost of the architecture follows from one core observation: agents are highly reactive to their context.",
+    );
+    expect(result.script).not.toContain("Heading:");
+    expect(result.normalization.headingsLabeled).toBe(1);
   });
 });

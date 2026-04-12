@@ -101,6 +101,38 @@ describe("speech providers", () => {
     expect(result.chunkMedia?.audioData.equals(audioData)).toBe(true);
   });
 
+  it("sends the judged winner delivery instructions to the TTS API", async () => {
+    const header = buildMP3Header({
+      versionBits: 0b11,
+      layerBits: 0b01,
+      bitrateIndex: 9,
+      sampleRateIndex: 1,
+      channelModeBits: 0b11,
+    });
+    const frame = buildFrame(header, 384);
+    const audioData = Buffer.concat([frame, frame, frame, frame]);
+    globalThis.fetch = vi.fn(async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as { instructions?: string };
+      expect(body.instructions).toContain("engaging inflection");
+      expect(body.instructions).toContain("dynamic pacing");
+      expect(body.instructions).toContain("Pause meaningfully between sentences");
+      expect(body.instructions).toContain("warm, conversational tone");
+
+      return new Response(audioData, {
+        status: 200,
+        headers: { "Content-Type": "audio/mpeg" },
+      });
+    }) as typeof fetch;
+
+    const provider = new OpenAISpeechProvider("test-api-key");
+
+    await provider.synthesizeText(
+      "A tiny line of content.",
+      { voice: "alloy" },
+      {},
+    );
+  });
+
   it("measures MP3 duration from frame headers", () => {
     const header = buildMP3Header({
       versionBits: 0b11,

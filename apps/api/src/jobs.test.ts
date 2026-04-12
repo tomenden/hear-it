@@ -1516,7 +1516,10 @@ describe("audio job service", () => {
               <body>
                 <article>
                   <h1>Very Long Article</h1>
-                  <p>${"A".repeat(MAX_AUDIO_CHARS + 500)}</p>
+                  <p>${Array.from(
+                    { length: Math.ceil((MAX_AUDIO_CHARS + 500) / 32) },
+                    (_, index) => `Section ${index + 1} alpha beta gamma delta epsilon zeta eta theta iota kappa`,
+                  ).join(" ")}</p>
                 </article>
               </body>
             </html>

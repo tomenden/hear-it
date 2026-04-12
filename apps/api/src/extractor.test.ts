@@ -11,6 +11,7 @@ import {
 
 const simpleArticleHtml = loadFixture("simple-article.html");
 const fallbackArticleHtml = loadFixture("fallback-article.html");
+const factoryArticleHtml = loadFixture("factory-live-article.html");
 const wikipediaArticleHtml = loadFixture("wikipedia-article.html");
 const originalFetch = globalThis.fetch;
 const originalFetchTimeout = process.env.ARTICLE_FETCH_TIMEOUT_MS;
@@ -47,6 +48,33 @@ describe("article extraction", () => {
     expect(article.textContent).not.toContain("Subscribe to our newsletter");
   });
 
+  it("drops article chrome and preserves paragraph structure from readability content", async () => {
+    const article = await extractArticle({
+      url: "https://factory.ai/news/missions-architecture",
+      html: factoryArticleHtml,
+    });
+    const blocks = article.textContent.split(/\n{2,}/);
+    const flattenedBlocks = blocks.map((block) => block.replace(/\s+/g, " ").trim());
+
+    expect(article.title).toBe("How Missions Work");
+    expect(blocks[0]).toBe("How Missions Work");
+    expect(flattenedBlocks[1]).toBe(
+      "The architecture behind Missions: why agent context shapes every design decision, how separation of concerns and test-driven development at two levels produce reliable multi-day autonomous work, and how the system actually runs.",
+    );
+    expect(flattenedBlocks[2]).toBe(
+      "Agent sessions work well for focused tasks, but most real projects are too broad and complex for a single context window to hold. A single agent eventually runs into a problem: the more it sees, the less focused and reliable it becomes.",
+    );
+    expect(blocks).toContain("Rationale");
+    expect(flattenedBlocks).toContain(
+      "Most of the architecture follows from one core observation: agents are highly reactive to their context.",
+    );
+    expect(article.textContent).not.toContain("Go back");
+    expect(article.textContent).not.toContain("5 minute read");
+    expect(article.textContent).not.toContain("Engineering");
+    expect(article.textContent).not.toContain("Research");
+    expect(article.textContent).not.toContain("New");
+  });
+
   it("strips wikipedia citation noise and trailing references", async () => {
     const article = await extractArticle({
       url: "https://en.wikipedia.org/wiki/Chinese_room",
@@ -68,8 +96,11 @@ describe("article extraction", () => {
   });
 
   it("rejects articles that exceed audio limits", async () => {
-    const filler = "A".repeat(1_000);
-    const paragraphs = Array.from({ length: Math.ceil((MAX_AUDIO_CHARS + 500) / 1_000) }, () => `<p>${filler}</p>`).join("\n");
+    const filler = "Alpha beta gamma delta epsilon zeta eta theta iota kappa ".repeat(18).trim();
+    const paragraphs = Array.from(
+      { length: Math.ceil((MAX_AUDIO_CHARS + 500) / 1_000) },
+      (_, index) => `<p>Section ${index + 1}. ${filler}</p>`,
+    ).join("\n");
     const oversizedHtml = `
       <!doctype html>
       <html>

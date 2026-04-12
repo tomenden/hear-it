@@ -156,7 +156,7 @@ No auto-merge to `master`.
 
 ### Running the loop
 1. Open Claude Code
-2. **Switch model to Haiku** (top of screen — minimises subscription token usage for the proposer)
+2. **Use Sonnet or a stronger reasoning model for proposing candidates** (top of screen — the proposer role needs better judgment than a cheap baseline model)
 3. Ensure you are on branch `autoresearch/2026-04-11`
 4. Type `/loop` in the prompt
 5. Claude will self-pace, running one experiment every ~3–5 minutes

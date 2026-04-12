@@ -21,6 +21,12 @@ const BOILERPLATE_PATTERNS = [
   /sign up/i,
   /all rights reserved/i,
 ];
+const ARTICLE_METADATA_PATTERNS = [
+  /^by\s+.+/i,
+  /\b\d+\s+minute read\b/i,
+  /^(?:share|go back)$/i,
+];
+const TITLE_SUFFIX_SEPARATORS = [" | ", " - ", " — ", " – ", ": "];
 const WIKIPEDIA_REMOVAL_SELECTORS = [
   ".hatnote",
   ".shortdescription",
@@ -99,8 +105,16 @@ export async function extractArticle(
   sanitizeDocumentForExtraction(document, input.url);
   const article = new Readability(document.cloneNode(true) as Document).parse();
   const fallback = buildFallbackExtraction(document);
-  const extracted = pickBestExtraction(article?.textContent ?? "", fallback.textContent);
-  const title = article?.title ?? fallback.title;
+  const readability = buildReadabilityExtraction(article, input.url);
+  const extracted = pickBestExtraction(readability.textContent, fallback.textContent);
+  const siteName = article?.siteName ?? fallback.siteName;
+  const title = normalizeExtractedTitle({
+    candidate: article?.title ?? fallback.title,
+    h1Title:
+      normalizeText(document.querySelector("article h1, article h2, main h1, main h2, h1, h2")?.textContent ?? "")
+      || null,
+    siteName,
+  });
   const bodyText = normalizeExtractedText(extracted, input.url);
 
   if (!bodyText) {
@@ -154,7 +168,7 @@ export async function extractArticle(
     url: canonicalUrl,
     title,
     byline: article?.byline ?? fallback.byline,
-    siteName: article?.siteName ?? fallback.siteName,
+    siteName,
     excerpt: article?.excerpt ?? fallback.excerpt,
     textContent,
     wordCount,
@@ -338,22 +352,7 @@ function isRepetitiveText(text: string): boolean {
 
 function buildFallbackExtraction(document: Document) {
   const root = selectContentRoot(document) ?? document.body ?? document.documentElement;
-  const olCounters = new WeakMap<Element, number>();
-  const paragraphs: string[] = [];
-  for (const el of Array.from(root.querySelectorAll("p, li, blockquote"))) {
-    const text = normalizeText(el.textContent ?? "");
-    const isListItem = el.tagName === "LI";
-    if (!(isListItem ? text.length > 0 : isLikelyContentParagraph(text))) {
-      continue;
-    }
-    if (isListItem && el.parentElement?.tagName === "OL") {
-      const count = (olCounters.get(el.parentElement) ?? 0) + 1;
-      olCounters.set(el.parentElement, count);
-      paragraphs.push(`${count}. ${text}`);
-    } else {
-      paragraphs.push(text);
-    }
-  }
+  const paragraphs = collectContentBlocks(root);
   const fallbackTitle = firstDefined(
     readMetaContent(document, 'meta[property="og:title"]'),
     normalizeText(document.querySelector("title")?.textContent ?? "") || null,
@@ -376,6 +375,23 @@ function buildFallbackExtraction(document: Document) {
       ?? paragraphs[0]
       ?? null,
     textContent,
+  };
+}
+
+function buildReadabilityExtraction(
+  article: ReturnType<Readability["parse"]>,
+  sourceUrl: string,
+): { textContent: string } {
+  if (!article?.content) {
+    return { textContent: "" };
+  }
+
+  const dom = new JSDOM(`<!doctype html><html><body>${article.content}</body></html>`, {
+    url: sourceUrl,
+  });
+
+  return {
+    textContent: collectContentBlocks(dom.window.document.body).join("\n\n"),
   };
 }
 
@@ -413,6 +429,52 @@ function selectContentRoot(document: Document): Element | null {
   return null;
 }
 
+function collectContentBlocks(root: ParentNode): string[] {
+  const olCounters = new WeakMap<Element, number>();
+  const blocks: string[] = [];
+  const candidates = Array.from(
+    root.querySelectorAll("h2, h3, h4, h5, h6, p, li, blockquote, figcaption"),
+  );
+
+  for (const el of candidates) {
+    if (shouldSkipContentElement(el)) {
+      continue;
+    }
+
+    const text = normalizeText(el.textContent ?? "");
+    if (!text || isLikelyArticleMetadata(text)) {
+      continue;
+    }
+
+    if (/^H[2-6]$/.test(el.tagName)) {
+      if (isLikelySectionHeading(text)) {
+        pushUniqueBlock(blocks, text);
+      }
+      continue;
+    }
+
+    const isListItem = el.tagName === "LI";
+    if (!(isListItem ? text.length > 0 : isLikelyContentParagraph(text))) {
+      continue;
+    }
+
+    if (isListItem && el.parentElement?.tagName === "OL") {
+      const count = (olCounters.get(el.parentElement) ?? 0) + 1;
+      olCounters.set(el.parentElement, count);
+      pushUniqueBlock(blocks, `${count}. ${text}`);
+      continue;
+    }
+
+    pushUniqueBlock(blocks, text);
+  }
+
+  return blocks;
+}
+
+function shouldSkipContentElement(element: Element): boolean {
+  return element.closest("nav, header, footer, aside") != null;
+}
+
 function isLikelyContentParagraph(text: string): boolean {
   if (text.length < MIN_PARAGRAPH_LENGTH) {
     return false;
@@ -423,12 +485,79 @@ function isLikelyContentParagraph(text: string): boolean {
   }
 
   const words = text.match(/\S+/g) ?? [];
-  if (words.length < 8) {
+  if (words.length < 6) {
     return false;
   }
 
   const linkLikeTokens = text.match(/\b(home|menu|login|sign in|next|previous)\b/gi) ?? [];
   return linkLikeTokens.length <= 2;
+}
+
+function isLikelyArticleMetadata(text: string): boolean {
+  if (ARTICLE_METADATA_PATTERNS.some((pattern) => pattern.test(text))) {
+    return true;
+  }
+
+  return /^by\s+.+\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(
+    text,
+  );
+}
+
+function isLikelySectionHeading(text: string): boolean {
+  if (BOILERPLATE_PATTERNS.some((pattern) => pattern.test(text))) {
+    return false;
+  }
+
+  if (/[.!?]$/.test(text)) {
+    return false;
+  }
+
+  const words = text.match(/\S+/g) ?? [];
+  return words.length > 0 && words.length <= 10 && text.length <= 80;
+}
+
+function pushUniqueBlock(blocks: string[], text: string) {
+  if (blocks.at(-1) !== text) {
+    blocks.push(text);
+  }
+}
+
+function normalizeExtractedTitle(input: {
+  candidate: string | null;
+  h1Title: string | null;
+  siteName: string | null;
+}): string | null {
+  const candidate = normalizeText(input.candidate ?? "");
+  if (!candidate) {
+    return input.h1Title;
+  }
+
+  const h1Title = normalizeText(input.h1Title ?? "");
+  if (!h1Title) {
+    return candidate;
+  }
+
+  if (candidate === h1Title) {
+    return candidate;
+  }
+
+  const siteName = normalizeText(input.siteName ?? "");
+  if (
+    siteName &&
+    TITLE_SUFFIX_SEPARATORS.some((separator) => candidate === `${h1Title}${separator}${siteName}`)
+  ) {
+    return h1Title;
+  }
+
+  if (
+    TITLE_SUFFIX_SEPARATORS.some(
+      (separator) => candidate.startsWith(`${h1Title}${separator}`) && candidate.length > h1Title.length,
+    )
+  ) {
+    return h1Title;
+  }
+
+  return candidate;
 }
 
 function detectCanonicalUrl(document: Document, fallbackUrl: string): string {

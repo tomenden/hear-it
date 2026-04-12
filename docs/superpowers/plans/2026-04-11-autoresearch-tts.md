@@ -904,7 +904,7 @@ Expected: all tests pass.
 ## Running the loop
 
 1. Open Claude Code
-2. **Switch model to Haiku** (minimises subscription token usage — the proposer role is simple)
+2. **Use Sonnet or a stronger reasoning model for proposing candidates** (the proposer role benefits from better judgment; keep cheaper models for summarising history, not inventing prompt variants)
 3. Make sure you are on branch `autoresearch/2026-04-11`
 4. Type the following `/loop` command:
 

@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+  <head>
+    <title>How Missions Work | Factory.ai</title>
+    <meta property="og:title" content="How Missions Work | Factory.ai" />
+    <meta property="og:url" content="https://factory.ai/news/missions-architecture" />
+    <meta property="og:site_name" content="Factory.ai" />
+  </head>
+  <body>
+    <main>
+      <article>
+        <p><a href="/news">Go back</a></p>
+        <div>
+          <div>
+            <h2>How Missions Work</h2>
+            <p>By Theo Luan - April 10, 2026 - 5 minute read -</p>
+          </div>
+          <p>
+            <span>Engineering</span>
+            <span>Research</span>
+            <span>New</span>
+          </p>
+          <p>
+            The architecture behind Missions: why agent context shapes every design
+            decision, how separation of concerns and test-driven development at two
+            levels produce reliable multi-day autonomous work, and how the system
+            actually runs.
+          </p>
+        </div>
+        <div>
+          <p>
+            Agent sessions work well for focused tasks, but most real projects are too
+            broad and complex for a single context window to hold. A single agent
+            eventually runs into a problem: the more it sees, the less focused and
+            reliable it becomes.
+          </p>
+          <p>
+            Missions is our system for solving that. It breaks large work into focused
+            units handled by fresh agents with narrowly scoped goals, shared state, and
+            explicit validation.
+          </p>
+          <h3>Rationale</h3>
+          <p>
+            Most of the architecture follows from one core observation: agents are
+            highly reactive to their context.
+          </p>
+          <ol>
+            <li>
+              An agent's trajectory is append-only, so the model's reasoning at any
+              given point is a function of every past thought, observation, and action.
+            </li>
+            <li>
+              Models seek coherence: they integrate what's in their context into a
+              unified worldview and reason forward from it.
+            </li>
+          </ol>
+        </div>
+      </article>
+    </main>
+    <footer>Start building</footer>
+  </body>
+</html>

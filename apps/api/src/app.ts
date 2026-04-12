@@ -117,13 +117,10 @@ export function createApp(options: CreateAppOptions) {
     const state = mapInternalStateToPublicState(resolveInternalState(job));
     const playback = mapJobToPlaybackDescriptor({
       state: state === "queued" ? "queued" : resolveInternalState(job),
-      streamPlaylistUrl: job.playlistUrl,
       finalAudioUrl: job.audioUrl,
-      availableDurationSeconds: state === "queued" ? 0 : resolveAvailableDurationSeconds(job),
       durationSeconds: job.durationSeconds,
       title,
       error: job.error,
-      liveEdgeUpdatedAt: state === "queued" ? null : job.liveEdgeUpdatedAt,
     });
     const chunksReady = job.audioSegments.length;
     const compatibilityFields = buildLegacyCompatibilityFields(
@@ -449,10 +446,6 @@ function resolveAvailableDurationSeconds(job: AudioJob): number {
     return job.durationSeconds;
   }
 
-  if (typeof job.availableDurationSeconds === "number") {
-    return job.availableDurationSeconds;
-  }
-
   if (typeof job.durationSeconds === "number") {
     return job.durationSeconds;
   }
@@ -488,7 +481,7 @@ function buildLegacyCompatibilityFields(
     provider: job.provider,
     audioUrl: job.audioUrl,
     audioDownloadPath: null,
-    playlistUrl: job.playlistUrl,
+    playlistUrl: null,
     audioSegments: job.audioSegments,
     durationSeconds: job.durationSeconds,
     error: playback.errorMessage ?? job.error,

@@ -48,8 +48,6 @@ function buildJob(overrides: Partial<AudioJob> = {}): AudioJob {
     internalState: overrides.internalState ?? "queued",
     displayTitle: overrides.displayTitle ?? "Readable title",
     speechScript: overrides.speechScript ?? "Readable title. Body copy.",
-    availableDurationSeconds: overrides.availableDurationSeconds ?? 0,
-    liveEdgeUpdatedAt: overrides.liveEdgeUpdatedAt ?? null,
     leaseOwner: overrides.leaseOwner ?? null,
     leaseExpiresAt: overrides.leaseExpiresAt ?? null,
     runId: overrides.runId ?? null,
@@ -70,7 +68,6 @@ function buildJob(overrides: Partial<AudioJob> = {}): AudioJob {
     provider: overrides.provider ?? "contract-test",
     audioUrl: overrides.audioUrl ?? null,
     audioDownloadPath: overrides.audioDownloadPath ?? null,
-    playlistUrl: overrides.playlistUrl ?? null,
     audioSegments: overrides.audioSegments ?? [],
     durationSeconds: overrides.durationSeconds ?? null,
     error: overrides.error ?? null,
@@ -117,18 +114,15 @@ describe("audio job API contract", () => {
     }
   });
 
-  it("serializes processing jobs with coarse public state and explicit streaming playback", async () => {
+  it("serializes processing jobs with coarse public state and batch-only playback", async () => {
     const processingJob = buildJob({
       id: "job-processing",
       status: "processing",
-      internalState: "packaging_stream",
-      playlistUrl: "/audio/jobs/job-processing/playlist.m3u8",
+      internalState: "synthesizing",
       audioSegments: [
         { url: "/audio/jobs/job-processing/chunk-0.mp3", durationSeconds: 11 },
         { url: "/audio/jobs/job-processing/chunk-1.mp3", durationSeconds: 16 },
       ],
-      availableDurationSeconds: 27,
-      liveEdgeUpdatedAt: "2026-04-05T10:02:00.000Z",
       updatedAt: "2026-04-05T10:02:00.000Z",
     });
 
@@ -161,7 +155,7 @@ describe("audio job API contract", () => {
       provider: "contract-test",
       audioUrl: null,
       audioDownloadPath: null,
-      playlistUrl: "/audio/jobs/job-processing/playlist.m3u8",
+      playlistUrl: null,
       audioSegments: [
         { url: "/audio/jobs/job-processing/chunk-0.mp3", durationSeconds: 11 },
         { url: "/audio/jobs/job-processing/chunk-1.mp3", durationSeconds: 16 },
@@ -169,14 +163,7 @@ describe("audio job API contract", () => {
       durationSeconds: null,
       error: null,
       playback: {
-        preferredModeForNewSessions: "stream",
-        isPlayable: true,
-        stream: {
-          playlistUrl: "/audio/jobs/job-processing/playlist.m3u8",
-          availableDurationSeconds: 27,
-          liveEdgeUpdatedAt: "2026-04-05T10:02:00.000Z",
-          isComplete: false,
-        },
+        isPlayable: false,
         final: null,
         errorMessage: null,
       },
@@ -190,30 +177,27 @@ describe("audio job API contract", () => {
     });
   });
 
-  it("keeps playlist-only processing jobs in preparing mode until live edge is explicit", async () => {
-    const playlistOnlyJob = buildJob({
-      id: "job-playlist-only",
+  it("serializes packaging-state jobs as processing with no playback until audio url is set", async () => {
+    const packagingJob = buildJob({
+      id: "job-packaging",
       status: "processing",
-      internalState: "packaging_stream",
-      playlistUrl: "/audio/jobs/job-playlist-only/playlist.m3u8",
+      internalState: "packaging",
       audioSegments: [
-        { url: "/audio/jobs/job-playlist-only/chunk-0.mp3", durationSeconds: 11 },
-        { url: "/audio/jobs/job-playlist-only/chunk-1.mp3", durationSeconds: 16 },
+        { url: "/audio/jobs/job-packaging/chunk-0.mp3", durationSeconds: 11 },
+        { url: "/audio/jobs/job-packaging/chunk-1.mp3", durationSeconds: 16 },
       ],
-      availableDurationSeconds: 27,
-      liveEdgeUpdatedAt: null,
       updatedAt: "2026-04-05T10:03:00.000Z",
     });
 
-    const harness = await createContractHarness([playlistOnlyJob]);
+    const harness = await createContractHarness([packagingJob]);
     servers.push(harness.server);
 
-    const response = await fetch(`${harness.baseUrl}/api/jobs/${playlistOnlyJob.id}`);
+    const response = await fetch(`${harness.baseUrl}/api/jobs/${packagingJob.id}`);
     const payload = await response.json() as { job: Record<string, unknown> };
 
     expect(response.status).toBe(200);
     expect(payload.job).toMatchObject({
-      id: "job-playlist-only",
+      id: "job-packaging",
       title: "Readable title",
       state: "processing",
       status: "processing",
@@ -234,17 +218,15 @@ describe("audio job API contract", () => {
       provider: "contract-test",
       audioUrl: null,
       audioDownloadPath: null,
-      playlistUrl: "/audio/jobs/job-playlist-only/playlist.m3u8",
+      playlistUrl: null,
       audioSegments: [
-        { url: "/audio/jobs/job-playlist-only/chunk-0.mp3", durationSeconds: 11 },
-        { url: "/audio/jobs/job-playlist-only/chunk-1.mp3", durationSeconds: 16 },
+        { url: "/audio/jobs/job-packaging/chunk-0.mp3", durationSeconds: 11 },
+        { url: "/audio/jobs/job-packaging/chunk-1.mp3", durationSeconds: 16 },
       ],
       durationSeconds: null,
       error: null,
       playback: {
-        preferredModeForNewSessions: "none",
         isPlayable: false,
-        stream: null,
         final: null,
         errorMessage: null,
       },
@@ -272,14 +254,11 @@ describe("audio job API contract", () => {
       updatedAt: "2026-04-05T10:04:00.000Z",
       audioUrl: "/audio/jobs/job-ready/final.mp3",
       audioDownloadPath: "/tmp/hear-it/job-ready/final.mp3",
-      playlistUrl: "/audio/jobs/job-ready/playlist.m3u8",
       audioSegments: [
         { url: "/audio/jobs/job-ready/chunk-0.mp3", durationSeconds: 12 },
         { url: "/audio/jobs/job-ready/chunk-1.mp3", durationSeconds: 18 },
       ],
-      availableDurationSeconds: 30,
       durationSeconds: 32,
-      liveEdgeUpdatedAt: "2026-04-05T10:03:30.000Z",
     });
     const failedJob = buildJob({
       id: "job-failed",
@@ -334,9 +313,7 @@ describe("audio job API contract", () => {
         durationSeconds: null,
         error: "Audio generation failed.",
         playback: {
-          preferredModeForNewSessions: "none",
           isPlayable: false,
-          stream: null,
           final: null,
           errorMessage: "Audio generation failed.",
         },
@@ -370,7 +347,7 @@ describe("audio job API contract", () => {
         provider: "contract-test",
         audioUrl: "/audio/jobs/job-ready/final.mp3",
         audioDownloadPath: null,
-        playlistUrl: "/audio/jobs/job-ready/playlist.m3u8",
+        playlistUrl: null,
         audioSegments: [
           { url: "/audio/jobs/job-ready/chunk-0.mp3", durationSeconds: 12 },
           { url: "/audio/jobs/job-ready/chunk-1.mp3", durationSeconds: 18 },
@@ -378,14 +355,7 @@ describe("audio job API contract", () => {
         durationSeconds: 32,
         error: null,
         playback: {
-          preferredModeForNewSessions: "final",
           isPlayable: true,
-          stream: {
-            playlistUrl: "/audio/jobs/job-ready/playlist.m3u8",
-            availableDurationSeconds: 32,
-            liveEdgeUpdatedAt: "2026-04-05T10:03:30.000Z",
-            isComplete: true,
-          },
           final: {
             audioUrl: "/audio/jobs/job-ready/final.mp3",
             durationSeconds: 32,
@@ -428,9 +398,7 @@ describe("audio job API contract", () => {
         durationSeconds: null,
         error: null,
         playback: {
-          preferredModeForNewSessions: "none",
           isPlayable: false,
-          stream: null,
           final: null,
           errorMessage: null,
         },

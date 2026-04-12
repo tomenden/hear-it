@@ -40,7 +40,6 @@ private final class MockHearItAPIClient: HearItAPIProviding, @unchecked Sendable
             provider: "openai",
             audioUrl: nil,
             audioDownloadPath: nil,
-            playlistUrl: nil,
             audioSegments: [],
             durationSeconds: nil,
             error: nil,
@@ -90,7 +89,7 @@ private actor JobsResponseSequence {
     }
 }
 
-private func makeJob(id: String, title: String? = nil, playlistPath: String? = nil) -> AudioJob {
+private func makeJob(id: String, title: String? = nil) -> AudioJob {
     AudioJob(
         id: id,
         status: .completed,
@@ -108,11 +107,8 @@ private func makeJob(id: String, title: String? = nil, playlistPath: String? = n
         provider: "openai",
         audioUrl: nil,
         audioDownloadPath: nil,
-        playlistUrl: playlistPath,
-        audioSegments: playlistPath == nil ? [] : [
-            AudioJob.Segment(url: playlistPath!.replacingOccurrences(of: "playlist.m3u8", with: "segment-0.mp3"), durationSeconds: 12)
-        ],
-        durationSeconds: playlistPath == nil ? nil : 12,
+        audioSegments: [],
+        durationSeconds: nil,
         error: nil,
         createdAt: .now,
         updatedAt: .now
@@ -146,11 +142,8 @@ struct AppModelRefreshTests {
                     provider: "openai",
                     audioUrl: nil,
                     audioDownloadPath: nil,
-                    playlistUrl: "/audio/\(plan.jobID)/playlist.m3u8",
-                    audioSegments: [
-                        AudioJob.Segment(url: "/audio/\(plan.jobID)/segment-0.mp3", durationSeconds: 12)
-                    ],
-                    durationSeconds: 12,
+                    audioSegments: [],
+                    durationSeconds: nil,
                     error: nil,
                     createdAt: .now,
                     updatedAt: .now
@@ -203,11 +196,11 @@ struct AppModelRefreshTests {
         apiClient.fetchJobsHandler = { baseURL, _ in
             if baseURL.host == "old.example.com" {
                 try await Task.sleep(for: .milliseconds(200))
-                return [makeJob(id: "old-job", title: "Old job", playlistPath: "/audio/old-job/playlist.m3u8")]
+                return [makeJob(id: "old-job", title: "Old job")]
             }
 
             try await Task.sleep(for: .milliseconds(20))
-            return [makeJob(id: "new-job", title: "New job", playlistPath: "/audio/new-job/playlist.m3u8")]
+            return [makeJob(id: "new-job", title: "New job")]
         }
 
         let defaults = UserDefaults(suiteName: "HearItTests.AppModelRefresh.\(UUID().uuidString)")!
@@ -249,8 +242,7 @@ struct AppModelRefreshTests {
         apiClient.fetchJobsHandler = { baseURL, _ in
             [makeJob(
                 id: baseURL.host == "bad.example.com" ? "bad-job" : "good-job",
-                title: baseURL.host == "bad.example.com" ? "Bad job" : "Good job",
-                playlistPath: "/audio/\(baseURL.host ?? "job")/playlist.m3u8"
+                title: baseURL.host == "bad.example.com" ? "Bad job" : "Good job"
             )]
         }
 
@@ -288,7 +280,7 @@ struct AppModelRefreshTests {
             return ServerConfig(provider: "openai", audioPublicBaseURL: "/audio", openAIConfigured: true)
         }
         apiClient.fetchVoicesHandler = { _ in ["alloy"] }
-        apiClient.fetchJobsHandler = { _, _ in [makeJob(id: "good-job", title: "Good job", playlistPath: "/audio/good-job/playlist.m3u8")] }
+        apiClient.fetchJobsHandler = { _, _ in [makeJob(id: "good-job", title: "Good job")] }
 
         let defaults = UserDefaults(suiteName: "HearItTests.AppModelRefresh.\(UUID().uuidString)")!
         let settings = AppSettings(defaults: defaults)
@@ -321,7 +313,7 @@ struct AppModelRefreshTests {
             return ServerConfig(provider: "openai", audioPublicBaseURL: "/audio", openAIConfigured: true)
         }
         apiClient.fetchVoicesHandler = { _ in ["alloy"] }
-        apiClient.fetchJobsHandler = { _, _ in [makeJob(id: "good-job", title: "Good job", playlistPath: "/audio/good-job/playlist.m3u8")] }
+        apiClient.fetchJobsHandler = { _, _ in [makeJob(id: "good-job", title: "Good job")] }
 
         let suiteName = "HearItTests.AppModelRefresh.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -370,7 +362,7 @@ struct AppModelRefreshTests {
             localAudioStore: store,
             player: player
         )
-        let job = makeJob(id: "delete-me", title: "Delete me", playlistPath: "/audio/delete-me/playlist.m3u8")
+        let job = makeJob(id: "delete-me", title: "Delete me")
         _ = try await store.saveAudioFile(forJobID: job.id, audioData: Data("FINAL".utf8))
         model.jobs = [job]
         model.jobPendingDeletion = job
@@ -380,7 +372,7 @@ struct AppModelRefreshTests {
             duration: 12,
             currentTime: 4,
             isPlaying: true,
-            loadedSourceURL: URL(string: "http://localhost:3000/audio/delete-me/playlist.m3u8")
+            loadedSourceURL: URL(string: "http://localhost:3000/audio/delete-me/final.mp3")
         )
 
         await model.confirmDeleteJob()

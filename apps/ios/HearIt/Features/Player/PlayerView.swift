@@ -409,7 +409,7 @@ struct PlayerView: View {
     let model = AppModel.previewPlayerReady()
     return PlayerView(
         model: model,
-        presentation: PlayerPresentation(jobID: PlaybackStateSamples.finalJob.id)
+        presentation: PlayerPresentation(jobID: PlaybackStateSamples.readyJob.id)
     )
 }
 

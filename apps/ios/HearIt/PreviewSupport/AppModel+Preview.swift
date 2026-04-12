@@ -22,10 +22,10 @@ extension AppModel {
 
     static func previewPlayerReady() -> AppModel {
         let model = previewBase(name: "player-ready")
-        model.playerPresentation = PlayerPresentation(jobID: PlaybackStateSamples.finalJob.id)
-        model.settings.lastPresentedJobID = PlaybackStateSamples.finalJob.id
+        model.playerPresentation = PlayerPresentation(jobID: PlaybackStateSamples.readyJob.id)
+        model.settings.lastPresentedJobID = PlaybackStateSamples.readyJob.id
         model.player.configurePreviewState(
-            jobID: PlaybackStateSamples.finalJob.id,
+            jobID: PlaybackStateSamples.readyJob.id,
             duration: 603,
             currentTime: 148,
             isPlaying: false,
@@ -52,16 +52,15 @@ extension AppModel {
 
     static func previewPlayerProcessing() -> AppModel {
         let model = previewBase(name: "player-processing")
-        model.playerPresentation = PlayerPresentation(jobID: PlaybackStateSamples.streamingJob.id)
-        model.settings.lastPresentedJobID = PlaybackStateSamples.streamingJob.id
+        model.playerPresentation = PlayerPresentation(jobID: PlaybackStateSamples.preparingJob.id)
+        model.settings.lastPresentedJobID = PlaybackStateSamples.preparingJob.id
         model.player.configurePreviewState(
-            jobID: PlaybackStateSamples.streamingJob.id,
-            duration: 136,
-            currentTime: 41,
-            isPlaying: true,
+            jobID: PlaybackStateSamples.preparingJob.id,
+            duration: nil,
+            currentTime: 0,
+            isPlaying: false,
             playbackRate: 1.0,
-            volume: 0.82,
-            loadedSourceURL: URL(string: PlaybackStateSamples.streamingJob.playback.playlistUrl ?? "")
+            volume: 0.82
         )
         return model
     }
@@ -103,7 +102,7 @@ extension AppModel {
         let settings = AppSettings(defaults: defaults)
         settings.apiBaseURLString = "http://127.0.0.1:3000"
         settings.selectedVoiceID = "sage"
-        settings.lastPresentedJobID = PlaybackStateSamples.finalJob.id
+        settings.lastPresentedJobID = PlaybackStateSamples.readyJob.id
 
         let model = AppModel(
             settings: settings,

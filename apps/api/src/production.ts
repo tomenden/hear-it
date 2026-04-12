@@ -9,7 +9,6 @@ import { createApp } from "./app.js";
 import { AudioJobService } from "./jobs.js";
 import {
   FinalizationRepairer,
-  HlsRetentionCleaner,
   JobReconciler,
   startMaintenanceWorker,
 } from "./maintenance.js";
@@ -54,7 +53,6 @@ startMaintenanceWorker({
   services: [
     new FinalizationRepairer({ jobStore, audioStore }),
     new JobReconciler({ jobStore, audioStore, onJobQueued: kickQueuedJob }),
-    new HlsRetentionCleaner({ jobStore, audioStore }),
   ],
   onError: (error) => {
     console.error("Maintenance worker failed", error);

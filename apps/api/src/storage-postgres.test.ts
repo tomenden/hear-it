@@ -11,9 +11,6 @@ function createJob(overrides: Partial<AudioJob> = {}): AudioJob {
     internalState: "queued",
     displayTitle: "Example Article",
     speechScript: "Example Article\nThis is the body.",
-    availableDurationSeconds: 0,
-    publishedChunkCount: 0,
-    liveEdgeUpdatedAt: null,
     leaseOwner: null,
     leaseExpiresAt: null,
     runId: null,
@@ -31,7 +28,6 @@ function createJob(overrides: Partial<AudioJob> = {}): AudioJob {
     speechOptions: { voice: "alloy" },
     provider: "test-provider",
     audioUrl: null,
-    playlistUrl: null,
     audioSegments: [],
     durationSeconds: null,
     error: null,
@@ -399,24 +395,20 @@ function rowFromInsert(values: unknown[]): SqlRow {
     internal_state: values[2],
     display_title: values[3],
     speech_script: values[4],
-    available_duration_seconds: values[5],
-    published_chunk_count: values[6],
-    live_edge_updated_at: values[7],
-    lease_owner: values[8],
-    lease_expires_at: values[9],
-    run_id: values[10],
-    attempt: values[11],
-    article: values[12],
-    speech_options: values[13],
-    provider: values[14],
-    audio_url: values[15],
-    playlist_url: values[16],
-    audio_segments: values[17],
-    duration_seconds: values[18],
-    error: values[19],
-    created_at: values[20],
-    updated_at: values[21],
-    user_id: values[22],
+    lease_owner: values[5],
+    lease_expires_at: values[6],
+    run_id: values[7],
+    attempt: values[8],
+    article: values[9],
+    speech_options: values[10],
+    provider: values[11],
+    audio_url: values[12],
+    audio_segments: values[13],
+    duration_seconds: values[14],
+    error: values[15],
+    created_at: values[16],
+    updated_at: values[17],
+    user_id: values[18],
   };
 }
 
@@ -446,15 +438,11 @@ function patchJobFromUpdate(job: SqlRow, values: unknown[], text: string): SqlRo
       internal_state: read(job.internal_state),
       display_title: read(job.display_title),
       speech_script: read(job.speech_script),
-      available_duration_seconds: read(job.available_duration_seconds),
-      published_chunk_count: read(job.published_chunk_count),
-      live_edge_updated_at: read(job.live_edge_updated_at),
       lease_owner: read(job.lease_owner),
       lease_expires_at: read(job.lease_expires_at),
       run_id: read(job.run_id),
       attempt: read(job.attempt),
       audio_url: read(job.audio_url),
-      playlist_url: read(job.playlist_url),
       audio_segments: read(job.audio_segments),
       duration_seconds: read(job.duration_seconds),
       error: read(job.error),
@@ -497,9 +485,6 @@ describe("PostgresJobStore events and leases", () => {
         internalState: "synthesizing",
         displayTitle: "Readable Title",
         speechScript: "Readable Title\nBody text.",
-        availableDurationSeconds: 42,
-        publishedChunkCount: 3,
-        liveEdgeUpdatedAt: "2026-01-01T00:06:00.000Z",
         leaseOwner: "worker-1",
         leaseExpiresAt: "2026-01-01T00:10:00.000Z",
         runId: "run-1",
@@ -513,9 +498,6 @@ describe("PostgresJobStore events and leases", () => {
       internalState: "synthesizing",
       displayTitle: "Readable Title",
       speechScript: "Readable Title\nBody text.",
-      availableDurationSeconds: 42,
-      publishedChunkCount: 3,
-      liveEdgeUpdatedAt: "2026-01-01T00:06:00.000Z",
       leaseOwner: "worker-1",
       leaseExpiresAt: "2026-01-01T00:10:00.000Z",
       runId: "run-1",
@@ -660,7 +642,7 @@ describe("PostgresJobStore events and leases", () => {
     expect(
       await store.updateOwned(
         "job-1",
-        { internalState: "finalizing" },
+        { internalState: "packaging" },
         { leaseOwner: "worker-1", runId: "run-1" },
       ),
     ).toBe(false);
@@ -680,12 +662,12 @@ describe("PostgresJobStore events and leases", () => {
     );
 
     expect(
-      await store.updateOwned("job-1", { internalState: "finalizing" }, {
+      await store.updateOwned("job-1", { internalState: "packaging" }, {
         leaseOwner: "worker-1",
         runId: "run-1",
       }),
     ).toBe(true);
-    expect((await store.get("job-1"))?.internalState).toBe("finalizing");
+    expect((await store.get("job-1"))?.internalState).toBe("packaging");
 
     expect(
       await store.updateOwned("job-1", { status: "completed" }, {
@@ -753,7 +735,7 @@ describe("PostgresJobStore events and leases", () => {
     await store.save(
       createJob({
         status: "processing",
-        internalState: "finalizing",
+        internalState: "packaging",
         leaseOwner: "worker-1",
         leaseExpiresAt: "2000-01-01T00:00:00.000Z",
         runId: "run-1",

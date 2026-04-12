@@ -1,11 +1,10 @@
 # Hear It Audio Pipeline Architecture
 
-This document describes the current backend pipeline design for turning an extracted article into smooth in-progress playback and a stable completed asset.
+This document describes the current backend pipeline design for turning an extracted article into a completed audio asset.
 
 ## Goals
 
-- start playback in 10-20 seconds when possible
-- avoid mid-listen buffering once playback begins
+- generate audio within 30-60 seconds
 - keep completed playback boring and reliable
 - preserve provider flexibility
 - stay cheap enough for day 1
@@ -22,10 +21,10 @@ This document describes the current backend pipeline design for turning an extra
 - use OpenAI as the day 1 speech provider behind a strong abstraction
 - normalize article text into a deterministic speech script before synthesis
 - synthesize semantic chunks with bounded parallelism
-- package in-progress playback as AAC/fMP4 HLS
-- package completed playback as a canonical MP3
-- keep temporary HLS for 6 hours after completion
+- package completed audio as a single MP3 (no streaming)
 - treat local device storage as a silent optimization only
+
+Note: HLS streaming was explored and removed. See `docs/streaming-learnings.md`.
 
 ## System Context
 
@@ -42,25 +41,20 @@ flowchart LR
 
 Today the HTTP API and the job pipeline run in the same Node process. This document still uses `job pipeline role` language because the code is intentionally structured so that role can move into a dedicated worker service later without changing playback behavior.
 
+ffmpeg is used for MP3 concatenation of synthesized chunks into the final asset.
+
 ## End-To-End Flow
 
 ```mermaid
 flowchart TD
     A["User shares article URL"] --> B["API creates job"]
     B --> C["Worker claims job"]
-    C --> D["Extracted text -> speech script"]
+    C --> D["Extract text → speech script"]
     D --> E["Semantic chunking"]
-    E --> F["Speech generation with bounded parallelism"]
-    F --> G["Ordered chunk outputs"]
-    G --> H["Package append-only HLS batches"]
-    H --> I{"Startup buffer ready?"}
-    I -- "No" --> F
-    I -- "Yes" --> J["Expose playable HLS"]
-    G --> K["Generate final MP3"]
-    H --> L["Append #EXT-X-ENDLIST once complete"]
-    K --> M["Upload canonical asset"]
-    L --> N["Mark job completed"]
-    M --> N
+    E --> F["Synthesize all chunks (3 concurrent)"]
+    F --> G["Package final MP3"]
+    G --> H["Upload to Supabase Storage"]
+    H --> I["Mark job completed"]
 ```
 
 ## Content Preparation
@@ -84,9 +78,7 @@ flowchart TD
 - remove or humanize noisy web artifacts
 - protect hostile spoken tokens such as raw URLs or code-like text
 
-## Chunking And Batching
-
-### Chunking
+## Chunking
 
 Chunking is the unit of text sent to the speech provider.
 
@@ -97,44 +89,6 @@ Rules:
 - target roughly 15-25 seconds of speech per chunk
 - preserve final ordering strictly
 
-### Batching
-
-Batching is the unit of HLS publication.
-
-Rules:
-
-- first playable publish waits for a startup buffer
-- later HLS extensions publish short ordered batches
-- packaging should not thrash on every single completed chunk
-- published HLS history is immutable once exposed
-
-## Append-Only HLS Publishing
-
-The worker publishes a growing HLS EVENT playlist, but it must not rewrite stream history.
-
-Rules:
-
-- once a segment is published, its key and bytes never change
-- new packaging work only uploads new init/segment objects for the next batch
-- the playlist URL stays stable, but the playlist text only grows
-- later batches are appended with discontinuities rather than rebuilding the whole stream from zero
-- finalization appends `#EXT-X-ENDLIST`; it does not replace old segments with a new stream snapshot
-- the worker tracks how many chunks have already been published so a restart resumes from the last append point rather than rebuilding prior batches
-
-This preserves the contract for active HLS sessions and prevents the player from effectively running on an old view of a constantly rewritten stream.
-
-## Startup Buffer Policy
-
-Playback does not become available the moment the first chunk finishes.
-
-Policy:
-
-- package until about 20-30 seconds of real playable audio exists
-- only then expose the HLS stream as playable
-- once playback starts, aim to stay roughly 30-45 seconds ahead of the listener
-
-This trades a small amount of initial wait for much smoother listening.
-
 ## Media Formats
 
 ### Worker Intermediate
@@ -143,41 +97,11 @@ The worker may use PCM or WAV as a short-lived intermediate representation when 
 
 This is not a user-facing persisted format.
 
-### In-Progress Playback
-
-- codec family: AAC
-- container/segment strategy: fMP4/CMAF HLS
-- playlist type: EVENT while processing
-- publication strategy: append-only batches with immutable published segments
-
 ### Completed Playback
 
 - canonical completed asset: MP3
 - stored in Supabase Storage
-- used for all new sessions after completion
-
-## Playback Handoff Rules
-
-```mermaid
-stateDiagram-v2
-    [*] --> Processing
-    Processing --> PlayingHLS: "user starts while processing"
-    Processing --> Finalizing: "all chunks synthesized"
-    Finalizing --> Completed: "final MP3 committed"
-    PlayingHLS --> PlayingHLS: "playlist grows"
-    PlayingHLS --> CompletedButSessionStaysHLS: "job completes during playback"
-    CompletedButSessionStaysHLS --> [*]: "user stops / session ends"
-    Completed --> PlayingFinal: "new session"
-    PlayingFinal --> [*]
-```
-
-Rules:
-
-- never switch an active HLS session to the final MP3 mid-session
-- keep the session pinned to the asset it started with
-- once the job is complete, expose the final MP3 for all new sessions
-- keep the completed HLS playlist available long enough for already active sessions to finish cleanly
-- the active HLS session may continue using its own timeline semantics even after the backend exposes the final MP3 for new sessions
+- used for all playback sessions
 
 ## Storage Model
 
@@ -197,14 +121,8 @@ Postgres stores:
 
 Supabase Storage stores:
 
-- HLS playlists
-- HLS segments
-- canonical final MP3
-
-Completed jobs may temporarily have both:
-
-- a retained HLS stream for active pinned sessions
-- a canonical final MP3 for new sessions and local caching
+- final MP3 (durable)
+- temporary chunk MP3s (during processing only)
 
 ### Object Keys
 
@@ -213,31 +131,28 @@ Completed jobs may temporarily have both:
 
 ## Retention And Deletion
 
-### HLS
-
-- temporary
-- retained for 6 hours after completion
-- deleted by maintenance cleanup
-
 ### Final MP3
 
 - durable until explicit deletion
+
+### Temporary Chunks
+
+- cleaned up by maintenance after job completion
 
 ### Job Deletion
 
 Deleting a job deletes:
 
 - final MP3
-- any remaining HLS artifacts
+- any remaining temporary chunk files
 
 Internal job events remain internal-only and should avoid storing raw article text in their payloads.
 
 ## Concurrency Model
 
-- 2-4 chunk syntheses in flight per job
+- 3 chunk syntheses in flight per job
 - strict output order regardless of completion order
 - global worker caps to avoid starvation
-- prioritize startup-buffer work first
 
 ## Retry And Recovery
 
@@ -261,7 +176,6 @@ The maintenance logic is part of the domain design, not tied to one trigger mech
 Domain services:
 
 - `JobReconciler`
-- `HlsRetentionCleaner`
 - `FinalizationRepairer`
 
 Day 1 trigger:
@@ -276,12 +190,11 @@ Future trigger options:
 ```mermaid
 flowchart LR
     A["Maintenance services"] --> B["Reconcile stalled jobs"]
-    A --> C["Clean expired HLS"]
-    A --> D["Repair partial finalization"]
-    E["Trigger adapter"] --> A
-    E1["Worker interval"] --> E
-    E2["Render Cron"] --> E
-    E3["Manual admin trigger"] --> E
+    A --> C["Repair partial finalization"]
+    D["Trigger adapter"] --> A
+    D1["Worker interval"] --> D
+    D2["Render Cron"] --> D
+    D3["Manual admin trigger"] --> D
 ```
 
 ## Internal Observability
@@ -295,12 +208,12 @@ Event examples:
 - `job_created`
 - `normalization_completed`
 - `chunk_ready`
-- `startup_buffer_ready`
-- `playlist_published`
 - `final_asset_uploaded`
 - `retry_scheduled`
 - `job_completed`
 - `job_failed`
+
+Note: streaming-era events (`startup_buffer_ready`, `playlist_published`) have been removed. See `docs/streaming-learnings.md`.
 
 ### Structured Logs
 

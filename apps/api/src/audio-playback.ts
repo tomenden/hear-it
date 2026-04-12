@@ -1,23 +1,13 @@
 export type PublicAudioState = "queued" | "processing" | "ready" | "failed";
 
-export type PreferredPlaybackMode = "none" | "stream" | "final";
-
 export type InternalAudioState =
   | "queued"
   | "normalizing"
   | "chunking"
   | "synthesizing"
-  | "packaging_stream"
-  | "finalizing"
+  | "packaging"
   | "completed"
   | "failed";
-
-export interface PlaybackStreamSource {
-  playlistUrl: string;
-  availableDurationSeconds: number;
-  liveEdgeUpdatedAt: string;
-  isComplete: boolean;
-}
 
 export interface PlaybackFinalSource {
   audioUrl: string;
@@ -26,22 +16,17 @@ export interface PlaybackFinalSource {
 }
 
 export interface PlaybackDescriptor {
-  preferredModeForNewSessions: PreferredPlaybackMode;
   isPlayable: boolean;
-  stream: PlaybackStreamSource | null;
   final: PlaybackFinalSource | null;
   errorMessage: string | null;
 }
 
 export interface JobPlaybackSource {
   state: InternalAudioState;
-  streamPlaylistUrl: string | null;
   finalAudioUrl: string | null;
-  availableDurationSeconds: number;
   durationSeconds: number | null;
   title: string;
   error: string | null;
-  liveEdgeUpdatedAt?: string | null;
 }
 
 export function mapInternalStateToPublicState(state: InternalAudioState): PublicAudioState {
@@ -51,8 +36,7 @@ export function mapInternalStateToPublicState(state: InternalAudioState): Public
     case "normalizing":
     case "chunking":
     case "synthesizing":
-    case "packaging_stream":
-    case "finalizing":
+    case "packaging":
       return "processing";
     case "completed":
       return "ready";
@@ -66,51 +50,30 @@ export function mapInternalStateToPublicState(state: InternalAudioState): Public
 export function mapJobToPlaybackDescriptor(job: JobPlaybackSource): PlaybackDescriptor {
   if (job.state === "failed") {
     return {
-      preferredModeForNewSessions: "none",
       isPlayable: false,
-      stream: null,
       final: null,
       errorMessage: job.error ?? "Audio generation failed.",
     };
   }
 
-  const canonicalCompletedDurationSeconds =
-    job.state === "completed" && typeof job.durationSeconds === "number"
-      ? job.durationSeconds
-      : job.availableDurationSeconds;
-
-  const streamSource =
-    job.streamPlaylistUrl && job.liveEdgeUpdatedAt
-      ? {
-          playlistUrl: job.streamPlaylistUrl,
-          availableDurationSeconds: canonicalCompletedDurationSeconds,
-          liveEdgeUpdatedAt: job.liveEdgeUpdatedAt,
-          isComplete: job.state === "completed",
-        }
-      : null;
-
   const finalSource = job.finalAudioUrl
     ? {
         audioUrl: job.finalAudioUrl,
-        durationSeconds: job.durationSeconds ?? canonicalCompletedDurationSeconds,
+        durationSeconds: job.durationSeconds ?? 0,
         fileName: buildFileName(job.title),
       }
     : null;
 
-  if (finalSource || streamSource) {
+  if (finalSource) {
     return {
-      preferredModeForNewSessions: finalSource ? "final" : "stream",
       isPlayable: true,
-      stream: streamSource,
       final: finalSource,
       errorMessage: null,
     };
   }
 
   return {
-    preferredModeForNewSessions: "none",
     isPlayable: false,
-    stream: null,
     final: null,
     errorMessage: null,
   };

@@ -1,5 +1,7 @@
 # Audio Pipeline Redesign
 
+> **Archived reference:** This spec describes the abandoned streaming-first design, not the current product. The live system is batch-only. Keep this only as background material for any future streaming revisit, alongside `docs/streaming-learnings.md`.
+
 ## Overview
 
 Redesign Hear It's audio generation and playback pipeline to provide smooth in-progress streaming, a stable completed asset, cleaner naming, stronger observability, and a cheap-but-correct day 1 infrastructure shape.

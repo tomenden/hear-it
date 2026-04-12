@@ -23,8 +23,6 @@ final class AudioPlayerController {
     @ObservationIgnored private var playbackEndedObserver: NSObjectProtocol?
     @ObservationIgnored private var seekOnReadyTask: Task<Void, Never>?
     @ObservationIgnored private var isSeeking = false
-    @ObservationIgnored private var pendingStreamContinuation = false
-    @ObservationIgnored private var pendingStreamContinuationSourceURL: URL?
     #if DEBUG
     @ObservationIgnored private var lastObservedCurrentTime: Double?
     @ObservationIgnored private var lastObservedDuration: Double?
@@ -60,7 +58,7 @@ final class AudioPlayerController {
 
     func load(url: URL, for jobID: String, knownDuration: Double? = nil) {
         guard loadedJobID != jobID || loadedSourceURL != url else {
-            // Already loaded — keep the seek range in sync as processing playlists grow.
+            // Already loaded — keep the known duration in sync if fresher metadata arrives.
             if let knownDuration, knownDuration > 0 {
                 duration = knownDuration
             }
@@ -71,8 +69,6 @@ final class AudioPlayerController {
         let targetTime = savedPosition(for: jobID)   // read once — before the task races with the time observer
         loadedJobID = jobID
         loadedSourceURL = url
-        pendingStreamContinuation = false
-        pendingStreamContinuationSourceURL = nil
         currentTime = targetTime
         duration = knownDuration
         isPlaying = false
@@ -95,8 +91,6 @@ final class AudioPlayerController {
         seekOnReadyTask?.cancel()
         loadedJobID = nil
         loadedSourceURL = nil
-        pendingStreamContinuation = false
-        pendingStreamContinuationSourceURL = nil
         currentTime = 0
         duration = nil
         isPlaying = false
@@ -122,15 +116,6 @@ final class AudioPlayerController {
 
     func updateObservedDuration(_ observedDuration: Double) {
         guard observedDuration.isFinite, observedDuration > 0 else { return }
-        // For in-progress HLS playback, the backend's available-duration field is the
-        // authoritative timeline. AVPlayer's observed item duration can jump backward
-        // while an EVENT playlist is still growing, which makes the slider race ahead.
-        if isStreamingSource {
-            if duration == nil {
-                duration = observedDuration
-            }
-            return
-        }
         duration = observedDuration
     }
 
@@ -156,43 +141,9 @@ final class AudioPlayerController {
 
     func handlePlaybackItemDidReachEnd() {
         #if DEBUG
-        print("[HearIt][Player] didReachEnd — currentTime=\(String(format: "%.3f", currentTime)) duration=\(duration.map { String(format: "%.3f", $0) } ?? "nil") source=\(loadedSourceURL?.lastPathComponent ?? "nil") streaming=\(isStreamingSource)")
+        print("[HearIt][Player] didReachEnd — currentTime=\(String(format: "%.3f", currentTime)) duration=\(duration.map { String(format: "%.3f", $0) } ?? "nil") source=\(loadedSourceURL?.lastPathComponent ?? "nil")")
         #endif
-        if isStreamingSource {
-            if let jobID = loadedJobID, currentTime > 0 {
-                savePosition(currentTime, for: jobID)
-            }
-            pendingStreamContinuation = true
-            pendingStreamContinuationSourceURL = loadedSourceURL
-            loadedSourceURL = nil
-            isPlaying = false
-            guard !previewMode else { return }
-            player.pause()
-            return
-        }
-
         endPlaybackSession()
-    }
-
-    func consumePendingStreamContinuation() -> Bool {
-        let pending = pendingStreamContinuation
-        pendingStreamContinuation = false
-        if !pending {
-            pendingStreamContinuationSourceURL = nil
-        }
-        return pending
-    }
-
-    func consumePendingStreamContinuationSourceURL() -> URL? {
-        let pending = pendingStreamContinuation
-        let sourceURL = pendingStreamContinuationSourceURL
-        pendingStreamContinuation = false
-        pendingStreamContinuationSourceURL = nil
-        return pending ? sourceURL : nil
-    }
-
-    var hasPendingStreamContinuation: Bool {
-        pendingStreamContinuation
     }
 
     func clearSavedPositionForLoadedJob() {
@@ -289,10 +240,6 @@ final class AudioPlayerController {
         return duration > 0
     }
 
-    private var isStreamingSource: Bool {
-        loadedSourceURL?.pathExtension.lowercased() == "m3u8"
-    }
-
     func configurePreviewState(
         jobID: String?,
         duration: Double?,
@@ -304,8 +251,6 @@ final class AudioPlayerController {
     ) {
         loadedJobID = jobID
         self.loadedSourceURL = loadedSourceURL
-        pendingStreamContinuation = false
-        pendingStreamContinuationSourceURL = nil
         self.duration = duration
         self.currentTime = min(max(currentTime, 0), duration ?? currentTime)
         self.isPlaying = isPlaying
@@ -332,7 +277,7 @@ final class AudioPlayerController {
     }
 
     /// Waits for the AVPlayerItem to become ready, then seeks to the target offset.
-    /// Using a polling task because HLS items reject seeks issued before status == .readyToPlay.
+    /// Using a polling task because AVPlayer items can reject seeks before status == .readyToPlay.
     private func seekWhenReady(item: AVPlayerItem, to targetTime: Double) async {
         defer { isSeeking = false }
         #if DEBUG

@@ -1,13 +1,10 @@
 import {
   buildFinalAudioKey,
-  buildInitSegmentKey,
   buildJobMediaPrefix,
-  buildPlaylistKey,
 } from "./media-packager.js";
 import type { AudioStore, JobStore } from "./storage.js";
 import type { AudioJob } from "./types.js";
 
-const DEFAULT_HLS_RETENTION_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_MAINTENANCE_INTERVAL_MS = 60_000;
 const DEFAULT_MAINTENANCE_LEASE_MS = 55_000;
 const DEFAULT_MAINTENANCE_LEASE_NAME = "maintenance";
@@ -83,62 +80,6 @@ export class JobReconciler implements MaintenanceService {
   }
 }
 
-export interface HlsRetentionCleanerOptions {
-  jobStore: JobStore;
-  audioStore: AudioStore;
-  retentionMs?: number;
-}
-
-export class HlsRetentionCleaner implements MaintenanceService {
-  private readonly jobStore: JobStore;
-  private readonly audioStore: AudioStore;
-  private readonly retentionMs: number;
-
-  constructor(options: HlsRetentionCleanerOptions) {
-    this.jobStore = options.jobStore;
-    this.audioStore = options.audioStore;
-    this.retentionMs = options.retentionMs ?? DEFAULT_HLS_RETENTION_MS;
-  }
-
-  async runOnce(
-    now = new Date(),
-    context?: MaintenanceRunContext,
-  ): Promise<void> {
-    const jobs = await this.jobStore.getAll();
-
-    for (const job of jobs) {
-      if (context?.shouldAbort()) {
-        break;
-      }
-
-      if (job.status !== "completed" || !job.playlistUrl) {
-        continue;
-      }
-
-      const hlsReferenceAt = job.liveEdgeUpdatedAt ?? job.updatedAt;
-      if (!hlsReferenceAt) {
-        continue;
-      }
-
-      const ageMs = now.getTime() - new Date(hlsReferenceAt).getTime();
-      if (ageMs < this.retentionMs) {
-        continue;
-      }
-
-      await this.audioStore.deletePrefix(buildHlsSegmentsPrefix(job.id));
-      await this.audioStore.deletePrefix(buildTemporaryChunksPrefix(job.id));
-      await this.audioStore.delete(buildPlaylistKey(job.id));
-      await this.audioStore.delete(buildInitSegmentKey(job.id));
-      await this.jobStore.update(job.id, {
-        playlistUrl: null,
-        liveEdgeUpdatedAt: null,
-        audioSegments: [],
-        updatedAt: now.toISOString(),
-      });
-    }
-  }
-}
-
 export interface FinalizationRepairerOptions {
   jobStore: JobStore;
   audioStore: AudioStore;
@@ -184,14 +125,14 @@ export class FinalizationRepairer implements MaintenanceService {
       await this.jobStore.updateIfLeaseSnapshotMatches(
         job.id,
         {
-        status: "completed",
-        internalState: "completed",
-        audioUrl: finalAudioUrl,
-        leaseOwner: null,
-        leaseExpiresAt: null,
-        runId: null,
-        error: null,
-        updatedAt: now.toISOString(),
+          status: "completed",
+          internalState: "completed",
+          audioUrl: finalAudioUrl,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          runId: null,
+          error: null,
+          updatedAt: now.toISOString(),
         },
         {
           status: job.status,
@@ -356,10 +297,6 @@ export function startMaintenanceWorker(options: StartMaintenanceWorkerOptions) {
   timer.unref?.();
 
   return () => clearInterval(timer);
-}
-
-function buildHlsSegmentsPrefix(jobId: string): string {
-  return `jobs/${jobId}/segments`;
 }
 
 function buildTemporaryChunksPrefix(jobId: string): string {

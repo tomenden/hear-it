@@ -19,6 +19,7 @@ import {
 import { createAuthMiddleware } from "./auth.js";
 import { AudioJobService } from "./jobs.js";
 import type { AudioStore, JobStore } from "./storage.js";
+import { chunkSpeechScript } from "./text-chunker.js";
 import { AVAILABLE_VOICES } from "./tts.js";
 import type { AudioJob, CreateAudioJobInput, ExtractArticleInput } from "./types.js";
 
@@ -81,7 +82,6 @@ interface AudioJobResponse {
   provider: string;
   audioUrl: string | null;
   audioDownloadPath: string | null;
-  playlistUrl: string | null;
   audioSegments: AudioJob["audioSegments"];
   durationSeconds: number | null;
   error: string | null;
@@ -117,15 +117,13 @@ export function createApp(options: CreateAppOptions) {
     const state = mapInternalStateToPublicState(resolveInternalState(job));
     const playback = mapJobToPlaybackDescriptor({
       state: state === "queued" ? "queued" : resolveInternalState(job),
-      streamPlaylistUrl: job.playlistUrl,
       finalAudioUrl: job.audioUrl,
-      availableDurationSeconds: state === "queued" ? 0 : resolveAvailableDurationSeconds(job),
       durationSeconds: job.durationSeconds,
       title,
       error: job.error,
-      liveEdgeUpdatedAt: state === "queued" ? null : job.liveEdgeUpdatedAt,
     });
     const chunksReady = job.audioSegments.length;
+    const chunksTotal = resolveChunksTotal(job, state, chunksReady);
     const compatibilityFields = buildLegacyCompatibilityFields(
       job,
       playback,
@@ -139,7 +137,7 @@ export function createApp(options: CreateAppOptions) {
       voice: job.speechOptions.voice,
       playback,
       progress: {
-        chunksTotal: state === "ready" ? chunksReady : null,
+        chunksTotal,
         chunksReady,
         availableDurationSeconds: resolveAvailableDurationSeconds(job),
       },
@@ -449,10 +447,6 @@ function resolveAvailableDurationSeconds(job: AudioJob): number {
     return job.durationSeconds;
   }
 
-  if (typeof job.availableDurationSeconds === "number") {
-    return job.availableDurationSeconds;
-  }
-
   if (typeof job.durationSeconds === "number") {
     return job.durationSeconds;
   }
@@ -461,6 +455,23 @@ function resolveAvailableDurationSeconds(job: AudioJob): number {
     (total, segment) => total + segment.durationSeconds,
     0,
   );
+}
+
+function resolveChunksTotal(
+  job: AudioJob,
+  state: PublicAudioState,
+  chunksReady: number,
+): number | null {
+  if (state === "ready") {
+    return chunksReady;
+  }
+
+  if (state !== "processing" || !job.speechScript) {
+    return null;
+  }
+
+  const chunkCount = chunkSpeechScript({ script: job.speechScript }).length;
+  return chunkCount > 0 ? Math.max(chunkCount, chunksReady) : null;
 }
 
 function assertNever(value: never): never {
@@ -477,7 +488,6 @@ function buildLegacyCompatibilityFields(
   | "provider"
   | "audioUrl"
   | "audioDownloadPath"
-  | "playlistUrl"
   | "audioSegments"
   | "durationSeconds"
   | "error"
@@ -488,7 +498,6 @@ function buildLegacyCompatibilityFields(
     provider: job.provider,
     audioUrl: job.audioUrl,
     audioDownloadPath: null,
-    playlistUrl: job.playlistUrl,
     audioSegments: job.audioSegments,
     durationSeconds: job.durationSeconds,
     error: playback.errorMessage ?? job.error,

@@ -10,9 +10,7 @@ struct AudioJobDecodingTests {
             state: "queued",
             playback: """
             {
-              "preferredModeForNewSessions": "none",
               "isPlayable": false,
-              "stream": null,
               "final": null,
               "errorMessage": null
             }
@@ -29,9 +27,6 @@ struct AudioJobDecodingTests {
         #expect(job.state == .queued)
         #expect(job.playback.mode == .preparing)
         #expect(job.playback.isPlayable == false)
-        #expect(job.playback.preferredModeForNewSessions == .none)
-        #expect(job.playback.availableDurationSeconds == nil)
-        #expect(job.playback.liveEdgeUpdatedAt == nil)
         #expect(job.playbackURL(relativeTo: URL(string: "https://fallback.example.com")!) == nil)
         #expect(job.progress.chunksTotal == nil)
         #expect(job.progress.chunksReady == 0)
@@ -39,21 +34,13 @@ struct AudioJobDecodingTests {
     }
 
     @Test
-    func decodesProcessingStateAndStreamingPlayback() throws {
+    func decodesProcessingStateAndPreparingPlayback() throws {
         let job = try decodeJob(
             state: "processing",
             audioUrl: nil,
-            playlistUrl: nil,
             playback: """
             {
-              "preferredModeForNewSessions": "stream",
-              "isPlayable": true,
-              "stream": {
-                "playlistUrl": "https://example.com/audio/job-1/live.m3u8",
-                "availableDurationSeconds": 26,
-                "liveEdgeUpdatedAt": "2026-04-05T12:30:00Z",
-                "isComplete": false
-              },
+              "isPlayable": false,
               "final": null,
               "errorMessage": null
             }
@@ -68,18 +55,10 @@ struct AudioJobDecodingTests {
         )
 
         #expect(job.state == .processing)
-        #expect(job.playback.mode == .streaming)
-        #expect(job.playback.isPlayable == true)
-        #expect(job.playback.prefersStreamingForNewSessions)
-        #expect(job.playback.playlistUrl == "https://example.com/audio/job-1/live.m3u8")
-        #expect(job.playback.availableDurationSeconds == 26)
-        #expect(
-            job.playbackURL(relativeTo: URL(string: "https://fallback.example.com")!) ==
-                URL(string: "https://example.com/audio/job-1/live.m3u8")
-        )
+        #expect(job.playback.mode == .preparing)
+        #expect(job.playback.isPlayable == false)
         #expect(job.progress.chunksTotal == 8)
         #expect(job.progress.chunksReady == 3)
-        #expect(job.progress.availableDurationSeconds == 26)
     }
 
     @Test
@@ -87,17 +66,9 @@ struct AudioJobDecodingTests {
         let job = try decodeJob(
             state: "ready",
             audioUrl: nil,
-            playlistUrl: nil,
             playback: """
             {
-              "preferredModeForNewSessions": "final",
               "isPlayable": true,
-              "stream": {
-                "playlistUrl": "https://example.com/audio/job-1/live.m3u8",
-                "availableDurationSeconds": 42,
-                "liveEdgeUpdatedAt": "2026-04-05T12:30:00Z",
-                "isComplete": true
-              },
               "final": {
                 "audioUrl": "https://cdn.example.com/audio/job-1/final.mp3",
                 "durationSeconds": 42,
@@ -117,10 +88,9 @@ struct AudioJobDecodingTests {
 
         #expect(job.state == .ready)
         #expect(job.status == .completed)
-        #expect(job.playback.mode == .final)
+        #expect(job.playback.mode == .ready)
         #expect(job.playback.isPlayable == true)
-        #expect(job.playback.prefersFinalForNewSessions)
-        #expect(job.playback.hasStreamingSource)
+        #expect(job.playback.hasFinalSource)
         #expect(job.playback.audioUrl == "https://cdn.example.com/audio/job-1/final.mp3")
         #expect(job.playback.durationSeconds == 42)
         #expect(job.playback.fileName == "Server supplied final audio.mp3")
@@ -139,9 +109,7 @@ struct AudioJobDecodingTests {
             state: "failed",
             playback: """
             {
-              "preferredModeForNewSessions": "none",
               "isPlayable": false,
-              "stream": null,
               "final": null,
               "errorMessage": "Playback failed."
             }
@@ -184,8 +152,6 @@ struct AudioJobDecodingTests {
           "provider": "openai",
           "audioUrl": null,
           "audioDownloadPath": null,
-          "playlistUrl": "https://example.com/audio/job-legacy/live.m3u8",
-          "liveEdgeUpdatedAt": "2026-04-05T12:30:00Z",
           "audioSegments": [
             {
               "url": "https://cdn.example.com/audio/job-legacy/segment-1.mp3",
@@ -205,9 +171,7 @@ struct AudioJobDecodingTests {
 
         #expect(job.state == .processing)
         #expect(job.status == .processing)
-        #expect(job.playback.mode == .streaming)
-        #expect(job.playback.prefersStreamingForNewSessions)
-        #expect(job.playback.playlistUrl == "https://example.com/audio/job-legacy/live.m3u8")
+        #expect(job.playback.mode == .preparing)
         #expect(job.progress.availableDurationSeconds == 26)
     }
 }
@@ -216,7 +180,6 @@ private func decodeJob(
     state: String,
     status: String? = nil,
     audioUrl: String? = "https://cdn.example.com/audio/job-1/final.mp3",
-    playlistUrl: String? = "https://example.com/audio/job-1/live.m3u8",
     playback: String,
     progress: String,
     error: String? = nil
@@ -243,7 +206,6 @@ private func decodeJob(
       "provider": "openai",
       "audioUrl": \(jsonString(audioUrl)),
       "audioDownloadPath": null,
-      "playlistUrl": \(jsonString(playlistUrl)),
       "audioSegments": [
         {
           "url": "https://cdn.example.com/audio/job-1/segment-1.mp3",

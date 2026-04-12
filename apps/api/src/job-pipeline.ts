@@ -6,12 +6,8 @@ import {
   type FfmpegMediaPackager,
 } from "./ffmpeg-media-packager.js";
 import {
-  appendBatchToHlsEventPlaylist,
   buildFinalAudioKey,
   buildJobMediaPrefix,
-  buildPlaylistKey,
-  finalizeHlsEventPlaylist,
-  inspectHlsEventPlaylist,
   type MediaChunkInput,
 } from "./media-packager.js";
 import { buildSpeechScript } from "./speech-script.js";
@@ -20,7 +16,6 @@ import { chunkSpeechScript } from "./text-chunker.js";
 import type { AudioJob, AudioRenderResult, PackagerChunkMedia, SpeechOptions } from "./types.js";
 import type { SpeechProvider } from "./tts.js";
 
-const DEFAULT_STARTUP_BUFFER_SECONDS = 20;
 const DEFAULT_TTS_CONCURRENCY = 3;
 const MAX_TTS_CONCURRENCY = 4;
 const MIN_TTS_CONCURRENCY = 2;
@@ -33,7 +28,6 @@ export interface JobPipelineOptions {
   audioStore: AudioStore;
   speechProvider: SpeechProvider;
   mediaPackager?: FfmpegMediaPackager;
-  startupBufferSeconds?: number;
   ttsConcurrency?: number;
   synthesisRetryCount?: number;
   packagingRetryCount?: number;
@@ -69,8 +63,6 @@ export function createJobPipeline(options: JobPipelineOptions) {
   const audioStore = options.audioStore;
   const speechProvider = options.speechProvider;
   const mediaPackager = options.mediaPackager ?? createFfmpegMediaPackager();
-  const startupBufferSeconds =
-    options.startupBufferSeconds ?? DEFAULT_STARTUP_BUFFER_SECONDS;
   const ttsConcurrency = clampTtsConcurrency(
     options.ttsConcurrency ?? getConfiguredTtsConcurrency(),
   );
@@ -86,11 +78,6 @@ export function createJobPipeline(options: JobPipelineOptions) {
     async processClaimedJob(job: AudioJob): Promise<JobPipelineResult> {
       let currentJob = { ...job };
       const synthesizedChunks = new Map<number, SynthesizedChunk>();
-      let playlistUrl = currentJob.playlistUrl;
-      let playlistText: string | null = null;
-      let publishedChunkCount = currentJob.publishedChunkCount ?? 0;
-      let publishedDurationSeconds = 0;
-      let publishPromise = Promise.resolve();
       let nextChunkIndex = 0;
       let workerPromises: Promise<void>[] = [];
       const throwIfAborted = () => {
@@ -142,11 +129,7 @@ export function createJobPipeline(options: JobPipelineOptions) {
           status: "failed",
           internalState: "failed",
           audioUrl: null,
-          playlistUrl: null,
           audioSegments: [],
-          availableDurationSeconds: 0,
-          liveEdgeUpdatedAt: null,
-          publishedChunkCount: 0,
           durationSeconds: null,
           error: message,
         });
@@ -160,8 +143,6 @@ export function createJobPipeline(options: JobPipelineOptions) {
           internalState: "normalizing",
           error: null,
           audioUrl: currentJob.audioUrl ?? null,
-          playlistUrl: currentJob.playlistUrl ?? null,
-          liveEdgeUpdatedAt: currentJob.liveEdgeUpdatedAt ?? null,
           durationSeconds: null,
         });
 
@@ -204,129 +185,10 @@ export function createJobPipeline(options: JobPipelineOptions) {
         }
 
         nextChunkIndex = restoredChunks.length;
-        playlistUrl = currentJob.playlistUrl;
-        publishedChunkCount =
-          currentJob.publishedChunkCount ??
-          (playlistUrl ? restoredChunks.length : 0);
-        if (playlistUrl && publishedChunkCount > 0) {
-          const storedPlaylist = await audioStore.get(buildPlaylistKey(currentJob.id));
-          if (storedPlaylist) {
-            playlistText = storedPlaylist.toString("utf8");
-            publishedDurationSeconds = inspectHlsEventPlaylist(playlistText).bufferedSeconds;
-          } else {
-            playlistUrl = null;
-            publishedChunkCount = 0;
-          }
-        }
         await emitUpdate({
           audioSegments: buildAudioSegments(restoredChunks),
-          availableDurationSeconds: publishedDurationSeconds,
-          playlistUrl,
-          publishedChunkCount,
           internalState: "synthesizing",
         });
-
-        const publishStreamingArtifacts = async (force = false) => {
-          throwIfAborted();
-          const contiguousChunks = getContiguousChunks(synthesizedChunks);
-          if (contiguousChunks.length === 0 || contiguousChunks.length <= publishedChunkCount) {
-            return;
-          }
-
-          const chunksToPublish = contiguousChunks.slice(publishedChunkCount);
-          const estimatedAvailableDurationSeconds = sumChunkDurations(contiguousChunks);
-          await emitUpdate({
-            audioSegments: buildAudioSegments(contiguousChunks),
-            availableDurationSeconds: publishedDurationSeconds,
-            publishedChunkCount,
-            internalState: playlistUrl ? "packaging_stream" : "synthesizing",
-          });
-
-          const shouldPublishStream =
-            estimatedAvailableDurationSeconds >= startupBufferSeconds ||
-            force ||
-            publishedChunkCount > 0;
-          if (!shouldPublishStream) {
-            return;
-          }
-
-          await emitUpdate({ internalState: "packaging_stream" });
-          const packagingResult = await retryWithBackoff(
-            () =>
-              mediaPackager.packageStreamBatch(
-                currentJob.id,
-                publishedChunkCount,
-                chunksToPublish.map((chunk) => ({
-                  index: chunk.index,
-                  chunkMedia: chunk.media,
-                })),
-              ),
-            {
-              retryCount: packagingRetryCount,
-              shouldRetry: () => true,
-              sleep,
-              },
-          );
-
-          const packagedAvailableDurationSeconds =
-            publishedDurationSeconds + packagingResult.batchDurationSeconds;
-          const canPublishStream =
-            force || publishedChunkCount > 0 || packagedAvailableDurationSeconds >= startupBufferSeconds;
-
-          if (!canPublishStream) {
-            await emitUpdate({
-              availableDurationSeconds: publishedDurationSeconds,
-              audioSegments: buildAudioSegments(contiguousChunks),
-              publishedChunkCount,
-              internalState: "synthesizing",
-            });
-            return;
-          }
-
-          throwIfAborted();
-          await audioStore.put(
-            packagingResult.initSegment.key,
-            packagingResult.initSegment.audioData,
-            packagingResult.initSegment.contentType,
-            { overwrite: true },
-          );
-
-          for (const segment of packagingResult.segments) {
-            throwIfAborted();
-            await audioStore.put(segment.key, segment.audioData, segment.contentType, {
-              overwrite: true,
-            });
-          }
-
-          playlistText = appendBatchToHlsEventPlaylist(playlistText, {
-            initSegmentUri: packagingResult.initSegment.uri,
-            segments: packagingResult.segments.map((segment) => ({
-              uri: segment.uri,
-              durationSeconds: segment.durationSeconds,
-            })),
-            startupBufferPlayable: packagedAvailableDurationSeconds >= startupBufferSeconds,
-          });
-
-          throwIfAborted();
-          playlistUrl = await audioStore.put(
-            buildPlaylistKey(currentJob.id),
-            Buffer.from(playlistText, "utf8"),
-            "application/vnd.apple.mpegurl",
-            { overwrite: true },
-          );
-          const liveEdgeUpdatedAt = now().toISOString();
-          publishedChunkCount = contiguousChunks.length;
-          publishedDurationSeconds = packagedAvailableDurationSeconds;
-
-          await emitUpdate({
-            playlistUrl,
-            liveEdgeUpdatedAt,
-            availableDurationSeconds: packagedAvailableDurationSeconds,
-            audioSegments: buildAudioSegments(contiguousChunks),
-            publishedChunkCount,
-            internalState: "packaging_stream",
-          });
-        };
 
         const runWorker = async () => {
           while (true) {
@@ -362,8 +224,10 @@ export function createJobPipeline(options: JobPipelineOptions) {
 
             throwIfAborted();
             synthesizedChunks.set(index, synthesized);
-            publishPromise = publishPromise.then(() => publishStreamingArtifacts());
-            await publishPromise;
+            await emitUpdate({
+              audioSegments: buildAudioSegments(getContiguousChunks(synthesizedChunks)),
+              internalState: "synthesizing",
+            });
           }
         };
 
@@ -375,16 +239,12 @@ export function createJobPipeline(options: JobPipelineOptions) {
 
         workerPromises = Array.from({ length: workerCount }, () => runWorker());
         await Promise.all(workerPromises);
-        await publishPromise;
 
         const contiguousChunks = getContiguousChunks(synthesizedChunks);
         await emitUpdate({
-          internalState: "finalizing",
-          availableDurationSeconds: publishedDurationSeconds,
+          internalState: "packaging",
           audioSegments: buildAudioSegments(contiguousChunks),
-          publishedChunkCount,
         });
-        await publishStreamingArtifacts(true);
 
         const finalAudio = await retryWithBackoff(
           () =>
@@ -402,17 +262,6 @@ export function createJobPipeline(options: JobPipelineOptions) {
           },
         );
 
-        if (playlistText) {
-          playlistText = finalizeHlsEventPlaylist(playlistText);
-          throwIfAborted();
-          playlistUrl = await audioStore.put(
-            buildPlaylistKey(currentJob.id),
-            Buffer.from(playlistText, "utf8"),
-            "application/vnd.apple.mpegurl",
-            { overwrite: true },
-          );
-        }
-
         throwIfAborted();
         const finalAudioUrl = await audioStore.put(
           buildFinalAudioKey(currentJob.id),
@@ -425,11 +274,7 @@ export function createJobPipeline(options: JobPipelineOptions) {
           status: "completed",
           internalState: "completed",
           audioUrl: finalAudioUrl,
-          playlistUrl,
-          liveEdgeUpdatedAt: currentJob.liveEdgeUpdatedAt ?? now().toISOString(),
-          availableDurationSeconds: finalAudio.durationSeconds,
           audioSegments: buildAudioSegments(contiguousChunks),
-          publishedChunkCount,
           durationSeconds: finalAudio.durationSeconds,
           error: null,
         });
@@ -440,7 +285,6 @@ export function createJobPipeline(options: JobPipelineOptions) {
         };
       } catch (error) {
         await Promise.allSettled(workerPromises);
-        await Promise.allSettled([publishPromise]);
         return failJob(error);
       }
     },
@@ -577,20 +421,13 @@ function buildAudioSegments(chunks: readonly SynthesizedChunk[]): AudioJob["audi
   }));
 }
 
-function sumChunkDurations(chunks: readonly Pick<SynthesizedChunk, "durationSeconds">[]): number {
-  return chunks.reduce((total, chunk) => total + chunk.durationSeconds, 0);
-}
-
 function snapshotPlayback(job: AudioJob): PlaybackDescriptor {
   return mapJobToPlaybackDescriptor({
     state: job.internalState ?? "queued",
-    streamPlaylistUrl: job.playlistUrl,
     finalAudioUrl: job.audioUrl,
-    availableDurationSeconds: job.availableDurationSeconds ?? 0,
     durationSeconds: job.durationSeconds,
     title: job.displayTitle ?? job.article.title ?? "Untitled audio",
     error: job.error,
-    liveEdgeUpdatedAt: job.liveEdgeUpdatedAt ?? (job.playlistUrl ? job.updatedAt : null),
   });
 }
 

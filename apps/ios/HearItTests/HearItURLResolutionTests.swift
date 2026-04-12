@@ -24,42 +24,7 @@ struct HearItURLResolutionTests {
     }
 
     @Test
-    func prefersPlaylistURLForIncrementalPlayback() {
-        let baseURL = URL(string: "http://localhost:3000")!
-        let job = AudioJob(
-            id: "job-1",
-            status: .processing,
-            article: Article(
-                url: "https://example.com/article",
-                title: "Incremental playback",
-                byline: nil,
-                siteName: nil,
-                excerpt: nil,
-                textContent: "Body",
-                wordCount: 100,
-                estimatedMinutes: 1
-            ),
-            speechOptions: AudioJob.SpeechOptions(voice: "alloy"),
-            provider: "openai",
-            audioUrl: "/audio/final.mp3",
-            audioDownloadPath: nil,
-            playlistUrl: "/audio/job-1/playlist.m3u8",
-            audioSegments: [],
-            durationSeconds: nil,
-            error: nil,
-            createdAt: .now,
-            updatedAt: .now,
-            liveEdgeUpdatedAt: "2026-04-05T12:30:00Z"
-        )
-
-        #expect(
-            job.playbackURL(relativeTo: baseURL) ==
-                URL(string: "http://localhost:3000/audio/job-1/playlist.m3u8")
-        )
-    }
-
-    @Test
-    func prefersFinalAudioURLOncePlaybackIsCompleted() {
+    func readyJobReturnsAudioURL() {
         let baseURL = URL(string: "http://localhost:3000")!
         let job = AudioJob(
             id: "job-2",
@@ -78,7 +43,6 @@ struct HearItURLResolutionTests {
             provider: "openai",
             audioUrl: "/audio/job-2/final.mp3",
             audioDownloadPath: nil,
-            playlistUrl: "/audio/job-2/playlist.m3u8",
             audioSegments: [],
             durationSeconds: 30,
             error: nil,
@@ -90,5 +54,35 @@ struct HearItURLResolutionTests {
             job.playbackURL(relativeTo: baseURL) ==
                 URL(string: "http://localhost:3000/audio/job-2/final.mp3")
         )
+    }
+
+    @Test
+    func processingJobReturnsNilPlaybackURL() {
+        let baseURL = URL(string: "http://localhost:3000")!
+        let job = AudioJob(
+            id: "job-1",
+            status: .processing,
+            article: Article(
+                url: "https://example.com/article",
+                title: "Processing playback",
+                byline: nil,
+                siteName: nil,
+                excerpt: nil,
+                textContent: "Body",
+                wordCount: 100,
+                estimatedMinutes: 1
+            ),
+            speechOptions: AudioJob.SpeechOptions(voice: "alloy"),
+            provider: "openai",
+            audioUrl: nil,
+            audioDownloadPath: nil,
+            audioSegments: [],
+            durationSeconds: nil,
+            error: nil,
+            createdAt: .now,
+            updatedAt: .now
+        )
+
+        #expect(job.playbackURL(relativeTo: baseURL) == nil)
     }
 }

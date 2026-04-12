@@ -68,16 +68,10 @@ struct MiniPlayerView: View {
     }
 
     private func statusSubtitle(for job: AudioJob) -> String {
-        if model.isStreamingPlaybackSession(for: job) {
-            return "Playing the audio available so far"
-        }
-
         switch job.playback.mode {
         case .preparing:
             return "Preparing audio"
-        case .streaming:
-            return "Preparing audio"
-        case .final:
+        case .ready:
             return "Tap to return to the full player"
         case .failed:
             return "Audio failed"
@@ -119,7 +113,7 @@ struct MiniPlayerView: View {
     }
 }
 
-#Preview("Mini Player Streaming") {
+#Preview("Mini Player Preparing") {
     MiniPlayerView(model: AppModel.previewPlayerProcessing())
         .padding()
         .background(AppTheme.Gradients.page)

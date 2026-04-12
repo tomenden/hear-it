@@ -67,9 +67,6 @@ export class PostgresJobStore implements JobStore {
           internal_state TEXT,
           display_title TEXT,
           speech_script TEXT,
-          available_duration_seconds DOUBLE PRECISION,
-          published_chunk_count INTEGER,
-          live_edge_updated_at TEXT,
           lease_owner TEXT,
           lease_expires_at TEXT,
           run_id TEXT,
@@ -78,7 +75,6 @@ export class PostgresJobStore implements JobStore {
           speech_options JSONB NOT NULL,
           provider TEXT NOT NULL,
           audio_url TEXT,
-          playlist_url TEXT,
           audio_segments JSONB NOT NULL DEFAULT '[]',
           duration_seconds DOUBLE PRECISION,
           error TEXT,
@@ -150,18 +146,6 @@ export class PostgresJobStore implements JobStore {
 
       await this.sql`
         ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS speech_script TEXT
-      `;
-
-      await this.sql`
-        ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS available_duration_seconds DOUBLE PRECISION
-      `;
-
-      await this.sql`
-        ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS published_chunk_count INTEGER
-      `;
-
-      await this.sql`
-        ALTER TABLE audio_jobs ADD COLUMN IF NOT EXISTS live_edge_updated_at TEXT
       `;
 
       await this.sql`
@@ -243,10 +227,9 @@ export class PostgresJobStore implements JobStore {
       await this.sql`
         INSERT INTO audio_jobs (
           id, status, internal_state, display_title, speech_script,
-          available_duration_seconds, published_chunk_count, live_edge_updated_at,
           lease_owner, lease_expires_at, run_id, attempt,
           article, speech_options, provider,
-          audio_url, playlist_url, audio_segments, duration_seconds,
+          audio_url, audio_segments, duration_seconds,
           error, created_at, updated_at, user_id
         ) VALUES (
           ${job.id},
@@ -254,9 +237,6 @@ export class PostgresJobStore implements JobStore {
           ${job.internalState ?? null},
           ${job.displayTitle ?? job.article.title},
           ${job.speechScript ?? null},
-          ${job.availableDurationSeconds ?? null},
-          ${job.publishedChunkCount ?? null},
-          ${job.liveEdgeUpdatedAt ?? null},
           ${job.leaseOwner ?? null},
           ${job.leaseExpiresAt ?? null},
           ${job.runId ?? null},
@@ -265,7 +245,6 @@ export class PostgresJobStore implements JobStore {
           ${this.sql.json(job.speechOptions as unknown as JSONValue)},
           ${job.provider},
           ${job.audioUrl},
-          ${job.playlistUrl},
           ${this.sql.json(job.audioSegments as unknown as JSONValue)},
           ${job.durationSeconds},
           ${job.error},
@@ -278,9 +257,6 @@ export class PostgresJobStore implements JobStore {
           internal_state = EXCLUDED.internal_state,
           display_title = EXCLUDED.display_title,
           speech_script = EXCLUDED.speech_script,
-          available_duration_seconds = EXCLUDED.available_duration_seconds,
-          published_chunk_count = EXCLUDED.published_chunk_count,
-          live_edge_updated_at = EXCLUDED.live_edge_updated_at,
           lease_owner = EXCLUDED.lease_owner,
           lease_expires_at = EXCLUDED.lease_expires_at,
           run_id = EXCLUDED.run_id,
@@ -289,7 +265,6 @@ export class PostgresJobStore implements JobStore {
           speech_options = EXCLUDED.speech_options,
           provider = EXCLUDED.provider,
           audio_url = EXCLUDED.audio_url,
-          playlist_url = EXCLUDED.playlist_url,
           audio_segments = EXCLUDED.audio_segments,
           duration_seconds = EXCLUDED.duration_seconds,
           error = EXCLUDED.error,
@@ -388,15 +363,11 @@ export class PostgresJobStore implements JobStore {
     const hasInternalState = patch.internalState !== undefined;
     const hasDisplayTitle = patch.displayTitle !== undefined;
     const hasSpeechScript = patch.speechScript !== undefined;
-    const hasAvailableDurationSeconds = patch.availableDurationSeconds !== undefined;
-    const hasPublishedChunkCount = patch.publishedChunkCount !== undefined;
-    const hasLiveEdgeUpdatedAt = patch.liveEdgeUpdatedAt !== undefined;
     const hasLeaseOwner = patch.leaseOwner !== undefined;
     const hasLeaseExpiresAt = patch.leaseExpiresAt !== undefined;
     const hasRunId = patch.runId !== undefined;
     const hasAttempt = patch.attempt !== undefined;
     const hasAudioUrl = patch.audioUrl !== undefined;
-    const hasPlaylistUrl = patch.playlistUrl !== undefined;
     const hasAudioSegments = patch.audioSegments !== undefined;
     const hasDurationSeconds = patch.durationSeconds !== undefined;
     const hasError = patch.error !== undefined;
@@ -408,24 +379,11 @@ export class PostgresJobStore implements JobStore {
         internal_state = CASE WHEN ${hasInternalState} THEN ${patch.internalState ?? null} ELSE internal_state END,
         display_title = CASE WHEN ${hasDisplayTitle} THEN ${patch.displayTitle ?? null} ELSE display_title END,
         speech_script = CASE WHEN ${hasSpeechScript} THEN ${patch.speechScript ?? null} ELSE speech_script END,
-        available_duration_seconds = CASE
-          WHEN ${hasAvailableDurationSeconds} THEN ${patch.availableDurationSeconds ?? null}
-          ELSE available_duration_seconds
-        END,
-        published_chunk_count = CASE
-          WHEN ${hasPublishedChunkCount} THEN ${patch.publishedChunkCount ?? null}
-          ELSE published_chunk_count
-        END,
-        live_edge_updated_at = CASE
-          WHEN ${hasLiveEdgeUpdatedAt} THEN ${patch.liveEdgeUpdatedAt ?? null}
-          ELSE live_edge_updated_at
-        END,
         lease_owner = CASE WHEN ${hasLeaseOwner} THEN ${patch.leaseOwner ?? null} ELSE lease_owner END,
         lease_expires_at = CASE WHEN ${hasLeaseExpiresAt} THEN ${patch.leaseExpiresAt ?? null} ELSE lease_expires_at END,
         run_id = CASE WHEN ${hasRunId} THEN ${patch.runId ?? null} ELSE run_id END,
         attempt = CASE WHEN ${hasAttempt} THEN ${patch.attempt ?? 0} ELSE attempt END,
         audio_url = CASE WHEN ${hasAudioUrl} THEN ${patch.audioUrl ?? null} ELSE audio_url END,
-        playlist_url = CASE WHEN ${hasPlaylistUrl} THEN ${patch.playlistUrl ?? null} ELSE playlist_url END,
         audio_segments = CASE
           WHEN ${hasAudioSegments} THEN ${this.sql.json((patch.audioSegments ?? []) as unknown as JSONValue)}
           ELSE audio_segments
@@ -449,24 +407,11 @@ export class PostgresJobStore implements JobStore {
         internal_state = CASE WHEN ${hasInternalState} THEN ${patch.internalState ?? null} ELSE internal_state END,
         display_title = CASE WHEN ${hasDisplayTitle} THEN ${patch.displayTitle ?? null} ELSE display_title END,
         speech_script = CASE WHEN ${hasSpeechScript} THEN ${patch.speechScript ?? null} ELSE speech_script END,
-        available_duration_seconds = CASE
-          WHEN ${hasAvailableDurationSeconds} THEN ${patch.availableDurationSeconds ?? null}
-          ELSE available_duration_seconds
-        END,
-        published_chunk_count = CASE
-          WHEN ${hasPublishedChunkCount} THEN ${patch.publishedChunkCount ?? null}
-          ELSE published_chunk_count
-        END,
-        live_edge_updated_at = CASE
-          WHEN ${hasLiveEdgeUpdatedAt} THEN ${patch.liveEdgeUpdatedAt ?? null}
-          ELSE live_edge_updated_at
-        END,
         lease_owner = CASE WHEN ${hasLeaseOwner} THEN ${patch.leaseOwner ?? null} ELSE lease_owner END,
         lease_expires_at = CASE WHEN ${hasLeaseExpiresAt} THEN ${patch.leaseExpiresAt ?? null} ELSE lease_expires_at END,
         run_id = CASE WHEN ${hasRunId} THEN ${patch.runId ?? null} ELSE run_id END,
         attempt = CASE WHEN ${hasAttempt} THEN ${patch.attempt ?? 0} ELSE attempt END,
         audio_url = CASE WHEN ${hasAudioUrl} THEN ${patch.audioUrl ?? null} ELSE audio_url END,
-        playlist_url = CASE WHEN ${hasPlaylistUrl} THEN ${patch.playlistUrl ?? null} ELSE playlist_url END,
         audio_segments = CASE
           WHEN ${hasAudioSegments} THEN ${this.sql.json((patch.audioSegments ?? []) as unknown as JSONValue)}
           ELSE audio_segments
@@ -490,24 +435,11 @@ export class PostgresJobStore implements JobStore {
         internal_state = CASE WHEN ${hasInternalState} THEN ${patch.internalState ?? null} ELSE internal_state END,
         display_title = CASE WHEN ${hasDisplayTitle} THEN ${patch.displayTitle ?? null} ELSE display_title END,
         speech_script = CASE WHEN ${hasSpeechScript} THEN ${patch.speechScript ?? null} ELSE speech_script END,
-        available_duration_seconds = CASE
-          WHEN ${hasAvailableDurationSeconds} THEN ${patch.availableDurationSeconds ?? null}
-          ELSE available_duration_seconds
-        END,
-        published_chunk_count = CASE
-          WHEN ${hasPublishedChunkCount} THEN ${patch.publishedChunkCount ?? null}
-          ELSE published_chunk_count
-        END,
-        live_edge_updated_at = CASE
-          WHEN ${hasLiveEdgeUpdatedAt} THEN ${patch.liveEdgeUpdatedAt ?? null}
-          ELSE live_edge_updated_at
-        END,
         lease_owner = CASE WHEN ${hasLeaseOwner} THEN ${patch.leaseOwner ?? null} ELSE lease_owner END,
         lease_expires_at = CASE WHEN ${hasLeaseExpiresAt} THEN ${patch.leaseExpiresAt ?? null} ELSE lease_expires_at END,
         run_id = CASE WHEN ${hasRunId} THEN ${patch.runId ?? null} ELSE run_id END,
         attempt = CASE WHEN ${hasAttempt} THEN ${patch.attempt ?? 0} ELSE attempt END,
         audio_url = CASE WHEN ${hasAudioUrl} THEN ${patch.audioUrl ?? null} ELSE audio_url END,
-        playlist_url = CASE WHEN ${hasPlaylistUrl} THEN ${patch.playlistUrl ?? null} ELSE playlist_url END,
         audio_segments = CASE
           WHEN ${hasAudioSegments} THEN ${this.sql.json((patch.audioSegments ?? []) as unknown as JSONValue)}
           ELSE audio_segments
@@ -659,15 +591,6 @@ function rowToJob(row: SqlRow): AudioJob {
     internalState: (row.internal_state as AudioJob["internalState"]) ?? null,
     displayTitle: (row.display_title as string) ?? null,
     speechScript: (row.speech_script as string) ?? null,
-    availableDurationSeconds:
-      row.available_duration_seconds === undefined
-        ? null
-        : (row.available_duration_seconds as number | null),
-    publishedChunkCount:
-      row.published_chunk_count === undefined
-        ? null
-        : (row.published_chunk_count as number | null),
-    liveEdgeUpdatedAt: (row.live_edge_updated_at as string) ?? null,
     leaseOwner: (row.lease_owner as string) ?? null,
     leaseExpiresAt: (row.lease_expires_at as string) ?? null,
     runId: (row.run_id as string) ?? null,
@@ -676,7 +599,6 @@ function rowToJob(row: SqlRow): AudioJob {
     speechOptions: row.speech_options as AudioJob["speechOptions"],
     provider: row.provider as string,
     audioUrl: (row.audio_url as string) ?? null,
-    playlistUrl: (row.playlist_url as string) ?? null,
     audioSegments: (row.audio_segments as AudioJob["audioSegments"]) ?? [],
     durationSeconds:
       row.duration_seconds === undefined

@@ -133,7 +133,7 @@ These are available in Debug builds and are useful for local iteration and autom
 |----------|-------------|
 | `HEAR_IT_DEBUG_API_BASE_URL` | Temporarily overrides the app's API base URL for that debug launch without mutating persisted defaults |
 | `HEAR_IT_DEBUG_AUTOCREATE_URL` | Auto-fills and submits a URL once the app boots |
-| `HEAR_IT_DEBUG_AUTOMATION=seek-and-reopen` | Runs the streaming/final-session automation used during playback debugging |
+| `HEAR_IT_DEBUG_AUTOMATION=seek-and-reopen` | Runs the seek-and-reopen playback automation used during player debugging |
 
 If you want the share extension to use a local backend too, save that URL through the in-app Settings screen so it propagates through the shared app-group defaults.
 

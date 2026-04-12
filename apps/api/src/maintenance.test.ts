@@ -2,12 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   buildFinalAudioKey,
-  buildInitSegmentKey,
-  buildPlaylistKey,
 } from "./media-packager.js";
 import {
   FinalizationRepairer,
-  HlsRetentionCleaner,
   JobReconciler,
   MaintenanceRunner,
   startMaintenanceWorker,
@@ -315,31 +312,6 @@ describe("maintenance services", () => {
     expect(onJobQueued).toHaveBeenCalledWith("job-123");
   });
 
-  it("cleans expired HLS assets after the retention window", async () => {
-    const now = new Date("2026-04-05T18:00:01.000Z");
-    const jobStore = new MemoryJobStore();
-    const audioStore = new MemoryAudioStore();
-    audioStore.seed("jobs/job-123/tmp/chunk-0000.mp3");
-    audioStore.seed(buildInitSegmentKey("job-123"));
-    await jobStore.save(
-      createJob({
-        status: "completed",
-        internalState: "completed",
-        audioUrl: "/audio/jobs/job-123/final.mp3",
-        playlistUrl: "/audio/jobs/job-123/playlist.m3u8",
-        liveEdgeUpdatedAt: "2026-04-05T12:00:00.000Z",
-      }),
-    );
-
-    const cleaner = new HlsRetentionCleaner({ jobStore, audioStore });
-    await cleaner.runOnce(now);
-
-    expect(audioStore.deletedPrefixes).toContain("jobs/job-123/segments");
-    expect(audioStore.deletedPrefixes).toContain("jobs/job-123/tmp");
-    expect(audioStore.deletedKeys).toContain(buildPlaylistKey("job-123"));
-    expect(audioStore.deletedKeys).toContain(buildInitSegmentKey("job-123"));
-  });
-
   it("repairs a job whose final MP3 exists but state was not finalized", async () => {
     const now = new Date("2026-04-05T12:00:00.000Z");
     const jobStore = new MemoryJobStore();
@@ -348,8 +320,7 @@ describe("maintenance services", () => {
     await jobStore.save(
       createJob({
         status: "processing",
-        internalState: "finalizing",
-        playlistUrl: `/audio/${buildPlaylistKey("job-123")}`,
+        internalState: "packaging",
         audioUrl: null,
         leaseOwner: "worker-a",
         leaseExpiresAt: "2026-04-05T11:55:00.000Z",
@@ -382,7 +353,7 @@ describe("maintenance services", () => {
     await jobStore.save(
       createJob({
         status: "processing",
-        internalState: "finalizing",
+        internalState: "packaging",
         audioUrl: null,
         leaseOwner: "worker-a",
         leaseExpiresAt: "2026-04-05T12:05:00.000Z",
@@ -397,7 +368,7 @@ describe("maintenance services", () => {
     expect(jobStore.updates).toHaveLength(0);
     expect(await jobStore.get("job-123")).toMatchObject({
       status: "processing",
-      internalState: "finalizing",
+      internalState: "packaging",
       audioUrl: null,
       leaseOwner: "worker-a",
       leaseExpiresAt: "2026-04-05T12:05:00.000Z",
@@ -414,7 +385,7 @@ describe("maintenance services", () => {
     await jobStore.save(
       createJob({
         status: "processing",
-        internalState: "finalizing",
+        internalState: "packaging",
         audioUrl: null,
         leaseOwner: "worker-a",
         leaseExpiresAt: "2026-04-05T11:55:00.000Z",
@@ -442,7 +413,7 @@ describe("maintenance services", () => {
 
     expect(await jobStore.get("job-123")).toMatchObject({
       status: "processing",
-      internalState: "finalizing",
+      internalState: "packaging",
       audioUrl: null,
       leaseOwner: "worker-b",
       leaseExpiresAt: "2026-04-05T12:05:00.000Z",
@@ -699,8 +670,6 @@ function createJob(overrides: Partial<AudioJob> = {}): AudioJob {
     internalState: "queued",
     displayTitle: "Example Article",
     speechScript: "Example Article\nThis is the body.",
-    availableDurationSeconds: 42,
-    liveEdgeUpdatedAt: null,
     leaseOwner: null,
     leaseExpiresAt: null,
     runId: null,
@@ -718,7 +687,6 @@ function createJob(overrides: Partial<AudioJob> = {}): AudioJob {
     speechOptions: { voice: "alloy" },
     provider: "test-provider",
     audioUrl: null,
-    playlistUrl: null,
     audioSegments: [],
     durationSeconds: 42,
     error: null,

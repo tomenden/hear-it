@@ -32,7 +32,7 @@ The speech style selected for generation.
 
 ### processing
 
-The product-facing state meaning the system is still preparing playable or completed audio.
+The product-facing state meaning the system is still generating the final audio asset.
 
 ### ready
 
@@ -67,25 +67,17 @@ Spoken when it appears meaningful to article comprehension. It should be labeled
 
 A semantic unit of text sent to the speech provider for synthesis.
 
-### batch
-
-A packaging/publication unit used to extend the in-progress HLS stream. A batch may contain one or more synthesized chunks.
-
-### startup buffer
-
-The minimum packaged audio required before in-progress playback becomes available. Current design target: roughly 20-30 seconds.
-
 ### available duration
 
-The amount of audio that is actually safe to play right now while a job is still processing.
-
-### live edge
-
-The current end of available playable audio for an in-progress stream.
+The amount of synthesized audio currently persisted. In the batch-only design this is progress metadata, not a signal that playback is ready.
 
 ### final MP3
 
 The canonical completed audio asset stored remotely. Internally this uses a stable object key such as `jobs/<jobId>/final.mp3`.
+
+### temporary chunk asset
+
+A short-lived per-chunk MP3 stored during processing so retries, repair, and fallback local caching can reuse completed work.
 
 ### user-facing filename
 
@@ -93,35 +85,13 @@ The human-readable filename used for downloads or sharing, derived from the arti
 
 ## Playback Terms
 
-### preferred playback mode for new sessions
+### playback descriptor
 
-The API field that tells the client what a fresh session should load:
-
-- `none`
-- `stream`
-- `final`
-
-This is not the same thing as the currently active player session. A pinned HLS session may still be playing even after new sessions should prefer the final MP3.
-
-### stream source
-
-The append-only HLS playback source exposed by the API when in-progress playback is available or when a completed job still needs to support active pinned sessions.
+The API object that tells the client whether playback is currently possible and, when ready, where to load the final asset from.
 
 ### final source
 
 The canonical completed MP3 playback source exposed by the API once finalization succeeds.
-
-### HLS session
-
-A playback session that starts on the in-progress streaming asset.
-
-### pinned session
-
-A session stays on the asset it started with. If it started on HLS, it remains HLS until stop, unload, or natural completion.
-
-### complete stream
-
-An HLS stream whose playlist has been finalized and ended, even if an already active pinned session is still consuming it.
 
 ## Backend Terms
 
@@ -135,11 +105,7 @@ Short-lived worker-side audio output used before packaging. This may be PCM or W
 
 ### packaging
 
-The media pipeline step that converts generated audio into valid HLS artifacts and the final MP3.
-
-### append-only HLS
-
-The publication rule for in-progress playback: once a segment is published, its key and bytes never change, and later playlist updates only extend the stream.
+The media pipeline step that converts synthesized chunks into the final MP3.
 
 ### reconciler
 
@@ -170,8 +136,7 @@ These are the states the client can reason about.
 - `normalizing`
 - `chunking`
 - `synthesizing`
-- `packaging_stream`
-- `finalizing`
+- `packaging`
 - `completed`
 - `failed`
 
@@ -186,7 +151,3 @@ The durable remote source of truth for completed audio. Day 1 this is the final 
 ### local cache
 
 An invisible device-side optimization for repeat and offline playback. It is not a product-visible state in v1.
-
-### HLS retention window
-
-The period temporary HLS artifacts remain after completion so active HLS sessions can finish safely. Current design target: 6 hours.

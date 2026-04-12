@@ -11,10 +11,7 @@ enum PlaybackStateSamples {
         estimatedMinutes: 7,
         status: .processing,
         voice: "alloy",
-        playback: .preparing(
-            availableDurationSeconds: 12,
-            liveEdgeUpdatedAt: isoTimestamp(offset: -20)
-        ),
+        playback: .preparing(),
         progress: AudioJob.Progress(
             chunksTotal: 14,
             chunksReady: 1,
@@ -24,32 +21,8 @@ enum PlaybackStateSamples {
         updatedAtOffset: -20
     )
 
-    static let streamingJob = makeJob(
-        id: "job-preview-streaming",
-        title: "The Quiet UI Pattern Showing Up in Modern Reader Apps",
-        siteName: "Interface Notes",
-        byline: "Jonas Reed",
-        excerpt: "Calm visual systems give audio experiences room to feel more premium, not less expressive.",
-        wordCount: 1_340,
-        estimatedMinutes: 8,
-        status: .processing,
-        voice: "sage",
-        playback: .streaming(
-            playlistUrl: "http://127.0.0.1:3000/audio/job-preview-streaming/playlist.m3u8",
-            availableDurationSeconds: 136,
-            liveEdgeUpdatedAt: isoTimestamp(offset: -8)
-        ),
-        progress: AudioJob.Progress(
-            chunksTotal: 18,
-            chunksReady: 5,
-            availableDurationSeconds: 136
-        ),
-        createdAtOffset: -3_600,
-        updatedAtOffset: -8
-    )
-
-    static let finalJob = makeJob(
-        id: "job-preview-final",
+    static let readyJob = makeJob(
+        id: "job-preview-ready",
         title: "The Case for an Audio Inbox",
         siteName: "Tomorrow Product",
         byline: "Ava Thompson",
@@ -58,8 +31,8 @@ enum PlaybackStateSamples {
         estimatedMinutes: 10,
         status: .completed,
         voice: "sage",
-        playback: .final(
-            audioUrl: "http://127.0.0.1:3000/audio/job-preview-final/final.mp3",
+        playback: .ready(
+            audioUrl: "http://127.0.0.1:3000/audio/job-preview-ready/final.mp3",
             durationSeconds: 603,
             fileName: "the-case-for-an-audio-inbox.mp3"
         ),
@@ -93,8 +66,7 @@ enum PlaybackStateSamples {
     )
 
     static let libraryJobs = [
-        finalJob,
-        streamingJob,
+        readyJob,
         preparingJob,
         failedJob,
     ]
@@ -133,19 +105,13 @@ enum PlaybackStateSamples {
             provider: "openai",
             audioUrl: playback.audioUrl,
             audioDownloadPath: nil,
-            playlistUrl: playback.playlistUrl,
             audioSegments: [],
             durationSeconds: playback.durationSeconds ?? progress.availableDurationSeconds,
             error: playback.errorMessage,
             createdAt: .now.addingTimeInterval(createdAtOffset),
             updatedAt: .now.addingTimeInterval(updatedAtOffset),
-            liveEdgeUpdatedAt: playback.liveEdgeUpdatedAt,
             playback: playback,
             progress: progress
         )
-    }
-
-    private static func isoTimestamp(offset: TimeInterval) -> String {
-        ISO8601DateFormatter().string(from: .now.addingTimeInterval(offset))
     }
 }

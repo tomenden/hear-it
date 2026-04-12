@@ -181,11 +181,15 @@ struct LibraryView: View {
         let palette: (label: String, systemImage: String, tint: Color, background: Color) = {
             switch job.playback.mode {
             case .preparing:
+                let progress = job.progress
+                if let total = progress.chunksTotal, total > 0 {
+                    let pct = Int(Double(progress.chunksReady) / Double(total) * 100)
+                    let label = "Generating... \(pct)%"
+                    return (label, "waveform", AppTheme.Colors.textSecondary, AppTheme.Colors.page)
+                }
                 let label = job.state == .queued ? "Preparing audio" : "Generating audio"
                 return (label, "clock", AppTheme.Colors.textSecondary, AppTheme.Colors.page)
-            case .streaming:
-                return ("Available now", "dot.radiowaves.left.and.right", AppTheme.Colors.accentGreen, AppTheme.Colors.accentGreenLight)
-            case .final:
+            case .ready:
                 return ("Ready", "checkmark.circle.fill", AppTheme.Colors.accentGreen, AppTheme.Colors.accentGreenLight)
             case .failed:
                 return ("Failed", "exclamationmark.triangle.fill", AppTheme.Colors.accentRed, AppTheme.Colors.accentRedLight)

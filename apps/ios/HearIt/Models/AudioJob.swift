@@ -65,7 +65,6 @@ struct AudioJob: Codable, Hashable, Identifiable {
     let provider: String
     let audioUrl: String?
     let audioDownloadPath: String?
-    let playlistUrl: String?
     let audioSegments: [Segment]
     let durationSeconds: Double?
     let error: String?
@@ -106,13 +105,11 @@ struct AudioJob: Codable, Hashable, Identifiable {
         provider: String,
         audioUrl: String?,
         audioDownloadPath: String?,
-        playlistUrl: String?,
         audioSegments: [Segment],
         durationSeconds: Double?,
         error: String?,
         createdAt: Date,
         updatedAt: Date,
-        liveEdgeUpdatedAt: String? = nil,
         playback: AudioPlayback? = nil,
         progress: Progress? = nil
     ) {
@@ -123,7 +120,6 @@ struct AudioJob: Codable, Hashable, Identifiable {
         self.provider = provider
         self.audioUrl = audioUrl
         self.audioDownloadPath = audioDownloadPath
-        self.playlistUrl = playlistUrl
         self.audioSegments = audioSegments
         self.durationSeconds = durationSeconds
         self.error = error
@@ -133,8 +129,6 @@ struct AudioJob: Codable, Hashable, Identifiable {
             state: self.state,
             title: article.displayTitle,
             audioUrl: audioUrl,
-            playlistUrl: playlistUrl,
-            liveEdgeUpdatedAt: liveEdgeUpdatedAt,
             durationSeconds: durationSeconds,
             error: error,
             audioSegments: audioSegments
@@ -170,8 +164,6 @@ struct AudioJob: Codable, Hashable, Identifiable {
         let durationSeconds = try container.decodeIfPresent(Double.self, forKey: .durationSeconds)
         let audioUrl = try container.decodeIfPresent(String.self, forKey: .audioUrl)
         let audioDownloadPath = try container.decodeIfPresent(String.self, forKey: .audioDownloadPath)
-        let playlistUrl = try container.decodeIfPresent(String.self, forKey: .playlistUrl)
-        let liveEdgeUpdatedAt = try container.decodeIfPresent(String.self, forKey: .liveEdgeUpdatedAt)
         let error = try container.decodeIfPresent(String.self, forKey: .error)
         let speechOptions = try container.decode(SpeechOptions.self, forKey: .speechOptions)
         let provider = try container.decode(String.self, forKey: .provider)
@@ -181,8 +173,6 @@ struct AudioJob: Codable, Hashable, Identifiable {
             state: resolvedState,
             title: article.displayTitle,
             audioUrl: audioUrl,
-            playlistUrl: playlistUrl,
-            liveEdgeUpdatedAt: liveEdgeUpdatedAt,
             durationSeconds: durationSeconds,
             error: error,
             audioSegments: audioSegments
@@ -202,13 +192,11 @@ struct AudioJob: Codable, Hashable, Identifiable {
             provider: provider,
             audioUrl: audioUrl ?? resolvedPlayback.final?.audioUrl,
             audioDownloadPath: audioDownloadPath,
-            playlistUrl: playlistUrl ?? resolvedPlayback.stream?.playlistUrl,
             audioSegments: audioSegments,
             durationSeconds: durationSeconds ?? resolvedPlayback.final?.durationSeconds,
             error: error ?? resolvedPlayback.errorMessage,
             createdAt: createdAt,
             updatedAt: updatedAt,
-            liveEdgeUpdatedAt: liveEdgeUpdatedAt ?? resolvedPlayback.stream?.liveEdgeUpdatedAt,
             playback: resolvedPlayback,
             progress: resolvedProgress
         )
@@ -226,7 +214,6 @@ struct AudioJob: Codable, Hashable, Identifiable {
         try container.encode(provider, forKey: .provider)
         try container.encodeIfPresent(audioUrl, forKey: .audioUrl)
         try container.encodeIfPresent(audioDownloadPath, forKey: .audioDownloadPath)
-        try container.encodeIfPresent(playlistUrl, forKey: .playlistUrl)
         try container.encode(audioSegments, forKey: .audioSegments)
         try container.encodeIfPresent(durationSeconds, forKey: .durationSeconds)
         try container.encodeIfPresent(error, forKey: .error)
@@ -235,22 +222,8 @@ struct AudioJob: Codable, Hashable, Identifiable {
     }
 
     func playbackURL(relativeTo baseURL: URL) -> URL? {
-        switch playback.preferredModeForNewSessions {
-        case .final:
-            return finalPlaybackURL(relativeTo: baseURL) ?? streamPlaybackURL(relativeTo: baseURL)
-        case .stream:
-            return streamPlaybackURL(relativeTo: baseURL) ?? finalPlaybackURL(relativeTo: baseURL)
-        case .none:
-            return nil
-        }
-    }
-
-    func streamPlaybackURL(relativeTo baseURL: URL) -> URL? {
-        HearItAPIClient.resolveURL(playback.stream?.playlistUrl ?? playlistUrl, relativeTo: baseURL)
-    }
-
-    func finalPlaybackURL(relativeTo baseURL: URL) -> URL? {
-        HearItAPIClient.resolveURL(playback.final?.audioUrl ?? audioUrl, relativeTo: baseURL)
+        guard playback.mode == .ready else { return nil }
+        return HearItAPIClient.resolveURL(playback.final?.audioUrl ?? audioUrl, relativeTo: baseURL)
     }
 
     func audioDownloadURL(relativeTo baseURL: URL) -> URL? {
@@ -270,8 +243,6 @@ private extension AudioJob {
         case provider
         case audioUrl
         case audioDownloadPath
-        case playlistUrl
-        case liveEdgeUpdatedAt
         case audioSegments
         case durationSeconds
         case error
@@ -309,8 +280,6 @@ private extension AudioJob {
         state: State,
         title: String,
         audioUrl: String?,
-        playlistUrl: String?,
-        liveEdgeUpdatedAt: String?,
         durationSeconds: Double?,
         error: String?,
         audioSegments: [Segment]
@@ -320,53 +289,15 @@ private extension AudioJob {
             return .failed(errorMessage: error ?? "Audio generation failed.")
         case .ready:
             let resolvedDuration = durationSeconds ?? defaultDurationSeconds(from: audioSegments)
-            let streamSource = makeStreamSource(
-                state: state,
-                playlistUrl: playlistUrl,
-                liveEdgeUpdatedAt: liveEdgeUpdatedAt,
-                durationSeconds: resolvedDuration,
-                audioSegments: audioSegments
-            )
-
             if let audioUrl {
-                return .final(
+                return .ready(
                     audioUrl: audioUrl,
                     durationSeconds: resolvedDuration,
-                    fileName: sanitizedFileName(from: title),
-                    retainedStream: streamSource
+                    fileName: sanitizedFileName(from: title)
                 )
             }
-
-            if let streamSource {
-                return AudioPlayback(
-                    preferredModeForNewSessions: .stream,
-                    isPlayable: true,
-                    stream: streamSource,
-                    final: nil,
-                    errorMessage: nil
-                )
-            }
-
             return .preparing()
-        case .processing:
-            if let streamSource = makeStreamSource(
-                state: state,
-                playlistUrl: playlistUrl,
-                liveEdgeUpdatedAt: liveEdgeUpdatedAt,
-                durationSeconds: durationSeconds,
-                audioSegments: audioSegments
-            ) {
-                return AudioPlayback(
-                    preferredModeForNewSessions: .stream,
-                    isPlayable: true,
-                    stream: streamSource,
-                    final: nil,
-                    errorMessage: nil
-                )
-            }
-
-            return .preparing()
-        case .queued:
+        case .processing, .queued:
             return .preparing()
         }
     }
@@ -379,8 +310,7 @@ private extension AudioJob {
     ) -> Progress {
         let chunksReady = audioSegments.count
         let chunksTotal: Int? = state == .ready ? chunksReady : nil
-        let availableDurationSeconds = playback.stream?.availableDurationSeconds
-            ?? playback.final?.durationSeconds
+        let availableDurationSeconds = playback.final?.durationSeconds
             ?? durationSeconds
             ?? defaultDurationSeconds(from: audioSegments)
 
@@ -391,43 +321,8 @@ private extension AudioJob {
         )
     }
 
-    static func makeStreamSource(
-        state: State,
-        playlistUrl: String?,
-        liveEdgeUpdatedAt: String?,
-        durationSeconds: Double?,
-        audioSegments: [Segment]
-    ) -> AudioPlayback.StreamSource? {
-        guard let playlistUrl, let liveEdgeUpdatedAt else {
-            return nil
-        }
-
-        return AudioPlayback.StreamSource(
-            playlistUrl: playlistUrl,
-            availableDurationSeconds: defaultAvailableDurationSeconds(
-                state: state,
-                durationSeconds: durationSeconds,
-                audioSegments: audioSegments
-            ),
-            liveEdgeUpdatedAt: liveEdgeUpdatedAt,
-            isComplete: state == .ready
-        )
-    }
-
     static func defaultDurationSeconds(from audioSegments: [Segment]) -> Double {
         audioSegments.reduce(0) { $0 + $1.durationSeconds }
-    }
-
-    static func defaultAvailableDurationSeconds(
-        state: State,
-        durationSeconds: Double?,
-        audioSegments: [Segment]
-    ) -> Double {
-        if state == .queued {
-            return 0
-        }
-
-        return durationSeconds ?? defaultDurationSeconds(from: audioSegments)
     }
 
     static func sanitizedFileName(from title: String) -> String {

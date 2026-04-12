@@ -377,7 +377,7 @@ final class AppModel {
             voiceSelectionPresented = false
             selectedTab = .library
             homeMessage = InlineMessage(text: "Audio queued successfully.", kind: .success)
-            openPlayer(for: job.id)
+            // Don't open player — user taps the job in library when ready
             trackFirstAudioCreated()
         } catch HearItAPIClient.APIError.unauthorized {
             await signOut()
@@ -475,16 +475,7 @@ final class AppModel {
             return
         }
 
-        let knownPlaybackDuration = sessionPlaybackDuration(for: job)
-        let pendingContinuationSourceURL = player.consumePendingStreamContinuationSourceURL()
-        let shouldTreatPinnedStreamingSessionAsFinished =
-            shouldTreatPinnedStreamingSessionAsFinished(
-                pendingContinuationSourceURL: pendingContinuationSourceURL,
-                for: job
-            )
-        let shouldResumeAfterLoad =
-            pendingContinuationSourceURL != nil && !shouldTreatPinnedStreamingSessionAsFinished
-
+        let knownDuration = playbackDuration(for: job)
         settings.lastPresentedJobID = jobID
 
         if job.playback.hasFinalSource {
@@ -496,37 +487,20 @@ final class AppModel {
             return
         }
 
-        if player.refreshPinnedSession(for: jobID, knownDuration: knownPlaybackDuration) {
+        if player.refreshPinnedSession(for: jobID, knownDuration: knownDuration) {
             return
         }
 
-        if shouldTreatPinnedStreamingSessionAsFinished {
-            player.clearSavedPositionForLoadedJob()
-        }
-
-        if !shouldTreatPinnedStreamingSessionAsFinished,
-           let pendingContinuationSourceURL,
-           pendingContinuationSourceURL.pathExtension.lowercased() == "m3u8" {
-            player.load(
-                url: pendingContinuationSourceURL,
-                for: jobID,
-                knownDuration: continuationPlaybackDuration(for: job)
-            )
-            if !player.isPlaying {
-                player.togglePlayback()
-            }
+        guard job.playback.mode == .ready else {
+            player.unload()
             return
         }
 
-        if job.playback.prefersFinalForNewSessions,
-           let playbackURL = localAudioStore.playbackURLIfExists(forJobID: jobID) {
+        if let playbackURL = localAudioStore.playbackURLIfExists(forJobID: jobID) {
             #if DEBUG
             print("[HearIt][Player] Loading local file: \(playbackURL)")
             #endif
-            player.load(url: playbackURL, for: jobID, knownDuration: knownPlaybackDuration)
-            if shouldResumeAfterLoad, !player.isPlaying {
-                player.togglePlayback()
-            }
+            player.load(url: playbackURL, for: jobID, knownDuration: knownDuration)
             return
         }
 
@@ -546,14 +520,7 @@ final class AppModel {
         #if DEBUG
         print("[HearIt][Player] Loading remote URL: \(playbackURL)")
         #endif
-        player.load(
-            url: playbackURL,
-            for: jobID,
-            knownDuration: knownPlaybackDuration
-        )
-        if shouldResumeAfterLoad, !player.isPlaying {
-            player.togglePlayback()
-        }
+        player.load(url: playbackURL, for: jobID, knownDuration: knownDuration)
     }
 
     func hasPlayableAudio(for job: AudioJob) -> Bool {
@@ -577,41 +544,11 @@ final class AppModel {
     }
 
     func displayedTotalDuration(for job: AudioJob) -> Double? {
-        if usesStreamingTimeline(for: job) {
-            if job.playback.isStreamComplete,
-               let finalDuration = job.playback.final?.durationSeconds,
-               finalDuration > 0 {
-                return finalDuration
-            }
-
-            guard let resolvedDuration = sessionPlaybackDuration(for: job) else {
-                return estimatedTimelineDuration(for: job)
-            }
-
-            if let estimatedTimelineDuration = estimatedTimelineDuration(for: job) {
-                return max(resolvedDuration, estimatedTimelineDuration)
-            }
-
-            return resolvedDuration
-        }
-
         if let finalDuration = job.playback.final?.durationSeconds,
            finalDuration > 0 {
             return finalDuration
         }
-
         return player.duration ?? playbackDuration(for: job)
-    }
-
-    func isUsingEstimatedTimelineEnvelope(for job: AudioJob) -> Bool {
-        guard usesStreamingTimeline(for: job),
-              !(job.playback.isStreamComplete && (job.playback.final?.durationSeconds ?? 0) > 0),
-              let estimatedTimelineDuration = estimatedTimelineDuration(for: job),
-              let playbackDuration = sessionPlaybackDuration(for: job) else {
-            return false
-        }
-
-        return estimatedTimelineDuration > playbackDuration
     }
 
     func displayedTimelineProgress(for job: AudioJob) -> Double {
@@ -624,42 +561,11 @@ final class AppModel {
     }
 
     func seekDisplayedTimeline(for job: AudioJob, toProgress progress: Double) {
-        let clampedProgress = min(max(progress, 0), 1)
-
-        guard usesStreamingTimeline(for: job),
-              let displayedDuration = displayedTotalDuration(for: job),
-              displayedDuration > 0,
-              let seekableDuration = sessionPlaybackDuration(for: job),
-              seekableDuration > 0 else {
-            player.seek(toProgress: clampedProgress)
-            return
-        }
-
-        let targetTime = displayedDuration * clampedProgress
-        player.seek(toTime: min(targetTime, seekableDuration))
-    }
-
-    func isStreamingPlayback(for job: AudioJob) -> Bool {
-        job.playback.prefersStreamingForNewSessions
+        player.seek(toProgress: min(max(progress, 0), 1))
     }
 
     func areAdvancedPlaybackControlsEnabled(for job: AudioJob) -> Bool {
-        if player.loadedJobID == job.id {
-            guard let sourceURL = player.loadedSourceURL else {
-                return false
-            }
-            return sourceURL.pathExtension.lowercased() != "m3u8"
-        }
-
-        return job.playback.prefersFinalForNewSessions || (job.status == .completed && job.playback.hasFinalSource)
-    }
-
-    func isStreamingPlaybackSession(for job: AudioJob) -> Bool {
-        if player.loadedJobID == job.id {
-            return player.loadedSourceURL?.pathExtension.lowercased() == "m3u8"
-        }
-
-        return job.playback.prefersStreamingForNewSessions
+        job.playback.mode == .ready
     }
 
     func togglePlayback(for jobID: String) {
@@ -838,13 +744,7 @@ final class AppModel {
             jobs = updatedJobs
         }
 
-        guard jobsChanged || player.hasPendingStreamContinuation else { return }
-        if player.hasPendingStreamContinuation,
-           playerPresentation == nil,
-           let loadedJobID = player.loadedJobID,
-           updatedJobs.contains(where: { $0.id == loadedJobID }) {
-            preparePlayer(for: loadedJobID)
-        }
+        guard jobsChanged else { return }
         preparePresentedPlayerIfNeeded(for: updatedJobs, previousJobs: previousJobs)
     }
 
@@ -967,45 +867,35 @@ final class AppModel {
             return
         }
 
-        let didReachStreamingPlayback = await waitForDebugCondition(timeout: .seconds(45), pollInterval: .milliseconds(250)) {
-            guard let job = self.job(with: jobID) else { return false }
-            return job.playback.prefersStreamingForNewSessions && self.player.isPlaying && self.player.currentTime >= 5
-        }
-
-        guard didReachStreamingPlayback else {
-            print("[HearIt][Debug] Automation timed out waiting for streaming playback")
-            return
-        }
-
-        guard let streamingJob = job(with: jobID),
-              let duration = displayedTotalDuration(for: streamingJob),
-              duration > 0 else {
-            print("[HearIt][Debug] Automation could not resolve streaming duration")
-            return
-        }
-
-        let seekTarget = min(max(duration * 0.35, 15), duration * 0.7)
-        let seekProgress = seekTarget / duration
-        player.seek(toProgress: seekProgress)
-        print("[HearIt][Debug] Automation sought streaming playback to \(seekTarget)s (\(seekProgress))")
-
-        let didReachFinal = await waitForDebugCondition(timeout: .seconds(90), pollInterval: .milliseconds(250)) {
+        let didReachPlayback = await waitForDebugCondition(timeout: .seconds(90), pollInterval: .milliseconds(250)) {
             if let job = self.job(with: jobID) {
                 return job.state == .ready && job.playback.hasFinalSource
             }
             return false
         }
 
-        guard didReachFinal else {
-            print("[HearIt][Debug] Automation timed out waiting for final playback")
+        guard didReachPlayback else {
+            print("[HearIt][Debug] Automation timed out waiting for playback")
             return
         }
 
+        guard let readyJob = job(with: jobID),
+              let duration = displayedTotalDuration(for: readyJob),
+              duration > 0 else {
+            print("[HearIt][Debug] Automation could not resolve duration")
+            return
+        }
+
+        let seekTarget = min(max(duration * 0.35, 15), duration * 0.7)
+        let seekProgress = seekTarget / duration
+        player.seek(toProgress: seekProgress)
+        print("[HearIt][Debug] Automation sought playback to \(seekTarget)s (\(seekProgress))")
+
         closePlayer()
-        print("[HearIt][Debug] Automation closed player after finalization")
+        print("[HearIt][Debug] Automation closed player")
         try? await Task.sleep(for: .seconds(1))
         openPlayer(for: jobID)
-        print("[HearIt][Debug] Automation reopened final playback session")
+        print("[HearIt][Debug] Automation reopened playback session")
         #endif
     }
 
@@ -1048,72 +938,8 @@ final class AppModel {
             return durationSeconds
         }
 
-        if let availableDurationSeconds = job.playback.stream?.availableDurationSeconds,
-           availableDurationSeconds > 0 {
-            return availableDurationSeconds
-        }
-
         guard !job.audioSegments.isEmpty else { return nil }
         return job.audioSegments.reduce(0) { $0 + $1.durationSeconds }
-    }
-
-    private func sessionPlaybackDuration(for job: AudioJob) -> Double? {
-        if isStreamingPlaybackSession(for: job) {
-            if let currentSessionDuration = player.duration, currentSessionDuration > 0 {
-                return currentSessionDuration
-            }
-
-            if let availableDurationSeconds = job.playback.stream?.availableDurationSeconds,
-               availableDurationSeconds > 0 {
-                return availableDurationSeconds
-            }
-
-            return player.duration
-        }
-
-        return playbackDuration(for: job)
-    }
-
-    private func continuationPlaybackDuration(for job: AudioJob) -> Double? {
-        if let finalDuration = job.playback.final?.durationSeconds, finalDuration > 0 {
-            return finalDuration
-        }
-
-        if let availableDurationSeconds = job.playback.stream?.availableDurationSeconds,
-           availableDurationSeconds > 0 {
-            return availableDurationSeconds
-        }
-
-        if let playbackDuration = playbackDuration(for: job), playbackDuration > 0 {
-            return playbackDuration
-        }
-
-        return player.duration
-    }
-
-    private func shouldTreatPinnedStreamingSessionAsFinished(
-        pendingContinuationSourceURL: URL?,
-        for job: AudioJob
-    ) -> Bool {
-        guard let pendingContinuationSourceURL,
-              pendingContinuationSourceURL.pathExtension.lowercased() == "m3u8",
-              job.playback.isStreamComplete,
-              job.playback.hasFinalSource,
-              let finalDuration = continuationPlaybackDuration(for: job),
-              finalDuration > 0 else {
-            return false
-        }
-
-        return player.currentTime >= finalDuration - 0.5
-    }
-
-    private func usesStreamingTimeline(for job: AudioJob) -> Bool {
-        isStreamingPlaybackSession(for: job) || isStreamingPlayback(for: job)
-    }
-
-    private func estimatedTimelineDuration(for job: AudioJob) -> Double? {
-        guard job.article.estimatedMinutes > 0 else { return nil }
-        return Double(job.article.estimatedMinutes * 60)
     }
 
     private enum CacheError: LocalizedError {

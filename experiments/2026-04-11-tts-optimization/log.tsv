@@ -1,0 +1,17 @@
+timestamp	round	instruction	naturalness	pacing	engagement	clarity	composite	verdict	spend_usd
+2026-04-11T22:06:19.570Z	1	Read this article aloud in a natural, engaging tone with clear pacing and clean sentence boundaries.	7.5	6.5	6.5	8.5	7.25	baseline	0.112755
+2026-04-11T22:07:40.380Z	2	Deliver with engaging inflection and dynamic pacing. Pause meaningfully between sentences. Use a warm, conversational tone that draws listeners in.	8	8.5	7	9	8.125	improved	0.22551
+2026-04-11T22:13:22.220Z	3	Read like you're telling a compelling story to a friend. Vary your pace and tone to highlight important ideas. Maintain warm energy and enthusiasm throughout.	8	7	6.5	9	7.625	rejected	0.338265
+2026-04-11T22:14:43.762Z	4	Deliver with engaging inflection and varied word emphasis. Use dynamic pacing with natural pauses. Bring warm, conversational energy that keeps listeners engaged.	7.5	8	7	9	7.875	rejected	0.45102
+2026-04-11T22:16:05.550Z	5	Deliver with engaging inflection and dynamic pacing. Pause meaningfully between sentences. Bring warm, conversational energy with emotional depth that draws listeners in.	7.5	8	7	9	7.875	rejected	0.5637749999999999
+2026-04-11T22:17:26.816Z	6	Deliver with engaging inflection and dynamic pacing. Pause meaningfully between sentences. Use a warm, conversational tone with genuine emotion that draws listeners in.	7	7.5	7	8.5	7.5	rejected	0.6765299999999999
+2026-04-11T22:18:50.242Z	7	Read with clear, natural pacing and warm engagement. Emphasize key points through vocal inflection. Maintain conversational tone with meaningful pauses between thoughts.	7.5	7.5	7	9	7.75	rejected	0.7892849999999998
+2026-04-11T22:20:16.008Z	8	Read with engaging inflection and dynamic pacing. Pause meaningfully between sentences. Warm, conversational tone.	7.5	7.5	7	9	7.75	rejected	0.9020399999999997
+2026-04-11T22:21:40.211Z	9	Read conversationally with dynamic pacing and natural breath. Emphasize with engaging inflection. Pause meaningfully between ideas.	8	7	6.5	9	7.625	rejected	1.0147949999999997
+2026-04-11T22:23:00.274Z	10	Deliver with engaging inflection. Vary pacing dynamically. Pause between sentences. Warm conversational tone.	7.5	7.5	6.5	8.5	7.5	rejected	1.1275499999999996
+2026-04-11T22:24:26.597Z	11	Deliver with engaging inflection and dynamic pacing. Pause meaningfully between sentences. Use a warm, conversational tone with authentic engagement that draws listeners in.	8	7.5	7	9	7.875	rejected	1.2403049999999995
+2026-04-11T22:25:46.446Z	12	Deliver with engaging inflection and dynamic pacing. Pause meaningfully. Warm, conversational tone that draws listeners in.	8	7.5	7	9	7.875	rejected	1.3530599999999995
+2026-04-11T22:27:08.572Z	13	Read naturally with engaging inflection and dynamic pacing. Pause meaningfully between sentences. Warm conversational tone.	7.5	7.5	7	9	7.75	rejected	1.4658149999999994
+2026-04-11T22:28:31.377Z	14	Read with engaging inflection, dynamic pacing, and warm tone. Pause meaningfully.	7.5	7	6.5	8.5	7.375	rejected	1.5785699999999994
+2026-04-11T22:29:49.249Z	15	Read this article aloud with engaging inflection and dynamic pacing. Pause meaningfully between sentences. Warm, conversational tone that draws listeners in.	7.5	7	6.5	8.5	7.375	rejected	1.6913249999999993
+2026-04-11T22:31:14.898Z	16	Use dynamic pacing with clear articulation. Pause meaningfully between sentences. Engaging inflection with warm conversational tone.	8	8	7	9	8	rejected	1.8040799999999992

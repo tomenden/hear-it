@@ -11,7 +11,7 @@ const OPENAI_API_URL = "https://api.openai.com/v1/audio/speech";
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini-tts";
 const DEFAULT_OPENAI_TTS_TIMEOUT_MS = 30_000;
 const DEFAULT_TTS_INSTRUCTIONS =
-  "Read this article aloud in a natural, engaging tone with clear pacing and clean sentence boundaries.";
+  "Deliver with engaging inflection and dynamic pacing. Pause meaningfully between sentences. Use a warm, conversational tone that draws listeners in.";
 
 export const AVAILABLE_VOICES = ["alloy", "ash", "sage", "verse"] as const;
 export const VOICE_PREVIEW_TEXT =

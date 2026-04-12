@@ -82,7 +82,6 @@ export class AudioJobService {
       speechOptions,
       provider: this.speechProvider.name,
       audioUrl: null,
-      playlistUrl: null,
       audioSegments: [],
       durationSeconds: null,
       error: null,
@@ -152,8 +151,7 @@ export class AudioJobService {
 
     const shouldStartFresh =
       claimedJob.audioSegments.length === 0 &&
-      !claimedJob.audioUrl &&
-      !claimedJob.playlistUrl;
+      !claimedJob.audioUrl;
 
     try {
       if (shouldStartFresh) {
@@ -166,10 +164,7 @@ export class AudioJobService {
               status: "failed",
               internalState: "failed",
               audioUrl: null,
-              playlistUrl: null,
               audioSegments: [],
-              availableDurationSeconds: 0,
-              liveEdgeUpdatedAt: null,
               durationSeconds: null,
               error:
                 error instanceof Error

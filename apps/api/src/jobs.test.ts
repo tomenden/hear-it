@@ -13,18 +13,9 @@ import { createApp, createAudioJobSchema, extractRequestSchema } from "./app.js"
 import { MAX_AUDIO_CHARS } from "./extractor.js";
 import { AudioJobService } from "./jobs.js";
 import {
-  buildBatchInitSegmentKey,
-  buildBatchSegmentKey,
-  buildChunkMediaKey,
   buildFinalAudioKey,
-  buildHlsEventPlaylist,
-  buildInitSegmentKey,
-  buildPlaylistKey,
-  buildPlaylistUri,
   type MediaChunkInput,
   type MediaPackagingFinalAudio,
-  type MediaPackagingResult,
-  type StreamBatchPackagingResult,
 } from "./media-packager.js";
 import { FileJobStore, FileAudioStore } from "./storage-fs.js";
 import type { AudioStore } from "./storage.js";
@@ -56,7 +47,6 @@ class InstantSpeechProvider implements SpeechProvider {
 
     return {
       audioUrl,
-      playlistUrl: null,
       audioSegments: audioUrl ? [{ url: audioUrl, durationSeconds: 42 }] : [],
       durationSeconds: 42,
       audioData,
@@ -127,7 +117,6 @@ class DelayedSegmentSpeechProvider implements SpeechProvider {
 
     return {
       audioUrl,
-      playlistUrl: null,
       audioSegments: audioUrl
         ? [{ url: audioUrl, durationSeconds: segment.durationSeconds }]
         : [],
@@ -189,7 +178,6 @@ class IndexedDelayedSpeechProvider implements SpeechProvider {
 
       return {
         audioUrl,
-        playlistUrl: null,
         audioSegments: audioUrl
           ? [{ url: audioUrl, durationSeconds: segment.durationSeconds }]
           : [],
@@ -242,7 +230,6 @@ class FailingAfterFirstSegmentSpeechProvider implements SpeechProvider {
 
     return {
       audioUrl,
-      playlistUrl: null,
       audioSegments: audioUrl
         ? [{ url: audioUrl, durationSeconds: 11 }]
         : [],
@@ -303,7 +290,6 @@ class RetryableGatewayFailureSpeechProvider implements SpeechProvider {
 
     return {
       audioUrl,
-      playlistUrl: null,
       audioSegments: audioUrl
         ? [{ url: audioUrl, durationSeconds: segment.durationSeconds }]
         : [],
@@ -402,38 +388,6 @@ class CleanupFailingAudioStore extends FileAudioStore {
 }
 
 class TestMediaPackager {
-  async packageStreamBatch(
-    jobId: string,
-    batchStartChunkIndex: number,
-    chunks: readonly MediaChunkInput[],
-  ): Promise<StreamBatchPackagingResult> {
-    const bufferedSeconds = chunks.reduce(
-      (total, chunk) => total + chunk.chunkMedia.durationSeconds,
-      0,
-    );
-
-    return {
-      initSegment: {
-        key: buildBatchInitSegmentKey(jobId, batchStartChunkIndex),
-        uri: buildPlaylistUri(jobId, buildBatchInitSegmentKey(jobId, batchStartChunkIndex)),
-        audioData: Buffer.from("init"),
-        contentType: "video/mp4",
-      },
-      segments: chunks.map((chunk) => ({
-        index: chunk.index,
-        key: buildBatchSegmentKey(jobId, batchStartChunkIndex, chunk.index - batchStartChunkIndex),
-        uri: buildPlaylistUri(
-          jobId,
-          buildBatchSegmentKey(jobId, batchStartChunkIndex, chunk.index - batchStartChunkIndex),
-        ),
-        audioData: Buffer.from(`segment-${chunk.index}`),
-        contentType: "video/mp4" as const,
-        durationSeconds: chunk.chunkMedia.durationSeconds,
-      })),
-      batchDurationSeconds: bufferedSeconds,
-    };
-  }
-
   async packageFinalAudio(
     jobId: string,
     chunks: readonly MediaChunkInput[],
@@ -451,44 +405,6 @@ class TestMediaPackager {
       durationSeconds: bufferedSeconds,
       sampleRateHz: chunks[0]?.chunkMedia.sampleRateHz ?? 44_100,
       channelCount: chunks[0]?.chunkMedia.channelCount ?? 1,
-    };
-  }
-
-  async packageMedia(
-    jobId: string,
-    chunks: readonly MediaChunkInput[],
-  ): Promise<MediaPackagingResult> {
-    const streamBatch = await this.packageStreamBatch(jobId, 0, chunks);
-    const finalAudio = await this.packageFinalAudio(jobId, chunks);
-    const bufferedSeconds = streamBatch.batchDurationSeconds;
-
-    return {
-      playlist: {
-        key: buildPlaylistKey(jobId),
-        audioData: Buffer.from(
-          buildHlsEventPlaylist(jobId, chunks, {
-            startupBufferPlayable: bufferedSeconds >= 20,
-          }),
-        ),
-        contentType: "application/vnd.apple.mpegurl",
-      },
-      initSegment: {
-        key: buildInitSegmentKey(jobId),
-        audioData: streamBatch.initSegment.audioData,
-        contentType: streamBatch.initSegment.contentType,
-      },
-      segments: streamBatch.segments.map((segment, index) => ({
-        index,
-        key: buildChunkMediaKey(jobId, index),
-        audioData: segment.audioData,
-        contentType: segment.contentType,
-        durationSeconds: segment.durationSeconds,
-      })),
-      startupBuffer: {
-        bufferedSeconds,
-        isPlayable: bufferedSeconds >= 20,
-      },
-      finalAudio,
     };
   }
 }
@@ -666,7 +582,6 @@ describe("audio job service", () => {
     const completedJob = await service.getJob(queuedJob.id);
     expect(completedJob?.status).toBe("completed");
     expect(completedJob?.audioUrl).toContain("final.mp3");
-    expect(completedJob?.playlistUrl).toContain("playlist.m3u8");
     expect(completedJob?.audioSegments.length ?? 0).toBeGreaterThan(0);
     expect(completedJob?.durationSeconds).toBeGreaterThan(0);
   });
@@ -768,14 +683,7 @@ describe("audio job service", () => {
         job: {
           state: string;
           playback: {
-            preferredModeForNewSessions: string;
             isPlayable: boolean;
-            stream?: {
-              playlistUrl: string;
-              availableDurationSeconds: number;
-              liveEdgeUpdatedAt: string;
-              isComplete: boolean;
-            } | null;
             final?: {
               audioUrl: string;
               durationSeconds: number;
@@ -785,25 +693,18 @@ describe("audio job service", () => {
           progress: {
             chunksTotal: number | null;
             chunksReady: number;
-            availableDurationSeconds: number;
           };
         };
       };
       expect(jobPayload.job.state).toBe("ready");
       expect(jobPayload.job.playback).toMatchObject({
-        preferredModeForNewSessions: "final",
         isPlayable: true,
-        stream: {
-          playlistUrl: `/audio/jobs/${queuedJob.id}/playlist.m3u8`,
-          isComplete: true,
-        },
         final: {
           audioUrl: `/audio/jobs/${queuedJob.id}/final.mp3`,
           fileName: "Queueing Speech Jobs.mp3",
         },
       });
       expect(jobPayload.job.progress.chunksTotal).toBe(jobPayload.job.progress.chunksReady);
-      expect(jobPayload.job.progress.availableDurationSeconds).toBeGreaterThan(0);
 
       const audioResponse = await fetch(`http://127.0.0.1:${address.port}/api/jobs/${queuedJob.id}/audio`);
       expect(audioResponse.status).toBe(404);
@@ -898,7 +799,6 @@ describe("audio job service", () => {
 
       const stillQueuedJob = await service.getJob(queuedJob.id);
       expect(stillQueuedJob?.status).toBe("queued");
-      expect(stillQueuedJob?.playlistUrl).toBeNull();
       expect(stillQueuedJob?.audioSegments).toEqual([]);
     } finally {
       server.close();
@@ -941,7 +841,6 @@ describe("audio job service", () => {
     await jobStore.save({
       ...queuedJob,
       status: "processing",
-      playlistUrl: `/audio/jobs/job-${queuedJob.id}/playlist.m3u8`,
       audioSegments: [
         {
           url: `/audio/jobs/job-${queuedJob.id}/segment-0.mp3`,
@@ -970,8 +869,6 @@ describe("audio job service", () => {
       internalState: "synthesizing",
       displayTitle: null,
       speechScript: null,
-      availableDurationSeconds: 0,
-      liveEdgeUpdatedAt: null,
       leaseOwner: "worker-1",
       leaseExpiresAt: "2099-01-01T00:10:00.000Z",
       runId: "run-1",
@@ -989,7 +886,6 @@ describe("audio job service", () => {
       speechOptions: { voice: "alloy" },
       provider: "test-provider",
       audioUrl: null,
-      playlistUrl: null,
       audioSegments: [],
       durationSeconds: null,
       error: null,
@@ -1037,7 +933,6 @@ describe("audio job service", () => {
       status: "failed",
       internalState: "failed",
       audioUrl: null,
-      playlistUrl: null,
       audioSegments: [],
       durationSeconds: null,
       leaseOwner: null,
@@ -1168,7 +1063,7 @@ describe("audio job service", () => {
     expect(completedJob?.runId).toBeNull();
   });
 
-  it("stops a stale runner after lease loss without clearing the replacement lease or stream artifacts", async () => {
+  it("stops a stale runner after lease loss without clearing the replacement lease or in-progress artifacts", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
     const audioStore = new FileAudioStore(audioDir, "/audio");
@@ -1211,86 +1106,10 @@ describe("audio job service", () => {
     expect(replacedJob?.status).toBe("processing");
     expect(replacedJob?.leaseOwner).toBe("replacement-worker");
     expect(replacedJob?.runId).toBe("replacement-run");
-    await expect(readFile(join(audioDir, "jobs", queuedJob.id, "playlist.m3u8"))).resolves.toBeDefined();
     await expect(readFile(join(audioDir, "jobs", queuedJob.id, "tmp", "chunk-0000.mp3"))).resolves.toBeDefined();
   });
 
-  it("makes a job playable before full completion via a growing playlist", async () => {
-    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
-    const jobsFilePath = join(audioDir, "jobs.json");
-    const audioStore = new FileAudioStore(audioDir, "/audio");
-    const jobStore = new FileJobStore(jobsFilePath);
-    const service = new AudioJobService({
-      jobStore,
-      audioStore,
-      speechProvider: new DelayedSegmentSpeechProvider([
-        { audioData: Buffer.from("ID3SEGMENTONE"), durationSeconds: 11, delayMs: 20 },
-        { audioData: Buffer.from("ID3SEGMENTTWO"), durationSeconds: 13, delayMs: 250 },
-        { audioData: Buffer.from("ID3SEGMENTTHREE"), durationSeconds: 17, delayMs: 250 },
-        { audioData: Buffer.from("ID3SEGMENTFOUR"), durationSeconds: 19, delayMs: 250 },
-      ]),
-      mediaPackager: new TestMediaPackager(),
-    });
-
-    const queuedJob = await service.createJob({
-      url: "https://example.com/posts/jobs",
-      html: `
-        <!doctype html>
-        <html>
-          <head><title>Segmented Article</title></head>
-          <body>
-            <article>
-              <h1>Segmented Article</h1>
-              <p>${Array.from({ length: 64 }, (_, index) => `first${index}`).join(" ")}</p>
-              <p>${Array.from({ length: 64 }, (_, index) => `second${index}`).join(" ")}</p>
-              <p>${Array.from({ length: 64 }, (_, index) => `third${index}`).join(" ")}</p>
-              <p>${Array.from({ length: 64 }, (_, index) => `fourth${index}`).join(" ")}</p>
-            </article>
-          </body>
-        </html>
-      `,
-    });
-
-    const processingPromise = service.processJob(queuedJob.id);
-
-    const partiallyReadyJob = await waitFor(
-      () => service.getJob(queuedJob.id),
-      (job) =>
-        job !== null &&
-        job.audioSegments.length >= 2 &&
-        typeof job.playlistUrl === "string" &&
-        job.playlistUrl.length > 0 &&
-        (job.availableDurationSeconds ?? 0) >= 20,
-      5_000,
-    );
-
-    expect(partiallyReadyJob?.durationSeconds).toBeNull();
-    expect(partiallyReadyJob?.audioUrl).toBeNull();
-    expect(partiallyReadyJob?.audioSegments.length ?? 0).toBeGreaterThanOrEqual(2);
-
-    const playlistPath = join(audioDir, "jobs", queuedJob.id, "playlist.m3u8");
-    const partialPlaylist = await readFile(playlistPath, "utf8");
-    expect(partialPlaylist).toContain("#EXTM3U");
-    expect(partialPlaylist).toContain("#EXT-X-VERSION:7");
-    expect(partialPlaylist).toContain("#EXT-X-START:TIME-OFFSET=0,PRECISE=YES");
-    expect(partialPlaylist).toContain("segments/batch-0000/chunk-0000.m4s");
-
-    await processingPromise;
-
-    const completedJob = await service.getJob(queuedJob.id);
-    expect(completedJob?.status).toBe("completed");
-    expect(completedJob?.audioSegments.length ?? 0).toBeGreaterThan(1);
-    expect(completedJob?.playlistUrl).toBe(`/audio/jobs/${queuedJob.id}/playlist.m3u8`);
-    expect(completedJob?.audioUrl).toBe(`/audio/jobs/${queuedJob.id}/final.mp3`);
-    expect(completedJob?.durationSeconds).toBeGreaterThan(11);
-    await expect(readFile(join(audioDir, "jobs", queuedJob.id, "final.mp3"))).resolves.toBeDefined();
-
-    const completedPlaylist = await readFile(playlistPath, "utf8");
-    expect(completedPlaylist).toContain("#EXT-X-START:TIME-OFFSET=0,PRECISE=YES");
-    expect(completedPlaylist).toContain("#EXT-X-ENDLIST");
-  });
-
-  it("starts later segments before the first segment finishes, but publishes the playlist in order", async () => {
+  it("starts later segments before the first segment finishes and produces final audio with all segments", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
     const audioStore = new FileAudioStore(audioDir, "/audio");
@@ -1340,24 +1159,18 @@ describe("audio job service", () => {
       "tmp",
       "chunk-0000.mp3",
     );
-    const playlistPath = join(audioDir, "jobs", queuedJob.id, "playlist.m3u8");
 
     await waitFor(() => exists(secondSegmentPath), Boolean);
     expect(await exists(firstSegmentPath)).toBe(false);
-    expect(await exists(playlistPath)).toBe(false);
     expect(speechProvider.getMaxConcurrentCalls()).toBeGreaterThan(1);
 
     await processingPromise;
 
-    const completedPlaylist = await readFile(playlistPath, "utf8");
-    expect(completedPlaylist).toContain("segments/batch-0000/chunk-0000.m4s");
-    expect(completedPlaylist).toContain("segments/batch-0000/chunk-0001.m4s");
-    expect(completedPlaylist).toContain("segments/batch-0000/chunk-0002.m4s");
-    expect(
-      completedPlaylist.indexOf("segments/batch-0000/chunk-0000.m4s"),
-    ).toBeLessThan(
-      completedPlaylist.indexOf("segments/batch-0000/chunk-0001.m4s"),
-    );
+    const completedJob = await service.getJob(queuedJob.id);
+    expect(completedJob?.status).toBe("completed");
+    expect(completedJob?.audioSegments).toHaveLength(3);
+    expect(completedJob?.audioUrl).toBe(`/audio/jobs/${queuedJob.id}/final.mp3`);
+    await expect(readFile(join(audioDir, "jobs", queuedJob.id, "final.mp3"))).resolves.toBeDefined();
   });
 
   it("requeues interrupted processing jobs and resumes them from persisted segments", async () => {
@@ -1396,7 +1209,6 @@ describe("audio job service", () => {
     await jobStore.save({
       ...queuedJob,
       status: "processing",
-      playlistUrl: `/audio/jobs/${queuedJob.id}/playlist.m3u8`,
       audioSegments: [
         {
           url: `/audio/jobs/${queuedJob.id}/tmp/chunk-0000.mp3`,
@@ -1447,11 +1259,10 @@ describe("audio job service", () => {
     await jobStore.save({
       ...queuedJob,
       status: "processing",
-      internalState: "packaging_stream",
+      internalState: "packaging",
       leaseOwner: "stale-worker",
       leaseExpiresAt: new Date(Date.now() - 60_000).toISOString(),
       runId: "stale-run",
-      playlistUrl: `/audio/jobs/${queuedJob.id}/playlist.m3u8`,
       audioSegments: [
         {
           url: `/audio/jobs/${queuedJob.id}/tmp/chunk-0000.mp3`,
@@ -1471,7 +1282,6 @@ describe("audio job service", () => {
       leaseOwner: null,
       leaseExpiresAt: null,
       runId: null,
-      playlistUrl: `/audio/jobs/${queuedJob.id}/playlist.m3u8`,
       audioSegments: [
         {
           url: `/audio/jobs/${queuedJob.id}/tmp/chunk-0000.mp3`,
@@ -1515,11 +1325,9 @@ describe("audio job service", () => {
 
     const failedJob = await service.getJob(queuedJob.id);
     expect(failedJob?.status).toBe("failed");
-    expect(failedJob?.playlistUrl).toBeNull();
     expect(failedJob?.audioSegments).toEqual([]);
     expect(failedJob?.durationSeconds).toBeNull();
     expect(failedJob?.error).toContain("failed after the first playable chunk");
-    await expect(readFile(join(audioDir, "jobs", queuedJob.id, "playlist.m3u8"))).rejects.toThrow();
     await expect(readFile(join(audioDir, "jobs", queuedJob.id, "tmp", "chunk-0000.mp3"))).rejects.toThrow();
   });
 
@@ -1550,7 +1358,6 @@ describe("audio job service", () => {
     const failedJob = await service.getJob(queuedJob.id);
     expect(failedJob?.status).toBe("failed");
     expect(failedJob?.audioUrl).toBeNull();
-    expect(failedJob?.playlistUrl).toBeNull();
     expect(failedJob?.audioSegments).toEqual([]);
     expect(failedJob?.durationSeconds).toBeNull();
     expect(failedJob?.error).toContain("No playable script content");
@@ -1601,7 +1408,7 @@ describe("audio job service", () => {
     expect(speechProvider.getAttempts(1)).toBe(2);
   });
 
-  it("can rewrite the stable playlist key as new segments arrive", async () => {
+  it("does not write duplicate keys when packaging final audio", async () => {
     const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
     const jobsFilePath = join(audioDir, "jobs.json");
     const jobStore = new FileJobStore(jobsFilePath);
@@ -1637,7 +1444,6 @@ describe("audio job service", () => {
 
     const completedJob = await service.getJob(queuedJob.id);
     expect(completedJob?.status).toBe("completed");
-    expect(completedJob?.playlistUrl).toBe(`/audio/jobs/${queuedJob.id}/playlist.m3u8`);
     expect(completedJob?.audioUrl).toBe(`/audio/jobs/${queuedJob.id}/final.mp3`);
     expect(completedJob?.audioSegments).toHaveLength(2);
   });

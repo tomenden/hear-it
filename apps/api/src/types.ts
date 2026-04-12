@@ -61,7 +61,6 @@ export type AudioJobStatus =
 
 export interface AudioRenderResult {
   audioUrl: string | null;
-  playlistUrl: string | null;
   audioSegments: AudioSegment[];
   durationSeconds: number;
   audioData?: Buffer;
@@ -82,9 +81,6 @@ export interface AudioJob {
   internalState?: InternalAudioState | null;
   displayTitle?: string | null;
   speechScript?: string | null;
-  availableDurationSeconds?: number | null;
-  liveEdgeUpdatedAt?: string | null;
-  publishedChunkCount?: number | null;
   leaseOwner?: string | null;
   leaseExpiresAt?: string | null;
   runId?: string | null;
@@ -94,7 +90,6 @@ export interface AudioJob {
   provider: string;
   audioUrl: string | null;
   audioDownloadPath?: string | null;
-  playlistUrl: string | null;
   audioSegments: AudioSegment[];
   durationSeconds: number | null;
   error: string | null;

@@ -82,3 +82,61 @@ npx tsx run-experiment.ts --instruction "Read this article with natural, unhurri
 ## Budget
 
 Hard stop at $1.90 of OpenAI TTS spend (~21 rounds at ~$0.09/round). The script refuses to start a new round once this limit is reached.
+
+## Documenting Experiments
+
+After each experiment run, archive results in `experiments/` with a date-based folder:
+
+```
+experiments/
+├── 2026-04-11-tts-optimization/
+│   ├── RESULTS.md          # Experiment summary, key findings, iteration insights
+│   ├── log.tsv             # Copy of results/log.tsv from the run
+│   └── analysis.json       # Optional: structured results for programmatic access
+├── 2026-05-15-engagement-focus/
+│   ├── RESULTS.md
+│   └── log.tsv
+```
+
+### RESULTS.md Template
+
+Each `RESULTS.md` should include:
+
+```markdown
+# Experiment: [Title]
+
+**Date:** YYYY-MM-DD  
+**Objective:** [What we were trying to optimize]
+
+## Summary
+- Baseline score: X.XX
+- Best score: Y.YY
+- Improvement: +Z% (or rejection if no improvement)
+- Budget spent: $X / $Y
+
+## Best Instruction (if improved)
+\`\`\`
+[The winning instruction text]
+\`\`\`
+
+## Results Table
+| Round | Instruction | Scores | Composite | Verdict |
+| ... |
+
+## Key Findings
+- Finding 1
+- Finding 2
+
+## Iteration Insights
+- What worked: ...
+- What didn't: ...
+```
+
+### Archive Steps
+
+1. After the loop completes, copy `results/log.tsv` to `experiments/YYYY-MM-DD-experiment-name/log.tsv`
+2. Create `experiments/YYYY-MM-DD-experiment-name/RESULTS.md` with summary
+3. Commit to a PR with title: `docs(autoresearch): archive YYYY-MM-DD experiment results`
+4. This serves as a historical record to avoid repeating failed approaches
+
+This prevents duplicating experiments and builds institutional knowledge about what instruction patterns work vs. don't.

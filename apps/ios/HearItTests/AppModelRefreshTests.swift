@@ -386,6 +386,31 @@ struct AppModelRefreshTests {
         #expect(model.player.loadedSourceURL == nil)
         #expect(store.playbackURLIfExists(forJobID: job.id) == nil)
     }
+
+    @Test
+    func cancelledCreateAudioDoesNotShowRawCancelledError() async {
+        let apiClient = MockHearItAPIClient()
+        apiClient.createJobHandler = { _, _, _ in
+            throw URLError(.cancelled)
+        }
+
+        let defaults = UserDefaults(suiteName: "HearItTests.AppModelRefresh.\(UUID().uuidString)")!
+        let settings = AppSettings(defaults: defaults)
+        settings.apiBaseURLString = "http://localhost:3000"
+
+        let model = AppModel(
+            settings: settings,
+            apiClient: apiClient,
+            localAudioStore: LocalAudioAssetStore(baseDirectory: FileManager.default.temporaryDirectory),
+            player: AudioPlayerController(previewMode: true)
+        )
+        model.urlInput = "https://example.com/cancelled"
+
+        await model.createAudio()
+
+        #expect(model.homeMessage == nil)
+        #expect(model.isCreatingAudio == false)
+    }
 }
 
 private actor LockedBox<Value> {

@@ -357,6 +357,7 @@ final class AppModel {
         }
 
         isCreatingAudio = true
+        defer { isCreatingAudio = false }
         homeMessage = InlineMessage(text: "Creating your audio…", kind: .neutral)
 
         let breadcrumb = Breadcrumb(level: .info, category: "audio")
@@ -382,14 +383,16 @@ final class AppModel {
         } catch HearItAPIClient.APIError.unauthorized {
             await signOut()
         } catch {
+            if isIgnorableCancellation(error) {
+                homeMessage = nil
+                return
+            }
             SentrySDK.capture(error: error) { scope in
                 scope.setTag(value: "create_audio", key: "action")
                 scope.setExtra(value: articleURL, key: "articleURL")
             }
             homeMessage = InlineMessage(text: error.localizedDescription, kind: .error)
         }
-
-        isCreatingAudio = false
     }
 
     func refreshJobs(silent: Bool = false) async {
@@ -843,6 +846,15 @@ final class AppModel {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let scenario, !scenario.isEmpty else { return nil }
         return scenario
+    }
+
+    private func isIgnorableCancellation(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
     }
 
     private func performDebugAutomation(named scenario: String) async {

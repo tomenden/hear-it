@@ -62,6 +62,32 @@ struct AudioJobDecodingTests {
     }
 
     @Test
+    func completedChunkProgressWithoutPlayableAudioShowsFinalizingCopy() throws {
+        let job = try decodeJob(
+            state: "processing",
+            audioUrl: nil,
+            playback: """
+            {
+              "isPlayable": false,
+              "final": null,
+              "errorMessage": null
+            }
+            """,
+            progress: """
+            {
+              "chunksTotal": 12,
+              "chunksReady": 12,
+              "availableDurationSeconds": 42
+            }
+            """
+        )
+
+        #expect(job.isFinalizingAudio)
+        #expect(job.processingTitle == "Finalizing audio...")
+        #expect(job.statusMessage == "Wrapping up the final track so playback can begin.")
+    }
+
+    @Test
     func decodesReadyStateAndFinalPlayback() throws {
         let job = try decodeJob(
             state: "ready",

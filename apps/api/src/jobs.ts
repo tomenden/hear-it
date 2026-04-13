@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node";
 import { randomUUID } from "node:crypto";
 
 import { trackEvent } from "./analytics.js";
@@ -5,7 +6,9 @@ import { extractArticle } from "./extractor.js";
 import type { FfmpegMediaPackager } from "./ffmpeg-media-packager.js";
 import { createFfmpegMediaPackager } from "./ffmpeg-media-packager.js";
 import { createJobPipeline, LostJobLeaseError } from "./job-pipeline.js";
+import { createJobEventRecorder } from "./job-observability.js";
 import type { AudioStore, JobOwnership, JobStore } from "./storage.js";
+import { chunkSpeechScript } from "./text-chunker.js";
 import {
   AVAILABLE_VOICES,
   DEFAULT_SPEECH_OPTIONS,
@@ -91,6 +94,14 @@ export class AudioJobService {
     };
 
     await this.jobStore.save(job);
+    const eventRecorder = await createJobEventRecorder(this.jobStore, jobId);
+    await eventRecorder?.record("job_created", {
+      voice: speechOptions.voice,
+      url: article.url,
+      estimatedMinutes: article.estimatedMinutes,
+      wordCount: article.wordCount,
+      userId: userId ?? null,
+    });
 
     const domain = safeHostname(article.url);
     trackEvent("audio_created", {
@@ -146,8 +157,17 @@ export class AudioJobService {
       leaseOwner: this.leaseOwner,
       runId,
     };
+    const eventRecorder = await createJobEventRecorder(this.jobStore, jobId);
+    await eventRecorder?.record("job_claimed", {
+      leaseOwner: ownership.leaseOwner,
+      leaseExpiresAt: claimedJob.leaseExpiresAt ?? null,
+      runId,
+      attempt: claimedJob.attempt ?? null,
+    });
     const leaseState = { lost: false };
     const stopHeartbeat = this.startLeaseHeartbeat(jobId, ownership, leaseState);
+    let chunksReadyObserved = claimedJob.audioSegments.length;
+    let chunksTotalObserved = resolveChunksTotal(claimedJob);
 
     const shouldStartFresh =
       claimedJob.audioSegments.length === 0 &&
@@ -185,7 +205,15 @@ export class AudioJobService {
         speechProvider: this.speechProvider,
         mediaPackager: this.mediaPackager,
         shouldAbort: () => leaseState.lost,
-        onJobUpdate: async (patch) => {
+        onPlaybackReady: async ({ finalAudioUrl, durationSeconds, audioSegmentsCount }) => {
+          await eventRecorder?.record("playback_ready", {
+            finalAudioUrl,
+            durationSeconds,
+            audioSegmentsCount,
+            source: "pipeline_upload",
+          });
+        },
+        onJobUpdate: async (patch, snapshot) => {
           if (leaseState.lost) {
             throw new LostJobLeaseError();
           }
@@ -195,10 +223,61 @@ export class AudioJobService {
             leaseState.lost = true;
             throw new LostJobLeaseError();
           }
+
+          chunksTotalObserved ??= resolveChunksTotal(snapshot);
+          if (snapshot.audioSegments.length > chunksReadyObserved) {
+            chunksReadyObserved = snapshot.audioSegments.length;
+            await eventRecorder?.record("chunk_ready", {
+              chunksReady: chunksReadyObserved,
+              chunksTotal: chunksTotalObserved,
+              availableDurationSeconds: snapshot.audioSegments.reduce(
+                (total, segment) => total + segment.durationSeconds,
+                0,
+              ),
+              internalState: snapshot.internalState ?? null,
+            });
+          }
+
+          if (patch.status === "completed" && snapshot.audioUrl) {
+            await eventRecorder?.record("job_completed", {
+              finalAudioUrl: snapshot.audioUrl,
+              durationSeconds: snapshot.durationSeconds,
+              chunksReady: snapshot.audioSegments.length,
+              chunksTotal: chunksTotalObserved,
+              source: "pipeline",
+            });
+          } else if (patch.status === "failed") {
+            await eventRecorder?.record("job_failed", {
+              error: snapshot.error ?? null,
+              internalState: snapshot.internalState ?? null,
+            });
+          }
         },
       });
 
       const result = await pipeline.processClaimedJob(claimedJob);
+      if (leaseState.lost && result.job.status === "completed" && result.job.audioUrl) {
+        const persistedJob = await this.jobStore.get(jobId);
+        if (!isPersistedPlaybackReady(persistedJob, result.job.audioUrl)) {
+          Sentry.captureMessage("Audio finalization missed completion persistence.", {
+            level: "warning",
+            tags: {
+              jobId,
+              leaseOwner: ownership.leaseOwner,
+              runId,
+              provider: claimedJob.provider,
+            },
+            extra: {
+              finalAudioUrl: result.job.audioUrl,
+              durationSeconds: result.job.durationSeconds,
+              chunksReady: result.job.audioSegments.length,
+              chunksTotal: chunksTotalObserved,
+              persistedStatus: persistedJob?.status ?? null,
+              persistedAudioUrl: persistedJob?.audioUrl ?? null,
+            },
+          });
+        }
+      }
       if (result.job.status === "failed" && result.job.error) {
         trackEvent("audio_failed", {
           job_id: jobId,
@@ -399,4 +478,19 @@ function safeHostname(url: string): string | null {
 
 function createLeaseExpiry(durationMs: number): string {
   return new Date(Date.now() + durationMs).toISOString();
+}
+
+function resolveChunksTotal(job: AudioJob): number | null {
+  if (!job.speechScript) {
+    return null;
+  }
+
+  return chunkSpeechScript({ script: job.speechScript }).length;
+}
+
+function isPersistedPlaybackReady(
+  job: AudioJob | null,
+  expectedAudioUrl: string,
+): boolean {
+  return job?.status === "completed" && job.audioUrl === expectedAudioUrl;
 }

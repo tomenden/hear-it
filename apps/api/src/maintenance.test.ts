@@ -1,5 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
+const { captureExceptionMock, captureMessageMock } = vi.hoisted(() => ({
+  captureExceptionMock: vi.fn(),
+  captureMessageMock: vi.fn(),
+}));
+
+vi.mock("@sentry/node", () => ({
+  captureException: captureExceptionMock,
+  captureMessage: captureMessageMock,
+}));
+
 import {
   buildFinalAudioKey,
 } from "./media-packager.js";
@@ -16,6 +26,7 @@ import type {
   ObservedJobLeaseSnapshot,
   JobStore,
 } from "./storage.js";
+import type { JobEventInput, JobEventRecord } from "./job-events.js";
 import type { AudioJob } from "./types.js";
 
 class MemoryJobStore implements JobStore {
@@ -31,6 +42,7 @@ class MemoryJobStore implements JobStore {
     expected: ExpiredLeaseSnapshot,
   ) => Promise<void> | void;
   private readonly jobs = new Map<string, AudioJob>();
+  private readonly events = new Map<string, JobEventRecord[]>();
 
   async init(): Promise<void> {}
 
@@ -116,6 +128,22 @@ class MemoryJobStore implements JobStore {
 
   async deleteForUser(_jobId: string, _userId: string): Promise<boolean> {
     return false;
+  }
+
+  async appendEvent(jobId: string, event: JobEventInput): Promise<void> {
+    const existing = this.events.get(jobId) ?? [];
+    existing.push({
+      id: `event-${jobId}-${event.sequenceNumber}`,
+      jobId,
+      occurredAt: event.occurredAt ?? new Date().toISOString(),
+      ...event,
+    });
+    existing.sort((lhs, rhs) => lhs.sequenceNumber - rhs.sequenceNumber);
+    this.events.set(jobId, existing);
+  }
+
+  async listEvents(jobId: string): Promise<JobEventRecord[]> {
+    return [...(this.events.get(jobId) ?? [])];
   }
 
   async claimMaintenanceLease(
@@ -345,7 +373,10 @@ describe("maintenance services", () => {
     });
   });
 
-  it("does not repair a job whose final MP3 exists while the live lease is still active", async () => {
+  it("repairs a job whose final MP3 exists even when the stale lease is still marked active", async () => {
+    captureMessageMock.mockReset();
+    captureExceptionMock.mockReset();
+
     const now = new Date("2026-04-05T12:00:00.000Z");
     const jobStore = new MemoryJobStore();
     const audioStore = new MemoryAudioStore();
@@ -355,6 +386,11 @@ describe("maintenance services", () => {
         status: "processing",
         internalState: "packaging",
         audioUrl: null,
+        durationSeconds: null,
+        audioSegments: [
+          { url: "/audio/jobs/job-123/tmp/chunk-0000.mp3", durationSeconds: 11 },
+          { url: "/audio/jobs/job-123/tmp/chunk-0001.mp3", durationSeconds: 16 },
+        ],
         leaseOwner: "worker-a",
         leaseExpiresAt: "2026-04-05T12:05:00.000Z",
         runId: "run-a",
@@ -365,16 +401,30 @@ describe("maintenance services", () => {
     const repairer = new FinalizationRepairer({ jobStore, audioStore });
     await repairer.runOnce(now);
 
-    expect(jobStore.updates).toHaveLength(0);
     expect(await jobStore.get("job-123")).toMatchObject({
-      status: "processing",
-      internalState: "packaging",
-      audioUrl: null,
-      leaseOwner: "worker-a",
-      leaseExpiresAt: "2026-04-05T12:05:00.000Z",
-      runId: "run-a",
-      error: "stuck finalizing",
+      status: "completed",
+      internalState: "completed",
+      audioUrl: `/audio/${buildFinalAudioKey("job-123")}`,
+      durationSeconds: 27,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      runId: null,
+      error: null,
     });
+    expect(await jobStore.listEvents("job-123")).toContainEqual(
+      expect.objectContaining({
+        type: "job_completed",
+        payload: expect.objectContaining({
+          source: "maintenance_repair",
+        }),
+      }),
+    );
+    expect(captureMessageMock).toHaveBeenCalledWith(
+      "Maintenance repaired audio finalization drift.",
+      expect.objectContaining({
+        level: "warning",
+      }),
+    );
   });
 
   it("does not repair a job after a new runner claims it during the finalization scan", async () => {

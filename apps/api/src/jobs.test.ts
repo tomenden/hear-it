@@ -8,6 +8,20 @@ import type { AddressInfo } from "node:net";
 import { describe, expect, it, vi } from "vitest";
 import * as jose from "jose";
 
+const { captureExceptionMock, captureMessageMock } = vi.hoisted(() => ({
+  captureExceptionMock: vi.fn(),
+  captureMessageMock: vi.fn(),
+}));
+
+vi.mock("@sentry/node", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@sentry/node")>();
+  return {
+    ...actual,
+    captureException: captureExceptionMock,
+    captureMessage: captureMessageMock,
+  };
+});
+
 import { createAuthMiddleware } from "./auth.js";
 import { createApp, createAudioJobSchema, extractRequestSchema } from "./app.js";
 import { MAX_AUDIO_CHARS } from "./extractor.js";
@@ -19,6 +33,7 @@ import {
 } from "./media-packager.js";
 import { FileJobStore, FileAudioStore } from "./storage-fs.js";
 import type { AudioStore } from "./storage.js";
+import type { JobEventInput, JobEventRecord } from "./job-events.js";
 import type {
   AudioJob,
   AudioRenderResult,
@@ -436,6 +451,63 @@ function createTestContext(audioDir: string, jobsFilePath: string) {
     mediaPackager: new TestMediaPackager(),
   });
   return { service, jobStore, audioStore };
+}
+
+class RecordingEventJobStore extends FileJobStore {
+  private readonly events = new Map<string, JobEventRecord[]>();
+
+  async appendEvent(jobId: string, event: JobEventInput): Promise<void> {
+    const existing = this.events.get(jobId) ?? [];
+    existing.push({
+      id: `event-${jobId}-${event.sequenceNumber}`,
+      jobId,
+      occurredAt: event.occurredAt ?? new Date().toISOString(),
+      ...event,
+    });
+    existing.sort((lhs, rhs) => lhs.sequenceNumber - rhs.sequenceNumber);
+    this.events.set(jobId, existing);
+  }
+
+  async listEvents(jobId: string): Promise<JobEventRecord[]> {
+    return [...(this.events.get(jobId) ?? [])];
+  }
+}
+
+class RejectFinalizationUpdateJobStore extends RecordingEventJobStore {
+  override async updateOwned(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    ownership: Parameters<FileJobStore["updateOwned"]>[2],
+  ): Promise<boolean> {
+    if (patch.status === "completed") {
+      return false;
+    }
+
+    return super.updateOwned(jobId, patch, ownership);
+  }
+}
+
+class CompletedElsewhereJobStore extends RecordingEventJobStore {
+  override async updateOwned(
+    jobId: string,
+    patch: Partial<AudioJob>,
+    ownership: Parameters<FileJobStore["updateOwned"]>[2],
+  ): Promise<boolean> {
+    if (patch.status === "completed") {
+      await this.update(jobId, {
+        ...patch,
+        status: "completed",
+        internalState: "completed",
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        runId: null,
+        error: null,
+      });
+      return false;
+    }
+
+    return super.updateOwned(jobId, patch, ownership);
+  }
 }
 
 class LeaseTakeoverJobStore extends FileJobStore {
@@ -1491,6 +1563,117 @@ describe("audio job service", () => {
     expect(completedJob?.status).toBe("completed");
     expect(completedJob?.audioSegments).toHaveLength(3);
     expect(audioStore.has(orphanedKey)).toBe(false);
+  });
+
+  it("records job lifecycle events for a successful generation", async () => {
+    captureMessageMock.mockReset();
+    captureExceptionMock.mockReset();
+
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const audioStore = new FileAudioStore(audioDir, "/audio");
+    const jobStore = new RecordingEventJobStore(jobsFilePath);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider: new InstantSpeechProvider(),
+      mediaPackager: new TestMediaPackager(),
+      heartbeatIntervalMs: 0,
+    });
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/observability-success",
+      html: sampleHtml,
+    });
+
+    await service.processJob(queuedJob.id);
+
+    const events = await jobStore.listEvents(queuedJob.id);
+    expect(events.map((event) => event.type)).toEqual([
+      "job_created",
+      "job_claimed",
+      "chunk_ready",
+      "playback_ready",
+      "job_completed",
+    ]);
+    expect(events[2]?.payload).toMatchObject({
+      chunksReady: 1,
+      chunksTotal: 1,
+    });
+    expect(events[3]?.payload).toMatchObject({
+      finalAudioUrl: `/audio/${buildFinalAudioKey(queuedJob.id)}`,
+      durationSeconds: 42,
+    });
+    expect(captureMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps playback_ready evidence and emits a warning when final completion is missed", async () => {
+    captureMessageMock.mockReset();
+    captureExceptionMock.mockReset();
+
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const audioStore = new FileAudioStore(audioDir, "/audio");
+    const jobStore = new RejectFinalizationUpdateJobStore(jobsFilePath);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider: new InstantSpeechProvider(),
+      mediaPackager: new TestMediaPackager(),
+      heartbeatIntervalMs: 0,
+    });
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/observability-miss",
+      html: sampleHtml,
+    });
+
+    await service.processJob(queuedJob.id);
+
+    const events = await jobStore.listEvents(queuedJob.id);
+    expect(events.map((event) => event.type)).toEqual([
+      "job_created",
+      "job_claimed",
+      "chunk_ready",
+      "playback_ready",
+    ]);
+    expect(captureMessageMock).toHaveBeenCalledWith(
+      "Audio finalization missed completion persistence.",
+      expect.objectContaining({
+        level: "warning",
+      }),
+    );
+  });
+
+  it("does not warn when another repair path already persisted the completed job", async () => {
+    captureMessageMock.mockReset();
+    captureExceptionMock.mockReset();
+
+    const audioDir = await mkdtemp(join(tmpdir(), "hear-it-audio-"));
+    const jobsFilePath = join(audioDir, "jobs.json");
+    const audioStore = new FileAudioStore(audioDir, "/audio");
+    const jobStore = new CompletedElsewhereJobStore(jobsFilePath);
+    const service = new AudioJobService({
+      jobStore,
+      audioStore,
+      speechProvider: new InstantSpeechProvider(),
+      mediaPackager: new TestMediaPackager(),
+      heartbeatIntervalMs: 0,
+    });
+
+    const queuedJob = await service.createJob({
+      url: "https://example.com/posts/observability-repaired",
+      html: sampleHtml,
+    });
+
+    await service.processJob(queuedJob.id);
+
+    const persistedJob = await jobStore.get(queuedJob.id);
+    expect(persistedJob).toMatchObject({
+      status: "completed",
+      audioUrl: `/audio/${buildFinalAudioKey(queuedJob.id)}`,
+    });
+    expect(captureMessageMock).not.toHaveBeenCalled();
   });
 
   it("rejects oversized articles before creating a job", async () => {

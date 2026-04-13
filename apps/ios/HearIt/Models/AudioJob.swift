@@ -56,6 +56,12 @@ struct AudioJob: Codable, Hashable, Identifiable {
         let availableDurationSeconds: Double
     }
 
+    struct ProcessingCopy: Equatable {
+        let title: String
+        let badge: String
+        let message: String
+    }
+
     let id: String
     let state: State
     let playback: AudioPlayback
@@ -89,12 +95,29 @@ struct AudioJob: Codable, Hashable, Identifiable {
         case .queued:
             "Waiting in line to create your audio."
         case .processing:
-            "Generating audio now. This usually finishes in under a minute for shorter reads."
+            processingCopy.message
         case .ready:
             "Ready to play."
         case .failed:
             error ?? "Audio creation failed."
         }
+    }
+
+    var isFinalizingAudio: Bool {
+        guard state == .processing, playback.mode == .preparing,
+              let total = progress.chunksTotal, total > 0 else {
+            return false
+        }
+
+        return progress.chunksReady >= total
+    }
+
+    var processingTitle: String {
+        processingCopy.title
+    }
+
+    var processingBadgeLabel: String {
+        processingCopy.badge
     }
 
     init(
@@ -228,6 +251,43 @@ struct AudioJob: Codable, Hashable, Identifiable {
 
     func audioDownloadURL(relativeTo baseURL: URL) -> URL? {
         HearItAPIClient.resolveURL(audioDownloadPath, relativeTo: baseURL)
+    }
+
+    private var processingCopy: ProcessingCopy {
+        if state == .queued {
+            return ProcessingCopy(
+                title: "Preparing audio",
+                badge: "Preparing audio",
+                message: "Waiting in line to create your audio."
+            )
+        }
+
+        if isFinalizingAudio {
+            return ProcessingCopy(
+                title: "Finalizing audio...",
+                badge: "Finalizing audio",
+                message: "Wrapping up the final track so playback can begin."
+            )
+        }
+
+        if let total = progress.chunksTotal, total > 0 {
+            let percentage = min(
+                99,
+                max(0, Int((Double(progress.chunksReady) / Double(total)) * 100))
+            )
+
+            return ProcessingCopy(
+                title: "Generating audio... \(percentage)%",
+                badge: "Generating... \(percentage)%",
+                message: "Your audio is being generated. This usually finishes in under a minute."
+            )
+        }
+
+        return ProcessingCopy(
+            title: "Generating audio...",
+            badge: "Generating audio",
+            message: "Your audio is being generated. This usually finishes in under a minute."
+        )
     }
 }
 

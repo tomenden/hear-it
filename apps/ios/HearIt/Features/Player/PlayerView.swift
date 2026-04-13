@@ -369,19 +369,9 @@ struct PlayerView: View {
                 isError: false
             )
         case .preparing:
-            let progress = job.progress
-            if let total = progress.chunksTotal, total > 0 {
-                let pct = Int(Double(progress.chunksReady) / Double(total) * 100)
-                return ProcessingPresentation(
-                    title: "Generating audio... \(pct)%",
-                    message: "Your audio is being generated. This usually finishes in under a minute.",
-                    systemImage: nil,
-                    isError: false
-                )
-            }
             return ProcessingPresentation(
-                title: "Preparing audio",
-                message: "Your audio is being prepared. This usually finishes in under a minute.",
+                title: job.processingTitle,
+                message: job.statusMessage,
                 systemImage: nil,
                 isError: false
             )

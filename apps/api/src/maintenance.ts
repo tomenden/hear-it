@@ -1,7 +1,7 @@
-import {
-  buildFinalAudioKey,
-  buildJobMediaPrefix,
-} from "./media-packager.js";
+import * as Sentry from "@sentry/node";
+
+import { createJobEventRecorder } from "./job-observability.js";
+import { buildFinalAudioKey } from "./media-packager.js";
 import type { AudioStore, JobStore } from "./storage.js";
 import type { AudioJob } from "./types.js";
 
@@ -99,18 +99,17 @@ export class FinalizationRepairer implements MaintenanceService {
     context?: MaintenanceRunContext,
   ): Promise<void> {
     const jobs = await this.jobStore.getAll();
-    const nowIso = now.toISOString();
 
     for (const job of jobs) {
       if (context?.shouldAbort()) {
         break;
       }
 
-      if (job.status === "completed") {
+      if (job.status !== "processing") {
         continue;
       }
 
-      if (hasLiveLease(job, nowIso)) {
+      if (job.audioUrl || job.internalState !== "packaging") {
         continue;
       }
 
@@ -122,12 +121,14 @@ export class FinalizationRepairer implements MaintenanceService {
         continue;
       }
 
-      await this.jobStore.updateIfLeaseSnapshotMatches(
+      const recoveredDurationSeconds = resolveRecoveredDurationSeconds(job);
+      const repaired = await this.jobStore.updateIfLeaseSnapshotMatches(
         job.id,
         {
           status: "completed",
           internalState: "completed",
           audioUrl: finalAudioUrl,
+          durationSeconds: recoveredDurationSeconds,
           leaseOwner: null,
           leaseExpiresAt: null,
           runId: null,
@@ -141,6 +142,33 @@ export class FinalizationRepairer implements MaintenanceService {
           runId: job.runId ?? null,
         },
       );
+
+      if (!repaired) {
+        continue;
+      }
+
+      const eventRecorder = await createJobEventRecorder(this.jobStore, job.id);
+      await eventRecorder?.record("job_completed", {
+        source: "maintenance_repair",
+        finalAudioUrl,
+        durationSeconds: recoveredDurationSeconds,
+        chunksReady: job.audioSegments.length,
+      });
+      Sentry.captureMessage("Maintenance repaired audio finalization drift.", {
+        level: "warning",
+        tags: {
+          jobId: job.id,
+          internalState: job.internalState ?? "unknown",
+          provider: job.provider,
+        },
+        extra: {
+          leaseOwner: job.leaseOwner ?? null,
+          leaseExpiresAt: job.leaseExpiresAt ?? null,
+          runId: job.runId ?? null,
+          chunksReady: job.audioSegments.length,
+          recoveredDurationSeconds,
+        },
+      });
     }
   }
 }
@@ -299,14 +327,15 @@ export function startMaintenanceWorker(options: StartMaintenanceWorkerOptions) {
   return () => clearInterval(timer);
 }
 
-function buildTemporaryChunksPrefix(jobId: string): string {
-  return `${buildJobMediaPrefix(jobId)}/tmp`;
-}
+function resolveRecoveredDurationSeconds(job: AudioJob): number | null {
+  if (typeof job.durationSeconds === "number" && job.durationSeconds > 0) {
+    return job.durationSeconds;
+  }
 
-function hasLiveLease(job: AudioJob, nowIso: string): boolean {
-  return (
-    Boolean(job.leaseOwner || job.runId) &&
-    typeof job.leaseExpiresAt === "string" &&
-    job.leaseExpiresAt > nowIso
+  const recoveredDuration = job.audioSegments.reduce(
+    (total, segment) => total + segment.durationSeconds,
+    0,
   );
+
+  return recoveredDuration > 0 ? recoveredDuration : null;
 }

@@ -38,6 +38,11 @@ export interface JobPipelineOptions {
     snapshot: AudioJob,
     playback: PlaybackDescriptor,
   ) => Promise<void> | void;
+  onPlaybackReady?: (payload: {
+    finalAudioUrl: string;
+    durationSeconds: number;
+    audioSegmentsCount: number;
+  }) => Promise<void> | void;
   shouldAbort?: () => boolean;
 }
 
@@ -269,6 +274,12 @@ export function createJobPipeline(options: JobPipelineOptions) {
           finalAudio.contentType,
           { overwrite: true },
         );
+
+        await options.onPlaybackReady?.({
+          finalAudioUrl,
+          durationSeconds: finalAudio.durationSeconds,
+          audioSegmentsCount: contiguousChunks.length,
+        });
 
         const playback = await emitUpdate({
           status: "completed",

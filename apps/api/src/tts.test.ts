@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  AVAILABLE_VOICES,
+  DEFAULT_SPEECH_OPTIONS,
   FakeSpeechProvider,
   OpenAISpeechProvider,
   OpenAITTSTimeoutError,
@@ -51,6 +53,11 @@ function buildID3Tag(footer = false): Buffer {
 }
 
 describe("speech providers", () => {
+  it("exposes the recommended OpenAI voice catalog with marin as the default", () => {
+    expect(AVAILABLE_VOICES).toEqual(["alloy", "ash", "sage", "verse", "marin", "cedar"]);
+    expect(DEFAULT_SPEECH_OPTIONS.voice).toBe("marin");
+  });
+
   it("returns a chunk-oriented handoff for fake speech synthesis", async () => {
     const provider = new FakeSpeechProvider();
 

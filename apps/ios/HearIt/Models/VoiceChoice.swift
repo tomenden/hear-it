@@ -53,6 +53,16 @@ struct VoiceChoice: Hashable, Identifiable {
             displayName: "Verse",
             tone: "Brighter and more energetic for quick reads.",
             symbolName: "sparkles"
+        ),
+        "marin": VoiceMetadata(
+            displayName: "Marin",
+            tone: "Expressive and polished for the highest-fidelity narration.",
+            symbolName: "waveform.path.ecg.rectangle.fill"
+        ),
+        "cedar": VoiceMetadata(
+            displayName: "Cedar",
+            tone: "Rich and grounded for confident long-form reading.",
+            symbolName: "tree.fill"
         )
     ]
 }

@@ -62,7 +62,7 @@ final class AppSettings {
         self.hasDebugAPIBaseURLOverride = debugAPIBaseURLOverride != nil
 
         self.apiBaseURLString = resolvedBaseURL
-        self.selectedVoiceID = defaults.string(forKey: Key.selectedVoiceID) ?? "alloy"
+        self.selectedVoiceID = defaults.string(forKey: Key.selectedVoiceID) ?? "marin"
         self.lastPresentedJobID = defaults.string(forKey: Key.lastPresentedJobID)
         if !hasDebugAPIBaseURLOverride {
             defaults.set(Self.normalizeBaseURLString(apiBaseURLString), forKey: Key.apiBaseURL)

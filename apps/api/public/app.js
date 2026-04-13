@@ -3,12 +3,14 @@ const VOICE_TONES = {
   ash: "Clear and measured with a steady delivery.",
   sage: "Warm and conversational for softer delivery.",
   verse: "Brighter and more energetic for quick reads.",
+  marin: "Expressive and polished for the highest-fidelity narration.",
+  cedar: "Rich and grounded for confident long-form reading.",
 };
 
 const state = {
   previousTab: "home",
   availableVoices: [],
-  selectedVoice: "alloy",
+  selectedVoice: "marin",
   jobs: [],
   previewArticle: null,
   lastJobsSignature: "",

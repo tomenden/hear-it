@@ -148,7 +148,7 @@ struct VoiceSelectionView: View {
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(.white)
                         }
-                    } else {
+                    } else if hasPreview(for: voice) {
                         Button {
                             togglePreview(for: voice)
                         } label: {
@@ -162,6 +162,10 @@ struct VoiceSelectionView: View {
                             }
                         }
                         .buttonStyle(.plain)
+                    } else {
+                        Circle()
+                            .fill(.clear)
+                            .frame(width: 28, height: 28)
                     }
                 }
                 .padding(.vertical, 14)
@@ -205,6 +209,14 @@ struct VoiceSelectionView: View {
 
         player.play()
         Analytics.track("voice_preview_played", properties: ["voice": voice.id])
+    }
+
+    private func hasPreview(for voice: some Identifiable<String>) -> Bool {
+        Bundle.main.url(
+            forResource: "voice-preview--\(voice.id)",
+            withExtension: "mp3",
+            subdirectory: "VoicePreviews"
+        ) != nil
     }
 
     private func stopPreview() {

@@ -214,7 +214,7 @@ struct AppModelAudioPlaybackTests {
         ])
 
         #expect(apiClient.createdArticleURL == "https://example.com/openclaw")
-        #expect(apiClient.createdVoiceID == "alloy")
+        #expect(apiClient.createdVoiceID == "marin")
         #expect(model.jobs.contains(where: { $0.id == launchedJob.id }))
         #expect(model.settings.lastPresentedJobID == launchedJob.id)
         #expect(model.selectedTab == .library)

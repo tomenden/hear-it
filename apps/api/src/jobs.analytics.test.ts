@@ -78,7 +78,7 @@ describe("AudioJobService analytics", () => {
       "audio_failed",
       expect.objectContaining({
         job_id: job.id,
-        voice: "alloy",
+        voice: "marin",
         error: "Synthetic provider failure.",
       }),
     );

@@ -91,7 +91,7 @@ final class AppModel {
             return match
         }
 
-        return VoiceChoice(id: settings.selectedVoiceID.isEmpty ? "alloy" : settings.selectedVoiceID)
+        return VoiceChoice(id: settings.selectedVoiceID.isEmpty ? "marin" : settings.selectedVoiceID)
     }
 
     var filteredJobs: [AudioJob] {

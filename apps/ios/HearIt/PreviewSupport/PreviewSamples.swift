@@ -8,6 +8,8 @@ enum PreviewSamples {
     )
 
     static let voices: [VoiceChoice] = [
+        VoiceChoice(id: "marin"),
+        VoiceChoice(id: "cedar"),
         VoiceChoice(id: "alloy"),
         VoiceChoice(id: "sage"),
         VoiceChoice(id: "ash"),

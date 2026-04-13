@@ -13,7 +13,7 @@ const DEFAULT_OPENAI_TTS_TIMEOUT_MS = 30_000;
 const DEFAULT_TTS_INSTRUCTIONS =
   "Deliver with engaging inflection and dynamic pacing. Pause meaningfully between sentences. Use a warm, conversational tone that draws listeners in.";
 
-export const AVAILABLE_VOICES = ["alloy", "ash", "sage", "verse"] as const;
+export const AVAILABLE_VOICES = ["alloy", "ash", "sage", "verse", "marin", "cedar"] as const;
 export const VOICE_PREVIEW_TEXT =
   "This is Hear It. I turn articles into clear, natural audio you can listen to on the move.";
 const DEFAULT_CHUNK_SAMPLE_RATE_HZ = 44_100;
@@ -55,7 +55,7 @@ export interface SpeechProvider {
 }
 
 export const DEFAULT_SPEECH_OPTIONS: SpeechOptions = {
-  voice: "alloy",
+  voice: "marin",
 };
 
 export class FakeSpeechProvider implements SpeechProvider {

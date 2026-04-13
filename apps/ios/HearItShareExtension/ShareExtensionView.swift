@@ -63,7 +63,7 @@ struct ShareExtensionView: View {
 
         // Read voice from shared UserDefaults
         let sharedDefaults = UserDefaults(suiteName: "group.com.tome.hearit")
-        let voiceID = sharedDefaults?.string(forKey: "hear-it.selected-voice-id") ?? "alloy"
+        let voiceID = sharedDefaults?.string(forKey: "hear-it.selected-voice-id") ?? "marin"
         let configuredBaseURL = (sharedDefaults?.string(forKey: "hear-it.api-base-url") ?? "https://hear-it.onrender.com")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))

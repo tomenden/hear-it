@@ -1,6 +1,99 @@
 import AVFoundation
 import Foundation
+import MediaPlayer
 import Observation
+
+@MainActor
+struct AudioPlaybackCommandHandlers {
+    var play: () -> Void
+    var pause: () -> Void
+    var togglePlayPause: () -> Void
+    var skipForward: () -> Void
+    var restart: () -> Void
+    var seekToTime: (Double) -> Void
+}
+
+@MainActor
+protocol AudioPlaybackSystem: AnyObject {
+    func configureSessionForPlayback()
+    func activateSessionForPlayback()
+    func deactivateSession()
+    func updateNowPlayingInfo(_ info: [String: Any])
+    func clearNowPlayingInfo()
+    func configureRemoteCommands(_ handlers: AudioPlaybackCommandHandlers)
+}
+
+@MainActor
+final class AppleAudioPlaybackSystem: AudioPlaybackSystem {
+    private var commandTargetTokens: [NSObjectProtocol] = []
+
+    func configureSessionForPlayback() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio)
+    }
+
+    func activateSessionForPlayback() {
+        try? AVAudioSession.sharedInstance().setActive(true, options: [])
+    }
+
+    func deactivateSession() {
+        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+    }
+
+    func updateNowPlayingInfo(_ info: [String: Any]) {
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    func clearNowPlayingInfo() {
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    }
+
+    func configureRemoteCommands(_ handlers: AudioPlaybackCommandHandlers) {
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        commandTargetTokens.forEach { token in
+            commandCenter.playCommand.removeTarget(token)
+            commandCenter.pauseCommand.removeTarget(token)
+            commandCenter.togglePlayPauseCommand.removeTarget(token)
+            commandCenter.skipForwardCommand.removeTarget(token)
+            commandCenter.changePlaybackPositionCommand.removeTarget(token)
+        }
+        commandTargetTokens.removeAll()
+
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+        commandCenter.skipForwardCommand.isEnabled = true
+        commandCenter.skipForwardCommand.preferredIntervals = [15]
+        commandCenter.changePlaybackPositionCommand.isEnabled = true
+
+        let playTarget = commandCenter.playCommand.addTarget { _ in
+            handlers.play()
+            return .success
+        }
+        let pauseTarget = commandCenter.pauseCommand.addTarget { _ in
+            handlers.pause()
+            return .success
+        }
+        let toggleTarget = commandCenter.togglePlayPauseCommand.addTarget { _ in
+            handlers.togglePlayPause()
+            return .success
+        }
+        let skipForwardTarget = commandCenter.skipForwardCommand.addTarget { _ in
+            handlers.skipForward()
+            return .success
+        }
+        let seekTarget = commandCenter.changePlaybackPositionCommand.addTarget { event in
+            guard let event = event as? MPChangePlaybackPositionCommandEvent else {
+                return .commandFailed
+            }
+            handlers.seekToTime(event.positionTime)
+            return .success
+        }
+
+        commandTargetTokens = [playTarget, pauseTarget, toggleTarget, skipForwardTarget, seekTarget].compactMap { $0 as? NSObjectProtocol }
+    }
+}
 
 @MainActor
 @Observable
@@ -19,6 +112,7 @@ final class AudioPlayerController {
 
     @ObservationIgnored private let player = AVPlayer()
     @ObservationIgnored private let previewMode: Bool
+    @ObservationIgnored private let system: any AudioPlaybackSystem
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var playbackEndedObserver: NSObjectProtocol?
     @ObservationIgnored private var seekOnReadyTask: Task<Void, Never>?
@@ -28,12 +122,24 @@ final class AudioPlayerController {
     @ObservationIgnored private var lastObservedDuration: Double?
     #endif
 
-    init(previewMode: Bool = false) {
+    init(
+        previewMode: Bool = false,
+        system: any AudioPlaybackSystem = AppleAudioPlaybackSystem()
+    ) {
         self.previewMode = previewMode
+        self.system = system
         player.volume = Float(volume)
         guard !previewMode else { return }
 
-        configureAudioSession()
+        system.configureSessionForPlayback()
+        system.configureRemoteCommands(AudioPlaybackCommandHandlers(
+            play: { [weak self] in self?.handleRemotePlay() },
+            pause: { [weak self] in self?.handleRemotePause() },
+            togglePlayPause: { [weak self] in self?.togglePlayback() },
+            skipForward: { [weak self] in self?.skipForward() },
+            restart: { [weak self] in self?.restart() },
+            seekToTime: { [weak self] time in self?.seek(toTime: time) }
+        ))
         installTimeObserver()
         playbackEndedObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
@@ -73,6 +179,7 @@ final class AudioPlayerController {
         duration = knownDuration
         isPlaying = false
         isSeeking = true
+        system.clearNowPlayingInfo()
         #if DEBUG
         lastObservedCurrentTime = nil
         lastObservedDuration = knownDuration
@@ -94,6 +201,7 @@ final class AudioPlayerController {
         currentTime = 0
         duration = nil
         isPlaying = false
+        system.clearNowPlayingInfo()
         #if DEBUG
         lastObservedCurrentTime = nil
         lastObservedDuration = nil
@@ -102,6 +210,7 @@ final class AudioPlayerController {
         guard !previewMode else { return }
         player.pause()
         player.replaceCurrentItem(with: nil)
+        system.deactivateSession()
     }
 
     func updateKnownDuration(_ knownDuration: Double?) {
@@ -158,17 +267,11 @@ final class AudioPlayerController {
         }
 
         if isPlaying {
-            player.pause()
-            isPlaying = false
+            pausePlayback()
             return
         }
 
-        configureAudioSession()
-        #if DEBUG
-        print("[HearIt][Player] playImmediately — item=\(player.currentItem?.status.rawValue ?? -1) timeControlStatus=\(player.timeControlStatus.rawValue)")
-        #endif
-        player.playImmediately(atRate: Float(playbackRate))
-        isPlaying = true
+        startPlayback()
     }
 
     func restart() {
@@ -191,6 +294,7 @@ final class AudioPlayerController {
         if let jobID = loadedJobID {
             savePosition(nextTime, for: jobID)
         }
+        publishNowPlayingInfo()
     }
 
     func seek(toProgress progress: Double) {
@@ -216,6 +320,7 @@ final class AudioPlayerController {
                 clearPosition(for: jobID)
             }
         }
+        publishNowPlayingInfo()
     }
 
     func updatePlaybackRate(_ nextRate: Double) {
@@ -223,6 +328,7 @@ final class AudioPlayerController {
         guard !previewMode else { return }
         if isPlaying {
             player.rate = Float(nextRate)
+            publishNowPlayingInfo()
         }
     }
 
@@ -313,12 +419,6 @@ final class AudioPlayerController {
         #endif
     }
 
-    private func configureAudioSession() {
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio)
-        try? session.setActive(true, options: [])
-    }
-
     private func installTimeObserver() {
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
@@ -354,12 +454,57 @@ final class AudioPlayerController {
                 #endif
                 updateObservedDuration(itemDuration)
                 isPlaying = player.timeControlStatus == .playing
+                if isPlaying {
+                    publishNowPlayingInfo()
+                }
                 // Persist position so we can resume after the app is closed.
                 // Skip while seeking to avoid corrupting the saved position.
                 if let jobID = loadedJobID, currentTime > 0, !isSeeking {
                     savePosition(currentTime, for: jobID)
                 }
             }
+        }
+    }
+
+    private func startPlayback() {
+        system.activateSessionForPlayback()
+        #if DEBUG
+        print("[HearIt][Player] playImmediately — item=\(player.currentItem?.status.rawValue ?? -1) timeControlStatus=\(player.timeControlStatus.rawValue)")
+        #endif
+        player.playImmediately(atRate: Float(playbackRate))
+        isPlaying = true
+        publishNowPlayingInfo()
+    }
+
+    private func pausePlayback() {
+        player.pause()
+        isPlaying = false
+        publishNowPlayingInfo()
+    }
+
+    private func publishNowPlayingInfo() {
+        guard !previewMode, loadedSourceURL != nil else { return }
+
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: loadedSourceURL?.lastPathComponent ?? "Hear It",
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? playbackRate : 0
+        ]
+        if let duration {
+            info[MPMediaItemPropertyPlaybackDuration] = duration
+        }
+        system.updateNowPlayingInfo(info)
+    }
+
+    private func handleRemotePlay() {
+        if !isPlaying {
+            startPlayback()
+        }
+    }
+
+    private func handleRemotePause() {
+        if isPlaying {
+            pausePlayback()
         }
     }
 }

@@ -547,6 +547,12 @@ final class AppModel {
     }
 
     func displayedTotalDuration(for job: AudioJob) -> Double? {
+        if player.loadedJobID == job.id,
+           let loadedDuration = player.duration,
+           loadedDuration > 0 {
+            return loadedDuration
+        }
+
         if let finalDuration = job.playback.final?.durationSeconds,
            finalDuration > 0 {
             return finalDuration

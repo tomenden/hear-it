@@ -12,6 +12,8 @@ export interface ChunkSpeechScriptInput {
 const WORDS_PER_SECOND = 4;
 const PARAGRAPH_SPLIT = /\n\s*\n+/;
 const WORD_REGEX = /[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu;
+const HEADING_WORD_LIMIT = 12;
+const HEADING_LENGTH_LIMIT = 100;
 
 export function chunkSpeechScript(
   input: ChunkSpeechScriptInput,
@@ -30,7 +32,7 @@ export function chunkSpeechScript(
 
   const units = buildUnits(normalizedScript, maxSecondsPerChunk);
   const chunks: Omit<SpeechChunk, "index">[] = [];
-  let currentUnits: string[] = [];
+  let currentUnits: ChunkUnit[] = [];
   let currentDuration = 0;
 
   const flushCurrent = () => {
@@ -38,8 +40,18 @@ export function chunkSpeechScript(
       return;
     }
 
+    const [firstUnit, ...remainingUnits] = currentUnits;
+    if (!firstUnit) {
+      return;
+    }
+
+    let text = firstUnit.text;
+    for (const unit of remainingUnits) {
+      text += `${unit.separatorBefore}${unit.text}`;
+    }
+
     chunks.push({
-      text: currentUnits.join(" "),
+      text,
       estimatedDurationSeconds: currentDuration,
     });
     currentUnits = [];
@@ -60,7 +72,7 @@ export function chunkSpeechScript(
       flushCurrent();
     }
 
-    currentUnits.push(unit.text);
+    currentUnits.push(unit);
     currentDuration += unit.estimatedDurationSeconds;
   }
 
@@ -72,6 +84,7 @@ export function chunkSpeechScript(
 type ChunkUnit = {
   text: string;
   estimatedDurationSeconds: number;
+  separatorBefore: "" | " " | "\n\n";
 };
 
 function buildUnits(script: string, maxSecondsPerChunk: number): ChunkUnit[] {
@@ -79,48 +92,152 @@ function buildUnits(script: string, maxSecondsPerChunk: number): ChunkUnit[] {
     .split(PARAGRAPH_SPLIT)
     .map((block) => block.trim())
     .filter(Boolean);
+  const sections = buildSections(blocks);
 
   const units: ChunkUnit[] = [];
 
-  for (const block of blocks) {
-    const lines = block
-      .split(/\n+/)
-      .map((line) => cleanupWhitespace(line))
-      .filter(Boolean);
-
-    for (const line of lines) {
-      const lineDuration = estimateDurationSeconds(line);
-      if (lineDuration <= maxSecondsPerChunk) {
-        units.push({
-          text: line,
-          estimatedDurationSeconds: lineDuration,
-        });
-        continue;
-      }
-
-      const sentences = splitIntoSentences(line);
-      for (const sentence of sentences) {
-        const sentenceDuration = estimateDurationSeconds(sentence);
-        if (sentenceDuration <= maxSecondsPerChunk) {
-          units.push({
-            text: sentence,
-            estimatedDurationSeconds: sentenceDuration,
-          });
-          continue;
-        }
-
-        const wordSlices = splitLongSentence(sentence, maxSecondsPerChunk);
-        for (const slice of wordSlices) {
-          units.push({
-            text: slice,
-            estimatedDurationSeconds: estimateDurationSeconds(slice),
-          });
-        }
-      }
-    }
+  for (const section of sections) {
+    appendSectionUnits(units, section, maxSecondsPerChunk);
   }
 
   return units;
+}
+
+type ScriptSection = {
+  heading: string | null;
+  paragraphs: string[];
+};
+
+function buildSections(blocks: string[]): ScriptSection[] {
+  const sections: ScriptSection[] = [];
+  let currentSection: ScriptSection | null = null;
+
+  const flushCurrent = () => {
+    if (!currentSection) {
+      return;
+    }
+
+    sections.push(currentSection);
+    currentSection = null;
+  };
+
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = cleanupWhitespace(blocks[index] ?? "");
+    if (!block) {
+      continue;
+    }
+
+    if (isHeadingBlock(block)) {
+      flushCurrent();
+      currentSection = {
+        heading: block,
+        paragraphs: [],
+      };
+      continue;
+    }
+
+    if (currentSection?.heading) {
+      currentSection.paragraphs.push(block);
+      continue;
+    }
+
+    sections.push({
+      heading: null,
+      paragraphs: [block],
+    });
+  }
+
+  flushCurrent();
+
+  return sections;
+}
+
+function appendSectionUnits(
+  units: ChunkUnit[],
+  section: ScriptSection,
+  maxSecondsPerChunk: number,
+): void {
+  const sectionText = formatSection(section);
+  if (!sectionText) {
+    return;
+  }
+
+  const sectionDuration = estimateDurationSeconds(sectionText);
+  if (sectionDuration <= maxSecondsPerChunk) {
+    units.push(buildUnit(sectionText, sectionDuration, units.length === 0 ? "" : "\n\n"));
+    return;
+  }
+
+  if (section.paragraphs.length === 0 && section.heading) {
+    units.push(buildUnit(section.heading, sectionDuration, units.length === 0 ? "" : "\n\n"));
+    return;
+  }
+
+  section.paragraphs.forEach((paragraph, paragraphIndex) => {
+    const paragraphText =
+      section.heading && paragraphIndex === 0
+        ? `${section.heading}\n\n${paragraph}`
+        : paragraph;
+    const paragraphDuration = estimateDurationSeconds(paragraphText);
+    const paragraphSeparator = units.length === 0 ? "" : "\n\n";
+
+    if (paragraphDuration <= maxSecondsPerChunk) {
+      units.push(buildUnit(paragraphText, paragraphDuration, paragraphSeparator));
+      return;
+    }
+
+    const sentences = splitIntoSentences(paragraph);
+    sentences.forEach((sentence, sentenceIndex) => {
+      const sentenceText =
+        section.heading && paragraphIndex === 0 && sentenceIndex === 0
+          ? `${section.heading}\n\n${sentence}`
+          : sentence;
+      const separatorBefore =
+        units.length === 0
+          ? ""
+          : sentenceIndex === 0
+            ? "\n\n"
+            : " ";
+
+      units.push(
+        buildUnit(
+          sentenceText,
+          estimateDurationSeconds(sentenceText),
+          separatorBefore,
+        ),
+      );
+    });
+  });
+}
+
+function buildUnit(
+  text: string,
+  estimatedDurationSeconds: number,
+  separatorBefore: "" | " " | "\n\n",
+): ChunkUnit {
+  return {
+    text,
+    estimatedDurationSeconds,
+    separatorBefore,
+  };
+}
+
+function formatSection(section: ScriptSection): string {
+  const parts = [
+    section.heading,
+    ...section.paragraphs,
+  ].filter(Boolean);
+
+  return parts.join("\n\n");
+}
+
+function isHeadingBlock(block: string): boolean {
+  if (/[.!?]$/.test(block) || block.includes(":")) {
+    return false;
+  }
+
+  const words = block.match(/\S+/g) ?? [];
+  return words.length > 0 && words.length <= HEADING_WORD_LIMIT && block.length <= HEADING_LENGTH_LIMIT;
 }
 
 function splitIntoSentences(paragraph: string): string[] {
@@ -139,36 +256,6 @@ function splitIntoSentences(paragraph: string): string[] {
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => cleanupWhitespace(sentence))
     .filter(Boolean);
-}
-
-function splitLongSentence(sentence: string, maxSecondsPerChunk: number): string[] {
-  const maxWordsPerSlice = Math.max(
-    1,
-    Math.floor(maxSecondsPerChunk * WORDS_PER_SECOND),
-  );
-  const words = Array.from(sentence.matchAll(WORD_REGEX), (match) => ({
-    start: match.index ?? 0,
-  }));
-
-  if (words.length <= maxWordsPerSlice) {
-    return [sentence];
-  }
-
-  const slices: string[] = [];
-  for (let index = 0; index < words.length; index += maxWordsPerSlice) {
-    const start = index === 0 ? 0 : words[index]!.start;
-    const end =
-      index + maxWordsPerSlice < words.length
-        ? words[index + maxWordsPerSlice]!.start
-        : sentence.length;
-    const slice = sentence.slice(start, end).trim();
-
-    if (slice) {
-      slices.push(slice);
-    }
-  }
-
-  return slices;
 }
 
 function normalizeScript(text: string): string {

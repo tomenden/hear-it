@@ -81,6 +81,32 @@ struct AppModelAudioPlaybackTests {
     }
 
     @Test
+    func displayedTimelineProgressUsesLoadedPlayerDurationWhenItDiffersFromPlaybackMetadata() {
+        let model = makeModel()
+        let job = makeJob(
+            id: "job-progress-duration-mismatch",
+            state: .ready,
+            playback: .ready(
+                audioUrl: "/audio/job-progress-duration-mismatch/final.mp3",
+                durationSeconds: 120,
+                fileName: "Mismatch playback.mp3"
+            ),
+            durationSeconds: 120
+        )
+        model.jobs = [job]
+        model.player.configurePreviewState(
+            jobID: job.id,
+            duration: 60,
+            currentTime: 54,
+            isPlaying: true,
+            loadedSourceURL: URL(string: "http://localhost:3000/audio/job-progress-duration-mismatch/final.mp3")
+        )
+
+        #expect(model.displayedTotalDuration(for: job) == 60)
+        #expect(model.displayedTimelineProgress(for: job) == 0.9)
+    }
+
+    @Test
     func freshReadySessionsMayUseLocalAudioAssetAsASilentOptimization() async throws {
         let store = makeStore()
         _ = try await store.saveAudioFile(

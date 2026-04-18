@@ -43,8 +43,9 @@ export function buildSpeechScript(input: SpeechScriptInput): SpeechScript {
     currentBlock.push(line);
   };
 
-  for (const rawLine of rawLines) {
+  for (const [index, rawLine] of rawLines.entries()) {
     const trimmedLine = cleanupWhitespace(rawLine);
+    const nextTrimmedLine = cleanupWhitespace(rawLines[index + 1] ?? "");
     if (!trimmedLine) {
       flushBlock();
       continue;
@@ -73,7 +74,12 @@ export function buildSpeechScript(input: SpeechScriptInput): SpeechScript {
       continue;
     }
 
-    if (trimmedLine !== cleanedTitle && isStandaloneHeading(trimmedLine)) {
+    if (
+      currentBlock.length === 0 &&
+      !nextTrimmedLine &&
+      trimmedLine !== cleanedTitle &&
+      isStandaloneHeading(trimmedLine)
+    ) {
       const { text: headingText, urlsHumanized } = humanizeUrls(trimmedLine);
       flushBlock();
       cleanedBlocks.push([headingText]);
@@ -102,7 +108,7 @@ export function buildSpeechScript(input: SpeechScriptInput): SpeechScript {
 
   flushBlock();
 
-  const script = cleanedBlocks.map((block) => block.join("\n")).join("\n\n");
+  const script = cleanedBlocks.map((block) => block.join(" ")).join("\n\n");
   const displayTitle = buildDisplayTitle(
     input.title,
     bodyFallbackSourceLines,

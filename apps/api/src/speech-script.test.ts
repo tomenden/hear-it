@@ -103,4 +103,25 @@ describe("buildSpeechScript", () => {
     expect(result.script).not.toContain("Heading:");
     expect(result.normalization.headingsLabeled).toBe(1);
   });
+
+  it("collapses hard-wrapped lines inside a paragraph without removing paragraph breaks", () => {
+    const result = buildSpeechScript({
+      title: "Wrapped copy",
+      textContent: [
+        "Wrapped copy",
+        "",
+        "And yet we still need the underlying",
+        "concept, whatever we call it.",
+        "",
+        "A new paragraph should still",
+        "stay distinct.",
+      ].join("\n"),
+    });
+
+    expect(result.script).toContain(
+      "Wrapped copy\n\nAnd yet we still need the underlying concept, whatever we call it.\n\nA new paragraph should still stay distinct.",
+    );
+    expect(result.script).not.toContain("underlying\nconcept");
+    expect(result.script).not.toContain("still\nstay");
+  });
 });

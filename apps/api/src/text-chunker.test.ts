@@ -28,6 +28,44 @@ describe("chunkSpeechScript", () => {
     expect(chunks[0]?.text).not.toContain("Paragraph three");
   });
 
+  it("keeps headed sections together and preserves paragraph breaks inside a chunk", () => {
+    const firstParagraph =
+      "First paragraph has enough words to fill most of the target window while keeping the opening idea fully intact for the listener.";
+    const secondParagraph =
+      "Second paragraph continues the same section without changing topic so it should stay grouped with the heading when the section still fits.";
+    const thirdParagraph =
+      "Third paragraph starts the next section and should not steal the previous heading when a new chunk begins.";
+
+    const chunks = chunkSpeechScript({
+      script: `Section One\n\n${firstParagraph}\n\n${secondParagraph}\n\nSection Two\n\n${thirdParagraph}`,
+      targetSecondsPerChunk: 14,
+    });
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]?.text).toBe(
+      `Section One\n\n${firstParagraph}\n\n${secondParagraph}`,
+    );
+    expect(chunks[1]?.text).toBe(`Section Two\n\n${thirdParagraph}`);
+  });
+
+  it("falls back from section boundaries to paragraph boundaries before splitting sentences", () => {
+    const firstParagraph =
+      "Paragraph one stays complete so the heading remains attached to real content and the first chunk lands on a clean paragraph break.";
+    const secondParagraph =
+      "Paragraph two is also long enough to stand on its own and should arrive as a full paragraph rather than a sentence fragment.";
+    const thirdParagraph =
+      "Paragraph three closes the section with another complete thought that can share a later chunk if space allows.";
+
+    const chunks = chunkSpeechScript({
+      script: `Deep Dive\n\n${firstParagraph}\n\n${secondParagraph}\n\n${thirdParagraph}`,
+      targetSecondsPerChunk: 7,
+    });
+
+    expect(chunks[0]?.text).toBe(`Deep Dive\n\n${firstParagraph}`);
+    expect(chunks.some((chunk) => chunk.text.trim() === "Deep Dive")).toBe(false);
+    expect(chunks[1]?.text.startsWith(secondParagraph)).toBe(true);
+  });
+
   it("stays near the target speech window", () => {
     const sentences = Array.from({ length: 18 }, (_, index) => `Sentence ${index + 1} keeps the cadence moving along at a steady pace.`);
     const chunks = chunkSpeechScript({
@@ -61,18 +99,17 @@ describe("chunkSpeechScript", () => {
     );
   });
 
-  it("preserves punctuation and content when slicing an oversized sentence", () => {
+  it("keeps an oversized sentence intact instead of breaking it mid-sentence", () => {
     const script =
-      "This long sentence, with commas, exclamation marks, and a question mark? keeps every punctuation mark intact while it grows long enough to require chunking, because the content should be partitioned rather than rewritten, and the original text must remain recognizable even after multiple slices.";
+      "This long sentence, with commas and a semicolon; keeps every punctuation mark intact while it grows long enough to require chunking, because the content should be partitioned rather than rewritten, and the original text must remain recognizable even after multiple slices.";
 
     const chunks = chunkSpeechScript({
       script,
       targetSecondsPerChunk: 3,
     });
 
-    expect(chunks.length).toBeGreaterThan(1);
-    expect(chunks.map((chunk) => chunk.text).join(" ")).toBe(script);
-    expect(chunks.some((chunk) => chunk.text.includes(","))).toBe(true);
-    expect(chunks.some((chunk) => chunk.text.includes("?"))).toBe(true);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]?.text).toBe(script);
+    expect(chunks[0]?.estimatedDurationSeconds).toBeGreaterThan(3);
   });
 });

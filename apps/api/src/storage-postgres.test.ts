@@ -460,6 +460,20 @@ function makeJobStore() {
 }
 
 describe("PostgresJobStore events and leases", () => {
+  it("enables row-level security for exposed tables during init", async () => {
+    const { store, harness } = makeJobStore();
+
+    await store.init();
+
+    expect(harness.queries).toEqual(
+      expect.arrayContaining([
+        "alter table audio_jobs enable row level security",
+        "alter table job_events enable row level security",
+        "alter table maintenance_leases enable row level security",
+      ]),
+    );
+  });
+
   it("records a job_created event", async () => {
     const { store } = makeJobStore();
     await store.init();

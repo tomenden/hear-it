@@ -104,6 +104,20 @@ export class PostgresJobStore implements JobStore {
         )
       `;
 
+      // These tables live in Supabase's exposed `public` schema. Enable RLS so
+      // the generated Data API cannot access them without explicit policies.
+      await this.sql`
+        ALTER TABLE audio_jobs ENABLE ROW LEVEL SECURITY
+      `;
+
+      await this.sql`
+        ALTER TABLE job_events ENABLE ROW LEVEL SECURITY
+      `;
+
+      await this.sql`
+        ALTER TABLE maintenance_leases ENABLE ROW LEVEL SECURITY
+      `;
+
       await this.sql`
         DELETE FROM job_events
         WHERE NOT EXISTS (
